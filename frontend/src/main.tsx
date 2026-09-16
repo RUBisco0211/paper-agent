@@ -1,5 +1,13 @@
+import { QueryClientProvider } from "@tanstack/react-query"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
+import { RouterProvider } from "react-router-dom"
+
+import { ApiProvider } from "@/lib/api/provider"
+import { AuthProvider } from "@/lib/auth/provider"
+import { Toaster } from "@/components/ui/sonner"
+import { createAppRouter } from "@/app/router"
+import { createQueryClient } from "@/app/query"
 
 import "./index.css"
 
@@ -9,15 +17,18 @@ if (!container) {
   throw new Error("缺少 #root 挂载节点")
 }
 
+const queryClient = createQueryClient()
+const router = createAppRouter()
+
 createRoot(container).render(
   <StrictMode>
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Paper Agent</h1>
-        <p className="text-muted-foreground mt-2 text-sm">
-          前端脚手架与 API 调用层已就绪，页面尚未实现。
-        </p>
-      </div>
-    </main>
+    <QueryClientProvider client={queryClient}>
+      <ApiProvider>
+        <AuthProvider>
+          <RouterProvider router={router} />
+          <Toaster />
+        </AuthProvider>
+      </ApiProvider>
+    </QueryClientProvider>
   </StrictMode>,
 )
