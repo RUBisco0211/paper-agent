@@ -1,4 +1,9 @@
-import { Navigate, createBrowserRouter } from "react-router-dom"
+import {
+  Navigate,
+  createBrowserRouter,
+  useRoutes,
+  type RouteObject,
+} from "react-router-dom"
 
 import { AppShell } from "@/app/app-shell"
 import { RequireAuth } from "@/app/require-auth"
@@ -11,8 +16,8 @@ import { SessionsPage } from "@/pages/sessions"
 import { RegisterPage } from "@/pages/register"
 import { SettingsPage } from "@/pages/settings"
 
-export function createAppRouter() {
-  return createBrowserRouter([
+export function createAppRoutes(): RouteObject[] {
+  return [
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
     {
@@ -42,5 +47,15 @@ export function createAppRouter() {
         </div>
       ),
     },
-  ])
+  ]
+}
+
+/** Browser router for the app; tests use the same routes in memory. */
+export function createAppRouter() {
+  return createBrowserRouter(createAppRoutes())
+}
+
+/** Same routes without a data router, for testing under jsdom. */
+export function AppRoutes() {
+  return useRoutes(createAppRoutes())
 }
