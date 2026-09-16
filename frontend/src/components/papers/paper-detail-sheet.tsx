@@ -37,6 +37,7 @@ import {
 import { AddToProjectMenu } from "@/components/papers/add-to-project-menu"
 import { CapabilityBadges, ProcessingBadge, stageLabel } from "@/components/papers/capability-badges"
 import { PdfViewer } from "@/components/papers/pdf-viewer"
+import { METADATA_STATUS_LABEL, PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { queryKeys } from "@/app/query"
@@ -196,7 +197,7 @@ export function PaperDetailSheet({
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-2">
                 <ProcessingBadge processing={paper.processing} />
-                <Badge variant="outline">{paper.source}</Badge>
+                <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                 {paper.doi ? <Badge variant="outline">DOI {paper.doi}</Badge> : null}
                 {paper.arxiv_id ? (
                   <Badge variant="outline">arXiv {paper.arxiv_id}</Badge>
@@ -296,11 +297,8 @@ export function PaperDetailSheet({
                           </TableCell>
                           <TableCell className="text-muted-foreground text-xs">
                             {stage.error_message ??
-                              (stage.progress
-                                ? Object.entries(stage.progress)
-                                    .map(([key, value]) => `${key}=${String(value)}`)
-                                    .join(" ")
-                                : "—")}
+                              STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
+                              "—"}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -401,7 +399,7 @@ export function PaperDetailSheet({
                 ) : null}
                 <dl className="grid grid-cols-[7rem_1fr] gap-y-1 text-sm">
                   <dt className="text-muted-foreground">元数据状态</dt>
-                  <dd>{paper.metadata_status}</dd>
+                  <dd>{METADATA_STATUS_LABEL[paper.metadata_status]}</dd>
                   <dt className="text-muted-foreground">文件名</dt>
                   <dd className="truncate">{paper.original_filename ?? "—"}</dd>
                   <dt className="text-muted-foreground">期刊/会议</dt>

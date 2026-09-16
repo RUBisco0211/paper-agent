@@ -346,3 +346,20 @@ export interface PaperImport {
   updated_at: string
   finished_at?: string | null
 }
+
+
+/** 界面上展示的中文标签（内部枚举不外露）。 */
+export const PAPER_SOURCE_LABEL: Record<PaperSource, string> = {
+  upload: "上传",
+  doi: "DOI 导入",
+  arxiv: "arXiv 导入",
+  manual: "手动录入",
+}
+
+export const METADATA_STATUS_LABEL: Record<MetadataStatus, string> = {
+  recognized: "已识别",
+  partial: "部分识别",
+  unrecognized: "未识别",
+  provider_failed: "元数据服务失败",
+  user_provided: "已手动修正",
+}

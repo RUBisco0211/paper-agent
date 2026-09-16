@@ -279,7 +279,7 @@ export function SessionWorkspacePage() {
       <Dialog open={renaming} onOpenChange={setRenaming}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>会话改名</DialogTitle>
+            <DialogTitle>重命名会话</DialogTitle>
           </DialogHeader>
           <form
             className="flex flex-col gap-4"

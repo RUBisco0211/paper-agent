@@ -210,7 +210,7 @@ export function SessionsPage() {
                 <TableRow>
                   <TableHead>标题</TableHead>
                   <TableHead>范围</TableHead>
-                  <TableHead>排队</TableHead>
+                  <TableHead>待发送</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>

@@ -29,6 +29,7 @@ import {
 import { ImportDialog } from "@/components/papers/import-dialog"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { ProcessingBadge } from "@/components/papers/capability-badges"
+import { PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 
@@ -190,7 +191,7 @@ export function LibraryPage() {
                       </p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{paper.source}</Badge>
+                      <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">

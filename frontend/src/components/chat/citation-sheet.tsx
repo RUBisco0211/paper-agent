@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import {
   Sheet,
@@ -67,12 +66,6 @@ export function CitationSheet({
               <blockquote className="bg-muted/50 rounded-md border-l-2 p-3 text-sm whitespace-pre-wrap">
                 {citation.data.snippet}
               </blockquote>
-              <div className="flex flex-wrap gap-1">
-                <Badge variant="outline">{citation.data.chunk_ids.length} 个片段</Badge>
-                {citation.data.citation_id ? (
-                  <Badge variant="outline">{citation.data.citation_id}</Badge>
-                ) : null}
-              </div>
               <Separator />
               <div className="h-[26rem] overflow-hidden rounded-md border">
                 <PdfViewer paperId={citation.data.paper_id} page={citation.data.page_start} />
