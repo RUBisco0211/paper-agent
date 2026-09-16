@@ -4,7 +4,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from .application import MessageSubmission, ResumeOutcome
-from .domain import Delivery, EntryType, PendingMessage, Session, SessionEntry
+from .domain import (
+    Citation,
+    Delivery,
+    EntryType,
+    PendingMessage,
+    Session,
+    SessionEntry,
+)
 
 
 class SessionCreateRequest(BaseModel):
@@ -137,4 +144,28 @@ def to_resume_response(outcome: ResumeOutcome) -> ResumeResponse:
             steering=outcome.remaining.get("steering", 0),
             follow_up=outcome.remaining.get("follow_up", 0),
         ),
+    )
+
+
+class CitationRead(BaseModel):
+    """Evidence behind one citation; ``paper_id`` is the user's entry id."""
+
+    citation_id: str
+    paper_id: UUID
+    title_path: str | None = None
+    snippet: str
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_ids: list[UUID] = []
+
+
+def to_citation_read(citation: Citation) -> CitationRead:
+    return CitationRead(
+        citation_id=citation.citation_id,
+        paper_id=citation.user_paper_id,
+        title_path=citation.title_path,
+        snippet=citation.snippet,
+        page_start=citation.page_start,
+        page_end=citation.page_end,
+        chunk_ids=citation.chunk_ids,
     )

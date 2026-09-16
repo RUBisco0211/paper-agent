@@ -8,7 +8,9 @@ from ..library.application import LibraryEntry, PaperLibraryService
 from ..platform.errors import ConflictError, ErrorCode, NotFoundError, ValidationError
 from ..projects.persistence import ProjectRepository
 from .agent import AgentEventType, LlmConfig
+from .citations import build_citation_id
 from .domain import (
+    Citation,
     Delivery,
     MessageRole,
     PendingMessage,
@@ -305,6 +307,64 @@ class SessionService:
             user_id=session.user_id,
             user_paper_ids=member_ids,
         )
+
+
+class CitationService:
+    """Stores the evidence of an answer and resolves citations safely.
+
+    The model may only reference ids that were recorded for the same session,
+    and resolution always re-checks ownership.
+    """
+
+    def __init__(self, repository: SessionRepository) -> None:
+        self._repository = repository
+
+    def record_evidence(self, *, session_id: UUID, evidence: list) -> list[Citation]:
+        recorded: list[Citation] = []
+        for item in evidence:
+            citation_id = build_citation_id(item.chunk_ids)
+            existing = self._repository.get_citation(
+                session_id=session_id,
+                citation_id=citation_id,
+            )
+            if existing is not None:
+                recorded.append(existing)
+                continue
+            recorded.append(
+                self._repository.add_citation(
+                    session_id=session_id,
+                    citation_id=citation_id,
+                    user_paper_id=item.paper_id,
+                    snippet=item.snippet,
+                    chunk_ids=item.chunk_ids,
+                    title_path=item.title_path,
+                    page_start=item.page_start,
+                    page_end=item.page_end,
+                ),
+            )
+        self._repository.commit()
+        return recorded
+
+    def get(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        citation_id: str,
+    ) -> Citation:
+        session = self._repository.get_session(session_id)
+        if session is None or session.user_id != user_id:
+            raise NotFoundError("会话不存在", code=ErrorCode.SESSION_NOT_FOUND)
+        citation = self._repository.get_citation(
+            session_id=session_id,
+            citation_id=citation_id,
+        )
+        if citation is None:
+            raise NotFoundError(
+                "引用不存在或不属于该会话",
+                code=ErrorCode.CITATION_NOT_FOUND,
+            )
+        return citation
 
 
 class ProjectSessionPurger:

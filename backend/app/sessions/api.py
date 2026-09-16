@@ -8,9 +8,10 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from ..auth.dependencies import CurrentUser
 from ..platform.pagination import Page, PageParamsDep
 from .agent import validate_llm_config
-from .dependencies import SessionServiceDep, SseIdleTimeoutDep
+from .dependencies import CitationServiceDep, SessionServiceDep, SseIdleTimeoutDep
 from .domain import Session
 from .schemas import (
+    CitationRead,
     MessageAcceptedResponse,
     MessageRequest,
     ResumeRequest,
@@ -20,6 +21,7 @@ from .schemas import (
     SessionEntryRead,
     SessionRead,
     SessionUpdateRequest,
+    to_citation_read,
     to_entry_read,
     to_message_response,
     to_pending_read,
@@ -270,3 +272,22 @@ async def stream_session_events(
             id=str(event.sequence),
             data=event.to_payload(),
         )
+
+
+@router.get(
+    "/{session_id}/citations/{citation_id}",
+    response_model=CitationRead,
+    summary="按会话与该用户校验后展开引用证据",
+)
+def read_citation(
+    session_id: UUID,
+    citation_id: str,
+    user: CurrentUser,
+    service: CitationServiceDep,
+) -> CitationRead:
+    citation = service.get(
+        user_id=user.id,
+        session_id=session_id,
+        citation_id=citation_id,
+    )
+    return to_citation_read(citation)

@@ -7,7 +7,7 @@ from ..platform.config import settings
 from ..platform.database import SessionDep
 from ..platform.storage import StorageDep
 from ..projects.persistence import ProjectRepository
-from .application import ProjectSessionPurger, SessionService
+from .application import CitationService, ProjectSessionPurger, SessionService
 from .entries import EntryStore
 from .events import EventBroker
 from .executor import SessionExecutor
@@ -78,3 +78,10 @@ def build_project_session_cleaner(
 ) -> ProjectSessionPurger:
     """Cleanup implementation handed to the projects module."""
     return ProjectSessionPurger(SessionRepository(session), EntryStore(storage))
+
+
+def get_citation_service(repository: SessionRepositoryDep) -> CitationService:
+    return CitationService(repository)
+
+
+CitationServiceDep = Annotated[CitationService, Depends(get_citation_service)]
