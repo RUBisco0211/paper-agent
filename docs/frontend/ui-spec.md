@@ -1,0 +1,58 @@
+# 前端 UI 规范（必读）
+
+适用范围：`frontend/` 下所有面向用户的界面。规则来源是 `@.agents/skills/shadcn/`（shadcn/ui 官方 skill）与产品反馈；与代码冲突时以本文为准。
+
+## 1. 文案：只说用户需要知道的事
+
+界面文案只有三种合法用途：
+
+1. **当前状态**：正在做什么、结果是什么（"上传中…"、"处理完成"、"已停止"）。
+2. **下一步动作**：按钮、链接、空状态的引导（"上传 PDF"、"去模型设置"）。
+3. **后果确认**：用户做不可逆操作前需要判断的信息（"删除项目会同时删除项目会话，论文库不受影响"）。
+
+以下内容**一律不出现在界面**（包括 header、图标下方、卡片、Sheet/Dialog 描述、Alert、Toast）：
+
+| 禁止内容 | 曾经出现的反例 |
+|---|---|
+| 实现细节与部署方式 | "Base URL 由后端部署配置固定"、"后端地址：…" |
+| 数据流向与隐私机制说明 | "PDF 会发往 MinerU，Chunk 会发往 Embedding 服务" |
+| 内部存储位置与安全权衡 | "API Key 保存在浏览器 localStorage…不写入数据库、日志或对象存储" |
+| 设计意图、架构术语、验收口径 | "OpenAPI → SSE → 事件游标"、"个人全库会话覆盖整个论文库；项目会话只覆盖该项目论文，范围创建后不可修改" |
+| 面向开发者/测试的说明 | "处理中可查看阶段状态"、"该条目不参与全文检索" |
+| 页面副标题与品牌口号 | 每个页头下方的 caption、"论文证据问答" |
+
+判定方法：这句话是否帮助一个**只关心自己论文和问答结果**的用户完成当前任务？不是就删掉。删除后如果界面显得空，用更好的布局解决，不要用解释性文字填充。
+
+**例外**：错误提示必须给出稳定的、可行动的信息（例如"来源没有提供公开可用的 PDF，可手动上传"），这是状态而非机制说明。
+
+## 2. 布局：侧边栏分上下两部分
+
+参考 ChatGPT 的侧边栏结构：
+
+- **上半部分**：通用导航（论文库、项目、模型设置），顶部只放产品名，不放副标题。
+- **下半部分**：会话列表，**按项目分组**（"未分组"或个人全库在最前），每组可折叠，组内按创建时间倒序；提供"新建会话"入口。会话项的删除/改名放在该项的行内菜单或悬浮操作里。
+- 折叠态由 `SidebarProvider` 管理，不在页面里手写开关状态。
+- 主内容区使用 `SidebarInset`，页头只放标题与操作按钮，**不放描述文字**。
+
+## 3. 组件：用 shadcn 组件，不手写等价物
+
+来源：`.agents/skills/shadcn/SKILL.md` 与 `rules/*.md`。本项目为 `style=new-york`、`base=radix`、`tailwindVersion=v4`、`iconLibrary=lucide`。
+
+- **安装方式**：一律用 CLI（`pnpm dlx shadcn@latest add <component>`）。若 CLI 因环境问题不可用，可安装到临时目录后用 `node_modules/.bin/shadcn` 运行；不要手工从 GitHub 抠文件。
+- **图标**：只用 `lucide-react`；`Button`/`DropdownMenuItem`/`SidebarMenuButton` 等组件内的图标加 `data-icon="inline-start|inline-end"`，**不加 `size-4`**；图标以组件对象传入（`icon={CheckIcon}`），不用字符串查表。
+- **空状态**用 `Empty`；**提示条**用 `Alert`；**加载占位**用 `Skeleton`；**状态标记**用 `Badge`；**分隔**用 `Separator`；**按钮的等待态**用 `Spinner`（`Button` 没有 `isLoading`）；**破坏性确认**用 `AlertDialog`。
+- **表单**用 `FieldGroup` + `Field`（+ `FieldLabel`/`FieldDescription`/`FieldError`），校验用 `data-invalid` + `aria-invalid`；2–7 个选项用 `ToggleGroup`；带按钮的输入用 `InputGroup`。
+- **菜单/下拉的条目必须在 Group 内**：`SelectItem` → `SelectGroup`，`DropdownMenuItem` → `DropdownMenuGroup`。
+- **聊天**用 `MessageScroller*` / `Message*` / `Bubble*` / `Marker*`，不要手写气泡 `div` 与滚动容器；流式跟随、锚定、跳到最新由组件负责。生成中的"正在生成…"用 `shimmer` 工具类，不写自定义动画。
+- **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
+- **可访问性**：`Dialog`/`Sheet`/`Drawer` 必须有 `DialogTitle`/`SheetTitle`（必要时 `sr-only`）；`Avatar` 必须有 `AvatarFallback`；`TabsTrigger` 必须在 `TabsList` 内。
+
+## 4. 校验
+
+改动前端后至少执行：
+
+```bash
+cd frontend && pnpm run typecheck && pnpm run test && pnpm run build
+```
+
+新增交互（发送模式、排队提示、失败语义等）应补组件测试，断言的是**用户可见的语义**，而不是实现细节。

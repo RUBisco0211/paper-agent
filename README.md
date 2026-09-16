@@ -20,7 +20,9 @@ docs/       产品契约、架构基线与技术选型调研
 | [docs/infrastructure/sse-architecture-research.md](docs/infrastructure/sse-architecture-research.md) | SSE 传输与事件模型 |
 | [docs/infrastructure/logging-conventions.md](docs/infrastructure/logging-conventions.md) | 日志事件命名与字段约定 |
 | [docs/overview/implementation-status.md](docs/overview/implementation-status.md) | 当前已实现范围与明确未接入的部分 |
+| [docs/frontend/ui-spec.md](docs/frontend/ui-spec.md) | 前端文案、布局与 shadcn 组件规范（改前端前必读） |
 | [CONTEXT.md](CONTEXT.md) | 领域术语表（ubiquitous language） |
+| [AGENTS.md](AGENTS.md) | 协作约定与必读文档索引 |
 
 ## 快速开始
 
