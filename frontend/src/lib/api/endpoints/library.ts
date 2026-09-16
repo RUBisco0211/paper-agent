@@ -1,0 +1,95 @@
+import type { ApiClient } from "../client"
+import type {
+  FetchPdfResponse,
+  IngestionJob,
+  MetadataCorrectionInput,
+  Page,
+  PaperListParams,
+  ResolveMetadataResponse,
+  UploadResponse,
+  UserPaperDetail,
+  UserPaperSummary,
+  Uuid,
+} from "../types"
+
+const PAPERS = "/v1/papers"
+
+export function libraryEndpoints(client: ApiClient) {
+  return {
+    /** Upload a local PDF; the response already contains the library entry. */
+    upload: (file: File, options: { signal?: AbortSignal } = {}) => {
+      const form = new FormData()
+      form.append("file", file)
+      return client.request<UploadResponse>(PAPERS, {
+        method: "POST",
+        body: form,
+        signal: options.signal,
+      })
+    },
+
+    list: (params: PaperListParams = {}) =>
+      client.request<Page<UserPaperSummary>>(PAPERS, { query: { ...params } }),
+
+    detail: (paperId: Uuid) =>
+      client.request<UserPaperDetail>(`${PAPERS}/${paperId}`),
+
+    /** Fetched as a blob so the caller can render it in an embedded viewer. */
+    pdfBlob: async (paperId: Uuid, options: { signal?: AbortSignal } = {}) => {
+      const response = await client.raw(`${PAPERS}/${paperId}/pdf`, {
+        signal: options.signal,
+      })
+      if (!response.ok) {
+        throw await toError(response)
+      }
+      return response.blob()
+    },
+
+    pdfUrl: (paperId: Uuid) => `${client.base}${PAPERS}/${paperId}/pdf`,
+
+    /** Attach or replace the full text of an existing entry. */
+    attachPdf: (paperId: Uuid, file: File) => {
+      const form = new FormData()
+      form.append("file", file)
+      return client.request<UploadResponse>(`${PAPERS}/${paperId}/pdf`, {
+        method: "POST",
+        body: form,
+      })
+    },
+
+    /** Re-attempt the download announced by the paper's identifier. */
+    fetchPdf: (paperId: Uuid) =>
+      client.request<FetchPdfResponse>(`${PAPERS}/${paperId}/fetch-pdf`, {
+        method: "POST",
+      }),
+
+    patchMetadata: (paperId: Uuid, input: MetadataCorrectionInput) =>
+      client.request<UserPaperDetail>(`${PAPERS}/${paperId}/metadata`, {
+        method: "PATCH",
+        json: input,
+      }),
+
+    resolveMetadata: (paperId: Uuid) =>
+      client.request<ResolveMetadataResponse>(
+        `${PAPERS}/${paperId}/resolve-metadata`,
+        { method: "POST" },
+      ),
+
+    ingestionJob: (jobId: Uuid) =>
+      client.request<IngestionJob>(`/v1/ingestion-jobs/${jobId}`),
+
+    retryIngestionJob: (jobId: Uuid) =>
+      client.request<IngestionJob>(`/v1/ingestion-jobs/${jobId}/retry`, {
+        method: "POST",
+      }),
+  }
+}
+
+async function toError(response: Response) {
+  const text = await response.text()
+  const { ApiError } = await import("../errors")
+  try {
+    return new ApiError(response.status, JSON.parse(text))
+  } catch {
+    return new ApiError(response.status, { message: response.statusText })
+  }
+}
