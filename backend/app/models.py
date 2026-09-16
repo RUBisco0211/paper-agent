@@ -9,3 +9,4 @@ from .ingestion import persistence as _ingestion_persistence  # noqa: F401
 from .library import persistence as _library_persistence  # noqa: F401
 from .projects import persistence as _projects_persistence  # noqa: F401
 from .retrieval import persistence as _retrieval_persistence  # noqa: F401
+from .sessions import persistence as _sessions_persistence  # noqa: F401

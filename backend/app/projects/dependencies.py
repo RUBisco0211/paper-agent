@@ -4,9 +4,10 @@ from fastapi import Depends
 
 from ..library.dependencies import PaperLibraryServiceDep
 from ..platform.database import SessionDep
+from ..platform.storage import StorageDep
 from .application import ProjectService
 from .persistence import ProjectRepository
-from .ports import NoopProjectSessionCleaner, ProjectSessionCleaner
+from .ports import ProjectSessionCleaner
 
 
 def get_project_repository(session: SessionDep) -> ProjectRepository:
@@ -16,13 +17,17 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
 ProjectRepositoryDep = Annotated[ProjectRepository, Depends(get_project_repository)]
 
 
-def get_project_session_cleaner() -> ProjectSessionCleaner:
-    """Session cleanup boundary for project deletion.
+def get_project_session_cleaner(
+    session: SessionDep,
+    storage: StorageDep,
+) -> ProjectSessionCleaner:
+    """Purge the sessions bound to a project before the project row goes away.
 
-    The sessions module replaces this dependency once it owns session storage;
-    until then deleting a project only removes the project itself.
+    The import is local because the sessions module depends on projects.
     """
-    return NoopProjectSessionCleaner()
+    from ..sessions.dependencies import build_project_session_cleaner
+
+    return build_project_session_cleaner(session=session, storage=storage)
 
 
 ProjectSessionCleanerDep = Annotated[
