@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -49,20 +50,22 @@ export function AddToProjectMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>选择项目</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {projects.data?.items.length ? (
-          projects.data.items.map((project) => (
-            <DropdownMenuItem
-              key={project.id}
-              onSelect={() => add.mutate(project.id)}
-            >
-              <span className="truncate">{project.name}</span>
-            </DropdownMenuItem>
-          ))
-        ) : (
-          <DropdownMenuItem disabled>还没有项目</DropdownMenuItem>
-        )}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>选择项目</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {projects.data?.items.length ? (
+            projects.data.items.map((project) => (
+              <DropdownMenuItem
+                key={project.id}
+                onSelect={() => add.mutate(project.id)}
+              >
+                <span className="truncate">{project.name}</span>
+              </DropdownMenuItem>
+            ))
+          ) : (
+            <DropdownMenuItem disabled>还没有项目</DropdownMenuItem>
+          )}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
