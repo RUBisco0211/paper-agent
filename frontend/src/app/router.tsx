@@ -2,6 +2,7 @@ import { Navigate, createBrowserRouter } from "react-router-dom"
 
 import { AppShell } from "@/app/app-shell"
 import { RequireAuth } from "@/app/require-auth"
+import { LibraryPage } from "@/pages/library"
 import { LoginPage } from "@/pages/login"
 import { PlaceholderPage } from "@/pages/placeholder"
 import { RegisterPage } from "@/pages/register"
@@ -19,15 +20,7 @@ export function createAppRouter() {
       ),
       children: [
         { index: true, element: <Navigate to="/library" replace /> },
-        {
-          path: "library",
-          element: (
-            <PlaceholderPage
-              title="论文库"
-              description="上传 PDF、按标识符导入、查看处理阶段与能力。"
-            />
-          ),
-        },
+        { path: "library", element: <LibraryPage /> },
         {
           path: "projects",
           element: (
