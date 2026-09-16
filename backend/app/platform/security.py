@@ -1,0 +1,109 @@
+"""Password hashing and token primitives.
+
+Passwords use Argon2id. Access tokens are short-lived JWTs; refresh tokens are
+high-entropy random values that are only stored as a SHA-256 hash.
+"""
+
+import hashlib
+import secrets
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+import jwt
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+
+from .config import settings
+from .errors import ErrorCode, UnauthorizedError
+
+_password_hasher = PasswordHasher()
+
+ACCESS_TOKEN_TYPE = "access"
+JWT_ISSUER = "paper-agent"
+
+
+@dataclass(frozen=True, slots=True)
+class AccessTokenClaims:
+    user_id: UUID
+    auth_session_id: UUID
+    expires_at: datetime
+
+
+def hash_password(password: str) -> str:
+    return _password_hasher.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return _password_hasher.verify(password_hash, password)
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
+        return False
+
+
+def password_needs_rehash(password_hash: str) -> bool:
+    try:
+        return _password_hasher.check_needs_rehash(password_hash)
+    except InvalidHashError:
+        return True
+
+
+def create_access_token(
+    *,
+    user_id: UUID,
+    auth_session_id: UUID,
+    now: datetime | None = None,
+) -> tuple[str, datetime]:
+    issued_at = now or datetime.now(UTC)
+    expires_at = issued_at + timedelta(minutes=settings.access_token_ttl_minutes)
+    payload = {
+        "sub": str(user_id),
+        "jti": uuid4().hex,
+        "sid": str(auth_session_id),
+        "typ": ACCESS_TOKEN_TYPE,
+        "iss": JWT_ISSUER,
+        "iat": int(issued_at.timestamp()),
+        "exp": int(expires_at.timestamp()),
+    }
+    token = jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+    return token, expires_at
+
+
+def decode_access_token(token: str) -> AccessTokenClaims:
+    invalid = UnauthorizedError(
+        "登录态无效或已过期，请重新登录",
+        code=ErrorCode.UNAUTHORIZED,
+    )
+    try:
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=JWT_ISSUER,
+            options={"require": ["exp", "sub", "sid", "typ"]},
+        )
+    except jwt.PyJWTError as exc:
+        raise invalid from exc
+
+    if payload.get("typ") != ACCESS_TOKEN_TYPE:
+        raise invalid
+    try:
+        return AccessTokenClaims(
+            user_id=UUID(payload["sub"]),
+            auth_session_id=UUID(payload["sid"]),
+            expires_at=datetime.fromtimestamp(payload["exp"], tz=UTC),
+        )
+    except (KeyError, ValueError, TypeError) as exc:
+        raise invalid from exc
+
+
+def generate_refresh_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
