@@ -212,6 +212,8 @@ export interface PendingMessage {
 
 export interface SessionDetail extends Session {
   pending_messages: PendingMessage[]
+  /** Runtime state: whether an assistant turn is running right now. */
+  is_generating: boolean
 }
 
 export type EntryType =

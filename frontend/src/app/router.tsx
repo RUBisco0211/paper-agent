@@ -6,7 +6,8 @@ import { LibraryPage } from "@/pages/library"
 import { LoginPage } from "@/pages/login"
 import { ProjectDetailPage } from "@/pages/project-detail"
 import { ProjectsPage } from "@/pages/projects"
-import { PlaceholderPage } from "@/pages/placeholder"
+import { SessionWorkspacePage } from "@/pages/session-workspace"
+import { SessionsPage } from "@/pages/sessions"
 import { RegisterPage } from "@/pages/register"
 import { SettingsPage } from "@/pages/settings"
 
@@ -25,18 +26,8 @@ export function createAppRouter() {
         { path: "library", element: <LibraryPage /> },
         { path: "projects", element: <ProjectsPage /> },
         { path: "projects/:projectId", element: <ProjectDetailPage /> },
-        {
-          path: "sessions",
-          element: (
-            <PlaceholderPage title="会话" description="个人全库与项目范围内的问答历史。" />
-          ),
-        },
-        {
-          path: "sessions/:sessionId",
-          element: (
-            <PlaceholderPage title="阅读工作区" description="流式回答、工具摘要与引用核对。" />
-          ),
-        },
+        { path: "sessions", element: <SessionsPage /> },
+        { path: "sessions/:sessionId", element: <SessionWorkspacePage /> },
         { path: "settings", element: <SettingsPage /> },
       ],
     },
