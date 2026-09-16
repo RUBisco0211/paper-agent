@@ -82,6 +82,14 @@ class ErrorCode(StrEnum):
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
 
 
+class DomainValidationError(ValueError):
+    """Base class for domain invariants that map to a 422 response.
+
+    Domains raise these without importing HTTP details; the handler below turns
+    them into the shared error contract.
+    """
+
+
 class AppError(Exception):
     """Base class for every expected, client-visible failure."""
 
@@ -200,6 +208,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_request: Request, exc: AppError) -> JSONResponse:
         return _json_error(exc)
+
+    @app.exception_handler(DomainValidationError)
+    async def handle_domain_validation_error(
+        _request: Request,
+        exc: DomainValidationError,
+    ) -> JSONResponse:
+        return _json_error(ValidationError(str(exc)))
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(

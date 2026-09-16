@@ -2,15 +2,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from ..platform.errors import DomainValidationError
+
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
 
 
-class InvalidEmail(ValueError):
+class InvalidEmail(DomainValidationError):
     """Raised when an email address cannot be normalized."""
 
 
-class InvalidPassword(ValueError):
+class InvalidPassword(DomainValidationError):
     """Raised when a password violates the policy."""
 
 

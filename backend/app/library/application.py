@@ -378,6 +378,25 @@ class PaperLibraryService:
         )
         return self._with_related(user_papers), total
 
+    def entries_for(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_ids: list[UUID],
+    ) -> list[LibraryEntry]:
+        """Project a set of entries with their papers and latest jobs."""
+        user_papers = self._papers.user_papers_by_ids(
+            user_id=user_id,
+            user_paper_ids=user_paper_ids,
+        )
+        by_id = {user_paper.id: user_paper for user_paper in user_papers}
+        ordered = [
+            by_id[user_paper_id]
+            for user_paper_id in user_paper_ids
+            if user_paper_id in by_id
+        ]
+        return self._with_related(ordered)
+
     def get_entry(self, *, user_id: UUID, user_paper_id: UUID) -> LibraryEntry | None:
         user_paper = self._papers.get_user_paper(user_paper_id)
         if user_paper is None or user_paper.user_id != user_id:
