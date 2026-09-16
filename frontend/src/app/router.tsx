@@ -4,6 +4,8 @@ import { AppShell } from "@/app/app-shell"
 import { RequireAuth } from "@/app/require-auth"
 import { LibraryPage } from "@/pages/library"
 import { LoginPage } from "@/pages/login"
+import { ProjectDetailPage } from "@/pages/project-detail"
+import { ProjectsPage } from "@/pages/projects"
 import { PlaceholderPage } from "@/pages/placeholder"
 import { RegisterPage } from "@/pages/register"
 import { SettingsPage } from "@/pages/settings"
@@ -21,18 +23,8 @@ export function createAppRouter() {
       children: [
         { index: true, element: <Navigate to="/library" replace /> },
         { path: "library", element: <LibraryPage /> },
-        {
-          path: "projects",
-          element: (
-            <PlaceholderPage title="项目" description="组织个人论文库中的阅读范围。" />
-          ),
-        },
-        {
-          path: "projects/:projectId",
-          element: (
-            <PlaceholderPage title="项目详情" description="项目论文与会话范围。" />
-          ),
-        },
+        { path: "projects", element: <ProjectsPage /> },
+        { path: "projects/:projectId", element: <ProjectDetailPage /> },
         {
           path: "sessions",
           element: (
