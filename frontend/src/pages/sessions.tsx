@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { MessagesSquare, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
@@ -60,8 +60,16 @@ export function SessionsPage() {
   const { api } = useApi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [scope, setScope] = useState<"library" | "project">("library")
-  const [projectId, setProjectId] = useState<string>("")
+  // 侧边栏的“个人全库 / 某项目”链接通过查询参数指定初始范围。
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [scope, setScope] = useState<"library" | "project">(
+    searchParams.get("scope") === "project" || searchParams.get("project_id")
+      ? "project"
+      : "library",
+  )
+  const [projectId, setProjectId] = useState<string>(
+    searchParams.get("project_id") ?? "",
+  )
   const [creating, setCreating] = useState(false)
   const [newTitle, setNewTitle] = useState("")
   const [deleting, setDeleting] = useState<Session | null>(null)
@@ -108,6 +116,19 @@ export function SessionsPage() {
     onError: (error) => notifyError(error, "删除失败"),
   })
 
+  function updateScope(next: "library" | "project", nextProjectId = "") {
+    setScope(next)
+    setProjectId(nextProjectId)
+    const params = new URLSearchParams()
+    if (next === "project") {
+      params.set("scope", "project")
+      if (nextProjectId) {
+        params.set("project_id", nextProjectId)
+      }
+    }
+    setSearchParams(params, { replace: true })
+  }
+
   const items = sessions.data?.items ?? []
 
   return (
@@ -129,18 +150,19 @@ export function SessionsPage() {
             variant="outline"
             value={scope}
             onValueChange={(value) => {
-              if (!value) {
-                return
+              if (value) {
+                updateScope(value as "library" | "project")
               }
-              setScope(value as "library" | "project")
-              setProjectId("")
             }}
           >
             <ToggleGroupItem value="library">个人全库</ToggleGroupItem>
             <ToggleGroupItem value="project">项目范围</ToggleGroupItem>
           </ToggleGroup>
           {scope === "project" ? (
-            <Select value={projectId} onValueChange={setProjectId}>
+            <Select
+              value={projectId}
+              onValueChange={(value) => updateScope("project", value)}
+            >
               <SelectTrigger className="w-56">
                 <SelectValue placeholder="选择项目" />
               </SelectTrigger>
@@ -265,15 +287,9 @@ export function SessionsPage() {
               <Label htmlFor="session-scope">范围</Label>
               <Select
                 value={scope === "project" ? projectId || "none" : "library"}
-                onValueChange={(value) => {
-                  if (value === "library") {
-                    setScope("library")
-                    setProjectId("")
-                  } else {
-                    setScope("project")
-                    setProjectId(value)
-                  }
-                }}
+                onValueChange={(value) =>
+                  updateScope(value === "library" ? "library" : "project", value === "library" ? "" : value)
+                }
               >
                 <SelectTrigger id="session-scope" className="w-full">
                   <SelectValue />
