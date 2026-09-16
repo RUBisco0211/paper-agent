@@ -68,7 +68,7 @@ import { notifyError, notifySuccess } from "@/lib/errors"
 const NAV_ITEMS = [
   { to: "/library", label: "论文库", icon: BookOpen },
   { to: "/projects", label: "项目", icon: FolderOpen },
-  { to: "/settings", label: "模型设置", icon: Settings },
+  { to: "/settings", label: "设置", icon: Settings },
 ]
 
 /** Sessions shown per group in the sidebar. */
@@ -232,7 +232,8 @@ export function AppShell() {
       </Sidebar>
 
       <SidebarInset>
-        <div className="flex h-svh flex-col">
+        {/* key 变化触发页面进入动画；侧边栏与抽屉的动画由组件自身负责 */}
+        <div key={location.pathname} className="animate-page-in flex h-svh flex-col">
           <Outlet />
         </div>
       </SidebarInset>

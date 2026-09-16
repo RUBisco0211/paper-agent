@@ -119,10 +119,10 @@ export function LibraryPage() {
 
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="relative max-w-sm">
-          <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2" />
           <Input
             className="pl-9"
-            placeholder="按标题过滤已有论文"
+            aria-label="搜索论文"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
@@ -203,10 +203,10 @@ export function LibraryPage() {
                           <Badge variant="secondary">全文</Badge>
                         ) : null}
                         {paper.capabilities.has_keyword_index ? (
-                          <Badge variant="secondary">关键词</Badge>
+                          <Badge variant="secondary">关键词检索</Badge>
                         ) : null}
                         {paper.capabilities.has_embedding ? (
-                          <Badge variant="secondary">向量</Badge>
+                          <Badge variant="secondary">语义检索</Badge>
                         ) : null}
                       </div>
                     </TableCell>

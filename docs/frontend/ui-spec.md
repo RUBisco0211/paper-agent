@@ -23,6 +23,10 @@
 
 判定方法：这句话是否帮助一个**只关心自己论文和问答结果**的用户完成当前任务？不是就删掉。删除后如果界面显得空，用更好的布局解决，不要用解释性文字填充。
 
+**按钮文案**：用名词/动词短语，不用口语（"重命名"而不是"改名"，"提问"而不是"就用这篇提问"）。同一动作在全站用同一个词。
+
+**占位符（placeholder）**：只用于两种情况——格式示例（`sk-…`、`10.1145/3290605.3300233`）或选择提示（"选择项目"）。不要用口语化描述（"按标题过滤""针对论文提问…"）；能用 `aria-label` 说明用途的输入框就不写 placeholder。
+
 **例外**：错误提示必须给出稳定的、可行动的信息（例如"来源没有提供公开可用的 PDF，可手动上传"），这是状态而非机制说明。
 
 ### 1.1 不要为不存在的能力提供入口
@@ -50,10 +54,19 @@
 - **表单**用 `FieldGroup` + `Field`（+ `FieldLabel`/`FieldDescription`/`FieldError`），校验用 `data-invalid` + `aria-invalid`；2–7 个选项用 `ToggleGroup`；带按钮的输入用 `InputGroup`。
 - **菜单/下拉的条目必须在 Group 内**：`SelectItem` → `SelectGroup`，`DropdownMenuItem` → `DropdownMenuGroup`。
 - **聊天**用 `MessageScroller*` / `Message*` / `Bubble*` / `Marker*`，不要手写气泡 `div` 与滚动容器；流式跟随、锚定、跳到最新由组件负责。生成中的"正在生成…"用 `shimmer` 工具类，不写自定义动画。
-- **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
+- **状态配色**：处理/阶段状态统一用语义 variant——**完成或成功 = `success`（绿）**、**失败 = `destructive`（红）**、**未完成/进行中 = `warning`（黄）**，未开始用 `outline`。不要用裸色值；不要在界面显示内部计数（如阶段尝试次数）或内部 ID（如 citation id）。
+- **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-success`、`text-warning`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
 - **可访问性**：`Dialog`/`Sheet`/`Drawer` 必须有 `DialogTitle`/`SheetTitle`（必要时 `sr-only`）；`Avatar` 必须有 `AvatarFallback`；`TabsTrigger` 必须在 `TabsList` 内。
 
-## 4. 本项目的前端约定
+## 4. 动效
+
+- **必须有动效的地方**：页面切换（内容区 `key` 变化 + `animate-page-in`）、侧边栏展开/收起（上游 `Sidebar` 自带宽度过渡）、Sheet/Dialog/Dropdown 开合（上游组件 + `tw-animate-css`）、折叠区展开（`CollapsibleContent` 用 `animate-collapsible-down/up`）、按钮与菜单的 hover/active 过渡。
+- **强度**：入场 160–220ms、`cubic-bezier(0.22, 1, 0.36, 1)`；退场更快（≈160ms、ease-in）。只动 `opacity`/`transform`/`height`，不要动 `width` 之外的布局属性，也不要让内容跳动。
+- **实现方式**：优先用组件自带动画；通用动画定义在 `src/index.css` 的 `@theme`（`--animate-*`）与 `@keyframes` 中，不在组件里写行内 style 动画。
+- **可访问性**：`prefers-reduced-motion: reduce` 下所有动画时长压到 0.01ms（已在 `index.css` 全局处理）。
+- **依赖**：`tw-animate-css` 提供 `animate-in/out`、`fade-in-0`、`zoom-in-95`、`slide-in-from-*` 等类，缺了它上游组件的动画会静默失效。
+
+## 5. 本项目的前端约定
 
 - **`cn` 来自上游 `cn` 包**（不是自建 `lib/utils.ts`）：`import { cn } from "cn"`。
 - **主题工具类**在 `src/index.css` 中定义：`shimmer`、`scroll-fade`/`-x`/`-b`、`scrollbar-thin`、`scrollbar-gutter-stable`、`no-scrollbar`。上游聊天组件引用它们；不要删，也不要在组件里另写等价动画。
@@ -61,7 +74,7 @@
 - **CLI 环境问题**：本机 Node 26 下 `pnpm dlx shadcn@latest` 会因 `@modelcontextprotocol/sdk` 需要 `zod/v4` 而崩溃。已在 `/tmp/shadcn-cli` 用 npm 安装 `shadcn` + `zod@^3.25` 作为替代运行时；`components.json` 的 aliases 使用相对路径（`src/components` 等），因为根 tsconfig 是 solution-style 没有 `paths`。
 - **页面结构**：受保护页面渲染在 `AppShell`（`SidebarProvider` + `SidebarInset`）内，页头用 `PageHeader`（只有标题与操作）。
 
-## 5. 校验
+## 6. 校验
 
 改动前端后至少执行：
 

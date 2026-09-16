@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FileUp, MessageSquarePlus, RefreshCw, Sparkles, Undo2 } from "lucide-react"
+import {
+  FileUp,
+  MessageSquarePlus,
+  RefreshCw,
+  Sparkles,
+  TriangleAlert,
+  Undo2,
+} from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -47,7 +54,7 @@ const STAGE_ERROR_TEXT: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   pending: "待执行",
   running: "进行中",
-  succeeded: "成功",
+  succeeded: "完成",
   failed: "失败",
   skipped: "已跳过",
 }
@@ -199,7 +206,8 @@ export function PaperDetailSheet({
               <CapabilityBadges capabilities={paper.capabilities} />
 
               {paper.processing.status === "failed" && paper.processing.job_id ? (
-                <Alert>
+                <Alert variant="warning">
+                  <TriangleAlert />
                   <AlertTitle>处理未完成</AlertTitle>
                   <AlertDescription className="flex flex-col gap-2">
                     <span>
@@ -264,7 +272,6 @@ export function PaperDetailSheet({
                       <TableRow>
                         <TableHead>阶段</TableHead>
                         <TableHead>状态</TableHead>
-                        <TableHead>尝试</TableHead>
                         <TableHead>说明</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -278,15 +285,14 @@ export function PaperDetailSheet({
                                 stage.status === "failed"
                                   ? "destructive"
                                   : stage.status === "succeeded"
-                                    ? "secondary"
-                                    : "outline"
+                                    ? "success"
+                                    : stage.status === "skipped"
+                                      ? "outline"
+                                      : "warning"
                               }
                             >
                               {STATUS_LABEL[stage.status] ?? stage.status}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {stage.attempt}
                           </TableCell>
                           <TableCell className="text-muted-foreground text-xs">
                             {stage.error_message ??

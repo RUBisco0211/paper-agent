@@ -62,7 +62,6 @@ export function Composer({
 
         <Textarea
           value={content}
-          placeholder={generating ? "补充或追问…" : "针对论文提问…"}
           className="max-h-40 min-h-20 resize-none"
           onChange={(event) => setContent(event.target.value)}
           onKeyDown={(event) => {

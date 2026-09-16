@@ -83,7 +83,7 @@ export function AddPapersDialog({
           <DialogTitle>从个人论文库添加</DialogTitle>
         </DialogHeader>
         <Input
-          placeholder="按标题过滤"
+          aria-label="搜索论文"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />

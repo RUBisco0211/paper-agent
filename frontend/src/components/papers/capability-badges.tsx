@@ -5,8 +5,8 @@ const CAPABILITY_LABELS: Array<[keyof Capabilities, string]> = [
   ["has_pdf", "PDF"],
   ["has_metadata", "元数据"],
   ["has_fulltext", "全文"],
-  ["has_keyword_index", "关键词索引"],
-  ["has_embedding", "向量索引"],
+  ["has_keyword_index", "关键词检索"],
+  ["has_embedding", "语义检索"],
 ]
 
 /** Each capability gates a different action, so show them separately. */
@@ -29,25 +29,26 @@ const STAGE_LABELS: Record<string, string> = {
   embedding: "向量化",
 }
 
+/** 处理状态用统一语义色：完成=绿，失败=红，未完成=黄。 */
 export function ProcessingBadge({ processing }: { processing: ProcessingState }) {
   if (!processing.status) {
     return <Badge variant="outline">未处理</Badge>
   }
   if (processing.status === "succeeded") {
-    return <Badge variant="secondary">处理完成</Badge>
+    return <Badge variant="success">完成</Badge>
   }
   if (processing.status === "failed") {
     const stage = processing.current_stage
     return (
       <Badge variant="destructive">
-        {stage ? `${STAGE_LABELS[stage] ?? stage} 失败` : "处理失败"}
+        {stage ? `${STAGE_LABELS[stage] ?? stage}失败` : "失败"}
       </Badge>
     )
   }
   const label = processing.current_stage
-    ? `${STAGE_LABELS[processing.current_stage] ?? processing.current_stage} 中`
+    ? `${STAGE_LABELS[processing.current_stage] ?? processing.current_stage}中`
     : "排队中"
-  return <Badge variant="outline">{label}</Badge>
+  return <Badge variant="warning">{label}</Badge>
 }
 
 export function stageLabel(stage: string): string {

@@ -34,7 +34,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="模型设置" />
+      <PageHeader title="设置" />
       <div className="max-w-xl p-4">
         <Card>
           <CardHeader>
