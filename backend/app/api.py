@@ -1,20 +1,27 @@
-"""Cross-domain HTTP wiring: root router and shared response models."""
+"""Cross-domain HTTP wiring: root router and shared response models.
+
+Routers are imported from their concrete modules (not through package
+``__init__``) so importing a domain's persistence never pulls in the HTTP layer
+and no import cycle can form.
+"""
 
 from fastapi import APIRouter
 
-from .auth import auth_router
-from .ingestion import ingestion_router
-from .library import library_router
+from .auth.api import router as auth_router
+from .imports.api import router as imports_router
+from .ingestion.api import router as ingestion_router
+from .library.api import router as library_router
 from .platform.config import settings
-from .projects import projects_router
-from .retrieval import retrieval_router
-from .sessions import sessions_router
+from .projects.api import router as projects_router
+from .retrieval.api import router as retrieval_router
+from .sessions.api import router as sessions_router
 
 
 def build_api_router() -> APIRouter:
     """Assemble the versioned API from every domain module."""
     router = APIRouter(prefix=settings.api_prefix)
     router.include_router(auth_router)
+    router.include_router(imports_router)
     router.include_router(library_router)
     router.include_router(ingestion_router)
     router.include_router(projects_router)
