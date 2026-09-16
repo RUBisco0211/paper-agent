@@ -5,6 +5,7 @@ schema depends on JSONB, full-text search and vector types. The test database is
 created on demand, migrated with Alembic and truncated between tests.
 """
 
+import io
 import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -65,9 +66,7 @@ def engine() -> Iterator[Engine]:
     engine.dispose()
 
 
-@pytest.fixture(autouse=True)
-def _clean_tables(engine: Engine) -> Iterator[None]:
-    yield
+def _truncate_all(engine: Engine) -> None:
     tables = [
         name
         for name in inspect(engine).get_table_names(schema="public")
@@ -78,6 +77,14 @@ def _clean_tables(engine: Engine) -> Iterator[None]:
     quoted = ", ".join(f'"{name}"' for name in tables)
     with engine.begin() as connection:
         connection.execute(text(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE"))
+
+
+@pytest.fixture(autouse=True)
+def _clean_tables(engine: Engine) -> Iterator[None]:
+    # Truncate before each test so a killed run can never leak state into the
+    # next one.
+    _truncate_all(engine)
+    yield
 
 
 @pytest.fixture
@@ -122,6 +129,23 @@ def client(
 @pytest.fixture
 def api_prefix() -> str:
     return settings.api_prefix
+
+
+@pytest.fixture
+def make_pdf() -> Callable[..., bytes]:
+    """Build a small, valid, born-digital PDF for upload tests."""
+
+    def _make_pdf(page_count: int = 1) -> bytes:
+        from pypdf import PdfWriter
+
+        writer = PdfWriter()
+        for _ in range(page_count):
+            writer.add_blank_page(width=612, height=792)
+        buffer = io.BytesIO()
+        writer.write(buffer)
+        return buffer.getvalue()
+
+    return _make_pdf
 
 
 def auth_headers(access_token: str) -> dict[str, str]:

@@ -5,3 +5,5 @@ all domain tables are known regardless of which router is loaded.
 """
 
 from .auth import persistence as _auth_persistence  # noqa: F401
+from .ingestion import persistence as _ingestion_persistence  # noqa: F401
+from .library import persistence as _library_persistence  # noqa: F401

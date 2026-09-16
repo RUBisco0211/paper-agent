@@ -52,6 +52,7 @@ class ErrorCode(StrEnum):
     INGESTION_JOB_NOT_FOUND = "ingestion_job_not_found"
     INGESTION_ALREADY_RUNNING = "ingestion_already_running"
     INGESTION_STAGE_FAILED = "ingestion_stage_failed"
+    INGESTION_NOTHING_TO_RETRY = "ingestion_nothing_to_retry"
 
     # Projects
     PROJECT_NOT_FOUND = "project_not_found"
