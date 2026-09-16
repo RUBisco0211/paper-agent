@@ -48,6 +48,12 @@ class SessionRead(BaseModel):
 
 class SessionDetail(SessionRead):
     pending_messages: list[PendingMessageRead] = []
+    """Whether an assistant turn is running right now.
+
+    The UI uses this to decide between starting a generation and queueing input;
+    it is runtime state, not persisted history.
+    """
+    is_generating: bool = False
 
 
 class SessionEntryRead(BaseModel):

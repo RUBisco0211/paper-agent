@@ -96,6 +96,7 @@ def read_session(
     return SessionDetail(
         **base,
         pending_messages=[to_pending_read(item) for item in pending],
+        is_generating=service.is_generating(session_id),
     )
 
 

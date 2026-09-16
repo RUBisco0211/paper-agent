@@ -1,5 +1,6 @@
 import json
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 
@@ -188,7 +189,33 @@ def test_default_runner_reports_that_the_agent_is_not_wired_yet(
     ).json()
 
     assert detail["pending"] == {"steering": 0, "follow_up": 0}
+    # The turn already finished inline, so no generation is active.
+    assert detail["is_generating"] is False
     assert history["items"][-1]["payload"]["error_code"] == "agent_unavailable"
+
+
+def test_session_detail_reports_an_active_generation(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+) -> None:
+    """The detail endpoint exposes runtime generation state, not just history."""
+    from app.sessions.dependencies import get_session_executor
+
+    class ActiveExecutor:
+        def is_active(self, session_id: UUID) -> bool:
+            return True
+
+    client.app.dependency_overrides[get_session_executor] = ActiveExecutor
+    token = register_user(email="reader@example.com")["access_token"]
+    session_id = _create_session(client, api_prefix, token)
+
+    detail = client.get(
+        f"{api_prefix}/sessions/{session_id}",
+        headers=auth_headers(token),
+    ).json()
+
+    assert detail["is_generating"] is True
 
 
 def test_stop_without_an_active_generation_conflicts(
