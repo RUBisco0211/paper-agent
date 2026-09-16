@@ -8,10 +8,10 @@ replace it without touching domain code, and so tests can execute work inline.
 import asyncio
 import threading
 from collections.abc import Awaitable, Callable
-from typing import Any, Protocol
+from typing import Annotated, Any, Protocol
 
 import structlog
-from fastapi import Request
+from fastapi import Depends, Request
 
 logger = structlog.get_logger(__name__)
 
@@ -71,3 +71,6 @@ def get_task_scheduler(request: Request) -> TaskScheduler:
     if scheduler is None:
         raise RuntimeError("TaskScheduler 未初始化")
     return scheduler
+
+
+TaskSchedulerDep = Annotated[TaskScheduler, Depends(get_task_scheduler)]

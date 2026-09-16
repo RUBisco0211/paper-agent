@@ -117,7 +117,9 @@ def test_attach_pdf_binds_entry_to_shared_paper(
     assert body["paper"]["id"] == paper_id
     assert body["paper"]["capabilities"]["has_pdf"] is True
     assert body["paper"]["doi"] == "10.5555/3295222.3295349"
-    assert body["ingestion_job"]["status"] == "queued"
+    # Processing starts immediately; MinerU is not configured in tests.
+    assert body["ingestion_job"]["status"] == "failed"
+    assert body["ingestion_job"]["error_code"] == "provider_not_configured"
 
     detail = client.get(
         f"{api_prefix}/papers/{paper_id}",

@@ -75,7 +75,8 @@ def test_paper_detail_exposes_capabilities_and_pdf_info(
         "byte_size": body["pdf"]["byte_size"],
     }
     assert body["pdf"]["byte_size"] > 0
-    assert body["processing"]["status"] == "queued"
+    assert body["processing"]["status"] == "failed"
+    assert body["processing"]["error_code"] == "provider_not_configured"
 
 
 def test_pdf_endpoint_serves_the_original_file(
@@ -149,40 +150,19 @@ def test_ingestion_job_is_scoped_to_the_owning_user(
     assert stranger_view.json()["code"] == "ingestion_job_not_found"
 
 
-def test_retry_queues_a_new_job_and_skips_finished_stages(
+def test_retry_skips_verified_stages_and_reports_the_failed_one(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
     db_session: Session,
 ) -> None:
-    from app.ingestion.domain import IngestionStage
-    from app.ingestion.persistence import IngestionRepository
     from app.library.persistence import PaperRepository
 
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(client, api_prefix, token, make_pdf())
     job_id = UUID(uploaded.json()["ingestion_job"]["id"])
     paper_id = UUID(uploaded.json()["paper"]["id"])
-
-    # Simulate a run where metadata succeeded and fulltext failed.
-    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
-    assert user_paper is not None and user_paper.paper_id is not None
-    repository = IngestionRepository(db_session)
-    repository.mark_running(job_id, stage=IngestionStage.METADATA)
-    repository.mark_stage_succeeded(job_id, stage=IngestionStage.METADATA)
-    repository.mark_stage_failed(
-        job_id,
-        stage=IngestionStage.FULLTEXT,
-        error_code="provider_not_configured",
-        error_message="MinerU 未配置",
-    )
-    repository.finish_job(job_id, error_code="provider_not_configured")
-    PaperRepository(db_session).set_paper_capabilities(
-        user_paper.paper_id,
-        has_metadata=True,
-    )
-    db_session.commit()
 
     failed_view = client.get(
         f"{api_prefix}/ingestion-jobs/{job_id}",
@@ -192,8 +172,18 @@ def test_retry_queues_a_new_job_and_skips_finished_stages(
     assert failed_view.json()["error_code"] == "provider_not_configured"
     stages = {stage["stage"]: stage for stage in failed_view.json()["stages"]}
     assert stages["metadata"]["status"] == "succeeded"
-    assert stages["metadata"]["attempt"] == 1
-    assert stages["fulltext"]["error_message"] == "MinerU 未配置"
+    assert stages["fulltext"]["status"] == "failed"
+    assert stages["fulltext"]["error_code"] == "provider_not_configured"
+    assert stages["fulltext"]["error_message"]
+
+    # Pretend local recognition already produced a verifiable artifact.
+    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
+    assert user_paper is not None and user_paper.paper_id is not None
+    PaperRepository(db_session).set_paper_capabilities(
+        user_paper.paper_id,
+        has_metadata=True,
+    )
+    db_session.commit()
 
     retried = client.post(
         f"{api_prefix}/ingestion-jobs/{job_id}/retry",
@@ -203,21 +193,46 @@ def test_retry_queues_a_new_job_and_skips_finished_stages(
     assert retried.status_code == 202, retried.text
     new_job = retried.json()
     assert new_job["id"] != str(job_id)
-    assert new_job["status"] == "queued"
     new_stages = {stage["stage"]: stage["status"] for stage in new_job["stages"]}
+    # The retry only redoes what is still missing, and MinerU is still absent.
     assert new_stages == {
         "metadata": "skipped",
-        "fulltext": "pending",
+        "fulltext": "failed",
         "chunking": "pending",
         "embedding": "pending",
     }
+    assert new_job["status"] == "failed"
 
-    active_retry = client.post(
-        f"{api_prefix}/ingestion-jobs/{new_job['id']}/retry",
+
+def test_retry_conflicts_while_a_job_is_still_active(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+) -> None:
+    from app.ingestion.domain import STAGE_ORDER
+    from app.ingestion.persistence import IngestionRepository
+    from app.library.persistence import PaperRepository
+
+    token = register_user(email="reader@example.com")["access_token"]
+    uploaded = _upload(client, api_prefix, token, make_pdf())
+    paper_id = UUID(uploaded.json()["paper"]["id"])
+    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
+    assert user_paper is not None and user_paper.paper_id is not None
+    queued = IngestionRepository(db_session).create_job(
+        paper_id=user_paper.paper_id,
+        stages=STAGE_ORDER,
+    )
+    db_session.commit()
+
+    response = client.post(
+        f"{api_prefix}/ingestion-jobs/{queued.id}/retry",
         headers=auth_headers(token),
     )
-    assert active_retry.status_code == 409
-    assert active_retry.json()["code"] == "ingestion_already_running"
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "ingestion_already_running"
 
 
 def test_retry_conflicts_when_nothing_is_left_to_do(

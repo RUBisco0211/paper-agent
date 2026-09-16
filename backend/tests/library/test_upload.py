@@ -69,18 +69,22 @@ def test_upload_creates_entry_and_ingestion_job(
         "has_keyword_index": False,
         "has_embedding": False,
     }
-    assert paper["processing"]["status"] == "queued"
+    # The job ran inline: local recognition finished, MinerU is unconfigured.
+    assert paper["processing"]["status"] == "failed"
 
     job = body["ingestion_job"]
     assert job["paper_id"] == paper["id"]
-    assert job["status"] == "queued"
-    assert {stage["stage"] for stage in job["stages"]} == {
-        "metadata",
-        "fulltext",
-        "chunking",
-        "embedding",
-    }
-    assert {stage["status"] for stage in job["stages"]} == {"pending"}
+    assert job["status"] == "failed"
+    assert job["error_code"] == "provider_not_configured"
+    stages = {stage["stage"]: stage for stage in job["stages"]}
+    assert set(stages) == {"metadata", "fulltext", "chunking", "embedding"}
+    assert stages["metadata"]["status"] == "succeeded"
+    assert stages["metadata"]["progress"]["outcome"] == "unrecognized"
+    assert stages["fulltext"]["status"] == "failed"
+    assert stages["fulltext"]["error_code"] == "provider_not_configured"
+    # Blocking failure stops later stages instead of pretending they ran.
+    assert stages["chunking"]["status"] == "pending"
+    assert stages["embedding"]["status"] == "pending"
 
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 1
@@ -88,7 +92,7 @@ def test_upload_creates_entry_and_ingestion_job(
     assert db_session.scalar(select(func.count(IngestionStageRecordOrm.id))) == 4
 
 
-def test_duplicate_upload_reuses_entry_and_job(
+def test_duplicate_upload_reuses_paper_and_entry(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -104,11 +108,11 @@ def test_duplicate_upload_reuses_entry_and_job(
     assert first.status_code == 202
     assert second.status_code == 202
     assert first.json()["paper"]["id"] == second.json()["paper"]["id"]
-    # The reuse path returns the still-active job instead of stacking a new one.
-    assert first.json()["ingestion_job"]["id"] == second.json()["ingestion_job"]["id"]
+    # The upload never duplicates the shared paper or the user's entry; the
+    # second upload only asks for the stages that are still missing.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 1
-    assert db_session.scalar(select(func.count(IngestionJobRecord.id))) == 1
+    assert db_session.scalar(select(func.count(IngestionJobRecord.id))) == 2
 
 
 def test_two_users_sharing_a_pdf_stay_isolated(

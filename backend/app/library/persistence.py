@@ -174,6 +174,13 @@ class PaperRepository:
         }
         self._session.flush()
 
+    def set_parser_version(self, paper_id: UUID, version: str | None) -> None:
+        record = self._session.get(PaperRecord, paper_id)
+        if record is None:
+            return
+        record.mineru_version = version
+        self._session.flush()
+
     def all_paper_ids(self) -> list[UUID]:
         return list(self._session.scalars(select(PaperRecord.id)).all())
 
@@ -300,6 +307,15 @@ class PaperRepository:
         ).all()
         return [_to_user_paper(record) for record in records]
 
+    def entries_for_paper(self, paper_id: UUID) -> list[UserPaper]:
+        """Every user entry that currently points at one shared paper."""
+        records = self._session.scalars(
+            select(UserPaperRecord)
+            .where(UserPaperRecord.paper_id == paper_id)
+            .order_by(UserPaperRecord.created_at),
+        ).all()
+        return [_to_user_paper(record) for record in records]
+
     def paper_scope_for_user(self, user_id: UUID) -> dict[UUID, UUID]:
         """Map shared paper ids to the user's own entry ids (PDF-backed only)."""
         rows = self._session.execute(
@@ -385,6 +401,10 @@ class PaperRepository:
             record.metadata_sources = metadata_sources
         self._session.flush()
         return _to_user_paper(record)
+
+    def expire_all(self) -> None:
+        """Drop cached state so background writes become visible."""
+        self._session.expire_all()
 
     def commit(self) -> None:
         self._session.commit()

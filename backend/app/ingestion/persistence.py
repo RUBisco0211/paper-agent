@@ -231,6 +231,10 @@ class IngestionRepository:
         job.finished_at = _now()
         self._session.flush()
 
+    def expire_all(self) -> None:
+        """Drop cached state so out-of-band stage writes become visible."""
+        self._session.expire_all()
+
     def commit(self) -> None:
         self._session.commit()
 

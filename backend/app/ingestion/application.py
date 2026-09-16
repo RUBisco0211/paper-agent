@@ -1,3 +1,4 @@
+from typing import Protocol
 from uuid import UUID
 
 import structlog
@@ -11,6 +12,12 @@ from .persistence import IngestionRepository
 logger = structlog.get_logger(__name__)
 
 
+class IngestionJobRunner(Protocol):
+    """Executes a queued job outside the request scope."""
+
+    def submit(self, job_id: UUID) -> None: ...
+
+
 class IngestionService:
     """Creates ingestion jobs and reports their stage state."""
 
@@ -18,9 +25,11 @@ class IngestionService:
         self,
         repository: IngestionRepository,
         papers: PaperRepository,
+        runner: IngestionJobRunner | None = None,
     ) -> None:
         self._repository = repository
         self._papers = papers
+        self._runner = runner
 
     def start_for_paper(self, paper_id: UUID) -> IngestionJob | None:
         """Queue a job for the stages the paper still needs.
@@ -51,6 +60,10 @@ class IngestionService:
             paper_id=str(paper_id),
             skipped=[stage.value for stage in sorted(satisfied)],
         )
+        if self._runner is not None:
+            self._runner.submit(job.id)
+            # Give the caller the post-submit state rather than a stale row.
+            self._repository.expire_all()
         return self._repository.get_job(job.id)
 
     def retry_job(self, job_id: UUID) -> IngestionJob:

@@ -1,7 +1,6 @@
 import hashlib
 import tempfile
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
@@ -23,6 +22,7 @@ from .domain import (
     UserPaper,
     placeholder_title_from_filename,
 )
+from .metadata_merge import merge_provider_metadata, merge_sources
 from .pdf import ensure_pdf_magic, inspect_pdf
 from .persistence import PaperRepository
 from .ports import IngestionStarter
@@ -249,7 +249,7 @@ class PaperLibraryService:
 
         doi = _normalize_doi(correction.doi)
         arxiv_id = _normalize_arxiv(correction.arxiv_id)
-        sources = _merge_sources(
+        sources = merge_sources(
             entry.user_paper.metadata_sources,
             [
                 field
@@ -416,8 +416,13 @@ class PaperLibraryService:
         user_paper: UserPaper,
         paper: Paper,
     ) -> tuple[LibraryEntry, IngestionJob | None]:
-        job = self._ingestion.start_for_paper(paper.id)
+        # The entry becomes durable before any processing starts, so the user
+        # can always see it and the job runner always finds its paper.
         self._papers.commit()
+        job = self._ingestion.start_for_paper(paper.id)
+        # The job may already have finished (inline runner) or be running in
+        # another session, so drop this session's cached rows before re-reading.
+        self._papers.expire_all()
         entry = self.get_entry(user_id=user_id, user_paper_id=user_paper.id)
         assert entry is not None
         return entry, job
@@ -456,23 +461,10 @@ class PaperLibraryService:
         provider value replaces a placeholder (for example a filename-derived
         title) unless the user corrected that field.
         """
-        overridden = _user_overridden_fields(user_paper.metadata_sources)
-        applied: set[str] = set()
-
-        def _merge(field: str, current, provided):
-            if field in overridden or provided in (None, "", []):
-                return current
-            if provided != current:
-                applied.add(field)
-            return provided
-
-        title = _merge("title", user_paper.title, metadata.title)
-        authors = _merge("authors", user_paper.authors, metadata.authors)
-        abstract = _merge("abstract", user_paper.abstract, metadata.abstract)
-        doi = _merge("doi", user_paper.doi, metadata.doi)
-        arxiv_id = _merge("arxiv_id", user_paper.arxiv_id, metadata.arxiv_id)
-        year = _merge("year", user_paper.year, metadata.year)
-        venue = _merge("venue", user_paper.venue, metadata.venue)
+        merged = merge_provider_metadata(user_paper, metadata)
+        applied = set(merged.applied_fields)
+        doi = merged.doi
+        arxiv_id = merged.arxiv_id
         if doi is None and identifier.type is IdentifierType.DOI:
             doi = identifier.value
             applied.add("doi")
@@ -482,19 +474,19 @@ class PaperLibraryService:
 
         self._papers.update_user_paper_metadata(
             user_paper.id,
-            title=title,
-            authors=authors or None,
-            abstract=abstract,
+            title=merged.title,
+            authors=merged.authors or None,
+            abstract=merged.abstract,
             doi=doi,
             arxiv_id=arxiv_id,
-            year=year,
-            venue=venue,
+            year=merged.year,
+            venue=merged.venue,
             bibliographic={
                 **(user_paper.bibliographic or {}),
                 "provider": metadata.bibliographic(),
             },
             metadata_status=metadata.metadata_status(),
-            metadata_sources=_merge_sources(
+            metadata_sources=merge_sources(
                 user_paper.metadata_sources,
                 sorted(applied),
                 source=metadata.source,
@@ -652,25 +644,6 @@ def _normalize_arxiv(value: str | None) -> str | None:
             status_code=422,
         )
     return identifier.value
-
-
-def _merge_sources(
-    existing: list | None,
-    fields: list[str],
-    *,
-    source: str = "user",
-) -> list:
-    """Record where each field came from, replacing older entries per field."""
-    replaced = set(fields)
-    now = datetime.now(UTC).isoformat()
-    kept = [entry for entry in (existing or []) if entry.get("field") not in replaced]
-    return [*kept, *({"field": field, "source": source, "at": now} for field in fields)]
-
-
-def _user_overridden_fields(sources: list | None) -> set[str]:
-    return {
-        entry.get("field") for entry in (sources or []) if entry.get("source") == "user"
-    }
 
 
 def _truncate(value: str | None) -> str | None:

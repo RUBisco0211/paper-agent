@@ -3,8 +3,9 @@ from typing import Annotated
 from fastapi import Depends
 
 from ..platform.config import settings
-from ..platform.database import SessionDep
+from ..platform.database import SessionDep, SessionFactoryDep
 from ..platform.storage import StorageDep
+from ..platform.tasks import TaskSchedulerDep
 from ..scholar.metadata import MetadataResolver, build_default_resolver
 from ..scholar.pdf_fetch import PdfFetcher
 from .application import PaperLibraryService
@@ -19,16 +20,25 @@ def get_paper_repository(session: SessionDep) -> PaperRepository:
 PaperRepositoryDep = Annotated[PaperRepository, Depends(get_paper_repository)]
 
 
-def get_ingestion_starter(session: SessionDep) -> IngestionStarter:
+def get_ingestion_starter(
+    session: SessionDep,
+    storage: StorageDep,
+    session_factory: SessionFactoryDep,
+    scheduler: TaskSchedulerDep,
+) -> IngestionStarter:
     """Build the ingestion service without creating an import cycle.
 
     The import is intentionally local: the ingestion module depends on library
     persistence, so a module-level import here would close the loop.
     """
-    from ..ingestion.application import IngestionService
-    from ..ingestion.persistence import IngestionRepository
+    from ..ingestion.dependencies import build_ingestion_service
 
-    return IngestionService(IngestionRepository(session), PaperRepository(session))
+    return build_ingestion_service(
+        session=session,
+        storage=storage,
+        session_factory=session_factory,
+        scheduler=scheduler,
+    )
 
 
 IngestionStarterDep = Annotated[IngestionStarter, Depends(get_ingestion_starter)]

@@ -54,6 +54,7 @@ class ErrorCode(StrEnum):
     INGESTION_ALREADY_RUNNING = "ingestion_already_running"
     INGESTION_STAGE_FAILED = "ingestion_stage_failed"
     INGESTION_NOTHING_TO_RETRY = "ingestion_nothing_to_retry"
+    INGESTION_ARTIFACT_INVALID = "ingestion_artifact_invalid"
 
     # Projects
     PROJECT_NOT_FOUND = "project_not_found"
