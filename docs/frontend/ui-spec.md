@@ -47,7 +47,15 @@
 - **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
 - **可访问性**：`Dialog`/`Sheet`/`Drawer` 必须有 `DialogTitle`/`SheetTitle`（必要时 `sr-only`）；`Avatar` 必须有 `AvatarFallback`；`TabsTrigger` 必须在 `TabsList` 内。
 
-## 4. 校验
+## 4. 本项目的前端约定
+
+- **`cn` 来自上游 `cn` 包**（不是自建 `lib/utils.ts`）：`import { cn } from "cn"`。
+- **主题工具类**在 `src/index.css` 中定义：`shimmer`、`scroll-fade`/`-x`/`-b`、`scrollbar-thin`、`scrollbar-gutter-stable`、`no-scrollbar`。上游聊天组件引用它们；不要删，也不要在组件里另写等价动画。
+- **色板**统一使用 `oklch` 语义变量（含 `--sidebar-*`）；新增颜色请按同一格式加入 `:root` / `.dark` 与 `@theme inline`。
+- **CLI 环境问题**：本机 Node 26 下 `pnpm dlx shadcn@latest` 会因 `@modelcontextprotocol/sdk` 需要 `zod/v4` 而崩溃。已在 `/tmp/shadcn-cli` 用 npm 安装 `shadcn` + `zod@^3.25` 作为替代运行时；`components.json` 的 aliases 使用相对路径（`src/components` 等），因为根 tsconfig 是 solution-style 没有 `paths`。
+- **页面结构**：受保护页面渲染在 `AppShell`（`SidebarProvider` + `SidebarInset`）内，页头用 `PageHeader`（只有标题与操作）。
+
+## 5. 校验
 
 改动前端后至少执行：
 
