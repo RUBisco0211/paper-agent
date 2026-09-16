@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from .application import MessageSubmission, ResumeOutcome
 from .domain import Delivery, EntryType, PendingMessage, Session, SessionEntry
 
 
@@ -86,4 +87,54 @@ def to_entry_read(entry: SessionEntry) -> SessionEntryRead:
         timestamp=entry.timestamp,
         schema_version=entry.schema_version,
         payload=entry.payload,
+    )
+
+
+class LlmConfigRequest(BaseModel):
+    """Transient LLM configuration supplied by the browser per submission."""
+
+    provider: str = Field(min_length=1, max_length=64)
+    model: str = Field(min_length=1, max_length=200)
+    api_key: str = Field(min_length=1, max_length=512, repr=False)
+
+
+class MessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=8000)
+    delivery: Delivery | None = None
+    llm_config: LlmConfigRequest | None = None
+
+
+class MessageAcceptedResponse(BaseModel):
+    """Either an immediate user entry or a queued message; never both."""
+
+    entry: SessionEntryRead | None = None
+    pending: PendingMessageRead | None = None
+    generation_started: bool = False
+
+
+class ResumeRequest(BaseModel):
+    llm_config: LlmConfigRequest
+
+
+class ResumeResponse(BaseModel):
+    delivered: SessionEntryRead
+    pending: PendingCountsRead
+
+
+def to_message_response(submission: MessageSubmission) -> MessageAcceptedResponse:
+    return MessageAcceptedResponse(
+        entry=to_entry_read(submission.entry) if submission.entry else None,
+        pending=to_pending_read(submission.pending) if submission.pending else None,
+        generation_started=submission.generation_started,
+    )
+
+
+def to_resume_response(outcome: ResumeOutcome) -> ResumeResponse:
+    assert outcome.delivered is not None
+    return ResumeResponse(
+        delivered=to_entry_read(outcome.delivered),
+        pending=PendingCountsRead(
+            steering=outcome.remaining.get("steering", 0),
+            follow_up=outcome.remaining.get("follow_up", 0),
+        ),
     )

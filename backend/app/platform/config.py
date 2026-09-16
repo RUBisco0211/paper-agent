@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     # Sessions
     session_idle_flush_seconds: int = 300
     session_event_buffer_size: int = 500
+    # An idle SSE subscription is closed after this long; clients reconnect
+    # with their cursor, which keeps reconnects cheap and stateless.
+    sse_idle_timeout_seconds: float = 60.0
 
     @property
     def resolved_test_database_url(self) -> str:

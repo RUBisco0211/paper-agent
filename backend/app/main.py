@@ -8,10 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import build_api_router
 from .platform.config import settings
+from .platform.database import SessionLocal
 from .platform.errors import register_exception_handlers
 from .platform.logging import configure_logging
 from .platform.request_logging import RequestLoggingMiddleware
+from .platform.storage import get_object_storage
 from .platform.tasks import AsyncioTaskScheduler
+from .sessions.entries import EntryStore
+from .sessions.events import EventBroker
+from .sessions.executor import SessionExecutor
 
 configure_logging()
 
@@ -20,7 +25,16 @@ configure_logging()
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     scheduler = AsyncioTaskScheduler()
     scheduler.bind_loop(asyncio.get_running_loop())
+    broker = EventBroker(buffer_size=settings.session_event_buffer_size)
+    executor = SessionExecutor(
+        entries=EntryStore(get_object_storage()),
+        events=broker,
+        session_factory=SessionLocal,
+        scheduler=scheduler,
+    )
     app.state.task_scheduler = scheduler
+    app.state.event_broker = broker
+    app.state.session_executor = executor
     try:
         yield
     finally:

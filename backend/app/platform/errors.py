@@ -63,6 +63,7 @@ class ErrorCode(StrEnum):
     # Sessions
     SESSION_NOT_FOUND = "session_not_found"
     SESSION_BUSY = "session_busy"
+    SESSION_NOT_GENERATING = "session_not_generating"
     ENTRY_NOT_FOUND = "entry_not_found"
     CITATION_NOT_FOUND = "citation_not_found"
     PENDING_MESSAGE_NOT_FOUND = "pending_message_not_found"
