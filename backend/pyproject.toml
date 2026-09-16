@@ -9,6 +9,7 @@ dependencies = [
     "alembic>=1.19.1",
     "asgi-correlation-id>=5.0.1",
     "fastapi>=0.141.1",
+    "httpx>=0.28",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.15.0",
     "sqlalchemy>=2.0,<2.1",
@@ -19,7 +20,17 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "ruff>=0.14.0",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+# RUF001: error messages are Chinese and intentionally use full-width punctuation.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

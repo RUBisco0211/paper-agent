@@ -1,8 +1,9 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import create_engine, pool
 
+import app.models  # noqa: F401 - registers every domain table
+from alembic import context
 from app.platform.config import settings
 from app.platform.database import Base
 
@@ -14,9 +15,14 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+def database_url() -> str:
+    """Prefer the URL injected by the caller (tests); fall back to settings."""
+    return config.get_main_option("sqlalchemy.url") or settings.database_url
+
+
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.database_url,
+        url=database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -28,7 +34,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    connectable = create_engine(settings.database_url, poolclass=pool.NullPool)
+    connectable = create_engine(database_url(), poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(

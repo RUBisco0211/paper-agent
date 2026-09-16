@@ -1,7 +1,5 @@
 import uvicorn
 
-from app import app
-
 
 def main() -> None:
     """Run the development server."""

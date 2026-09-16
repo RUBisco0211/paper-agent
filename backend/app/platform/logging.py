@@ -68,8 +68,6 @@ def configure_logging() -> None:
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.make_filtering_bound_logger(
-            settings.log_level.upper()
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(settings.log_level.upper()),
         cache_logger_on_first_use=True,
     )
