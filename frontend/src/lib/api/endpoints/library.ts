@@ -1,4 +1,5 @@
 import type { ApiClient } from "../client"
+import { ApiError } from "../errors"
 import type {
   FetchPdfResponse,
   IngestionJob,
@@ -84,9 +85,8 @@ export function libraryEndpoints(client: ApiClient) {
   }
 }
 
-async function toError(response: Response) {
+async function toError(response: Response): Promise<ApiError> {
   const text = await response.text()
-  const { ApiError } = await import("../errors")
   try {
     return new ApiError(response.status, JSON.parse(text))
   } catch {
