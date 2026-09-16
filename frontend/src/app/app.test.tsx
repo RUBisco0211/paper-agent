@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import { StrictMode } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -23,8 +24,12 @@ function json(body: unknown, status = 200): Response {
   })
 }
 
-function renderApp(fetchImpl: typeof fetch, entries: string[] = ["/"]) {
-  return render(
+function renderApp(
+  fetchImpl: typeof fetch,
+  entries: string[] = ["/"],
+  { strict = false }: { strict?: boolean } = {},
+) {
+  const tree = (
     <QueryClientProvider client={createQueryClient()}>
       <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl }}>
         <AuthProvider>
@@ -33,8 +38,10 @@ function renderApp(fetchImpl: typeof fetch, entries: string[] = ["/"]) {
           </MemoryRouter>
         </AuthProvider>
       </ApiProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  // StrictMode 会挂载两次，必须仍然只恢复一次登录态并且不能卡在 loading
+  return render(strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
 
 beforeEach(() => {
@@ -90,5 +97,23 @@ describe("app bootstrap", () => {
     expect(await screen.findByText("论文库还是空的")).toBeTruthy()
     expect(screen.getByRole("link", { name: /论文库/ })).toBeTruthy()
     expect(screen.getByText("reader@example.com")).toBeTruthy()
+  })
+
+  it("does not get stuck on the loading screen under StrictMode", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) =>
+      String(input).endsWith("/v1/auth/refresh")
+        ? json({ code: "refresh_token_missing", message: "缺少刷新令牌" }, 401)
+        : json({ items: [], total: 0, limit: 50, offset: 0 }),
+    )
+
+    renderApp(fetchImpl as unknown as typeof fetch, ["/"], { strict: true })
+
+    expect(await screen.findByText("登录 Paper Agent")).toBeTruthy()
+    // 双挂载只允许一次 refresh：重复轮换会被后端判定为重放并撤销整个 token family
+    const refreshCalls = (
+      fetchImpl.mock.calls as unknown as [string][]
+    ).filter(([url]) => url.endsWith("/v1/auth/refresh"))
+    expect(refreshCalls).toHaveLength(1)
+    expect(screen.queryByText(/正在恢复登录态/)).toBeNull()
   })
 })

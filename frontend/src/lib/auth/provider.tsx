@@ -33,7 +33,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { api, tokens } = useApi()
   const [status, setStatus] = useState<AuthStatus>("loading")
   const [user, setUser] = useState<User | null>(null)
-  const bootstrapped = useRef(false)
 
   const loadUser = useCallback(async () => {
     const current = await api.auth.me()
@@ -42,32 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [api])
 
   /**
-   * A hard reload has no access token: restore the session from the refresh
-   * cookie before deciding the visitor is anonymous.
+   * Restore the session from the refresh cookie exactly once.
+   *
+   * The promise lives in a ref so React StrictMode's double effect invocation
+   * shares one bootstrap: a second refresh would replay an already-rotated
+   * token, and the backend treats reuse as theft and revokes the whole family.
+   * State is applied by the promise itself, not by the effect, so a StrictMode
+   * cleanup can never leave the UI stuck on "loading".
    */
+  const bootstrapRef = useRef<Promise<void> | null>(null)
+
   useEffect(() => {
-    if (bootstrapped.current) {
-      return
-    }
-    bootstrapped.current = true
-    let cancelled = false
-    void (async () => {
+    bootstrapRef.current ??= (async () => {
       try {
         await api.auth.refresh()
-        if (!cancelled) {
-          await loadUser()
-        }
+        await loadUser()
       } catch {
-        if (!cancelled) {
-          tokens.clear()
-          setUser(null)
-          setStatus("anonymous")
-        }
+        tokens.clear()
+        setUser(null)
+        setStatus("anonymous")
       }
     })()
-    return () => {
-      cancelled = true
-    }
   }, [api, loadUser, tokens])
 
   const login = useCallback(
