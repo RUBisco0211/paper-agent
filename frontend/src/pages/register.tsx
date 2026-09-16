@@ -2,13 +2,7 @@ import { useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth/provider"
@@ -33,7 +27,7 @@ export function RegisterPage() {
         password,
         display_name: displayName || undefined,
       })
-      notifySuccess("注册成功", "先配置模型，再上传第一篇论文")
+      notifySuccess("注册成功")
       navigate("/settings", { replace: true })
     } catch (error) {
       const fields = fieldErrors(error)
@@ -51,9 +45,6 @@ export function RegisterPage() {
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>创建账号</CardTitle>
-          <CardDescription>
-            个人论文库、项目与会话彼此隔离，不会与其他账号共享。
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>

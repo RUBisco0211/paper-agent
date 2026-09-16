@@ -80,11 +80,6 @@ export function ProjectDetailPage() {
     <>
       <PageHeader
         title={project.data?.name ?? "项目详情"}
-        description={
-          project.data
-            ? `${project.data.description ?? "无描述"} · 范围固定为该项目论文`
-            : "加载中…"
-        }
         actions={
           <>
             <Button variant="ghost" asChild>
@@ -155,7 +150,7 @@ export function ProjectDetailPage() {
                         {paper.capabilities.has_fulltext ? (
                           <Badge variant="secondary">可检索全文</Badge>
                         ) : (
-                          <Badge variant="muted">待补全文</Badge>
+                          <Badge variant="outline">待补全文</Badge>
                         )}
                       </TableCell>
                       <TableCell>

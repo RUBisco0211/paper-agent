@@ -3,7 +3,7 @@ import { AlertTriangle, Bot, Info, Wrench } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import type { SessionEntry } from "@/lib/api"
-import { cn } from "@/lib/utils"
+import { cn } from "cn"
 
 const ERROR_TEXT: Record<string, string> = {
   agent_unavailable: "Agent 执行器尚未接入，本次没有生成回答（会话与队列状态仍然有效）",
@@ -71,7 +71,7 @@ function EntryItem({
         <summary className="flex cursor-pointer items-center gap-2">
           <Wrench className="size-3.5" />
           工具：{String(payload.tool ?? "tool")}
-          {payload.status ? <Badge variant="muted">{String(payload.status)}</Badge> : null}
+          {payload.status ? <Badge variant="outline">{String(payload.status)}</Badge> : null}
         </summary>
         <pre className="text-muted-foreground mt-2 max-h-64 overflow-auto text-xs whitespace-pre-wrap">
           {String(payload.content ?? "")}
@@ -116,7 +116,7 @@ function EntryItem({
           </p>
         ) : null}
         {errorCode ? (
-          <Alert variant="warning">
+          <Alert>
             <AlertTriangle />
             <AlertDescription>{ERROR_TEXT[errorCode] ?? errorCode}</AlertDescription>
           </Alert>

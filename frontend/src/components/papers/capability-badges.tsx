@@ -14,7 +14,7 @@ export function CapabilityBadges({ capabilities }: { capabilities: Capabilities 
   return (
     <div className="flex flex-wrap gap-1">
       {CAPABILITY_LABELS.map(([key, label]) => (
-        <Badge key={key} variant={capabilities[key] ? "secondary" : "muted"}>
+        <Badge key={key} variant={capabilities[key] ? "secondary" : "outline"}>
           {label}
         </Badge>
       ))}
@@ -31,7 +31,7 @@ const STAGE_LABELS: Record<string, string> = {
 
 export function ProcessingBadge({ processing }: { processing: ProcessingState }) {
   if (!processing.status) {
-    return <Badge variant="muted">未处理</Badge>
+    return <Badge variant="outline">未处理</Badge>
   }
   if (processing.status === "succeeded") {
     return <Badge variant="secondary">处理完成</Badge>

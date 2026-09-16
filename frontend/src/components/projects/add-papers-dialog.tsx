@@ -124,7 +124,7 @@ export function AddPapersDialog({
                       {paper.capabilities.has_fulltext ? (
                         <Badge variant="secondary">可检索全文</Badge>
                       ) : (
-                        <Badge variant="muted">待补全文</Badge>
+                        <Badge variant="outline">待补全文</Badge>
                       )}
                     </div>
                   </label>

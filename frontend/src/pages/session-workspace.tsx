@@ -127,7 +127,7 @@ export function SessionWorkspacePage() {
 
   const stop = useMutation({
     mutationFn: () => api.sessions.stop(sessionId),
-    onSuccess: () => notifySuccess("已请求停止", "已生成内容会保留"),
+    onSuccess: () => notifySuccess("已停止"),
     onError: (error) => notifyError(error, "停止失败"),
   })
 
@@ -241,10 +241,10 @@ export function SessionWorkspacePage() {
       {pendingCount > 0 ? (
         <div className="border-border/60 bg-muted/30 border-b px-6 py-2">
           <p className="text-muted-foreground text-xs">
-            尚未投递的消息（按投递时机会成为正式历史）：
+            待发送的消息：
             {data?.pending_messages.map((pending) => (
               <span key={pending.id} className="ml-2 inline-flex items-center gap-1">
-                <Badge variant="muted">
+                <Badge variant="outline">
                   {pending.delivery === "steering" ? "调整" : "追问"} #{pending.position}
                 </Badge>
                 <span className="max-w-[16rem] truncate">{pending.content}</span>
@@ -323,7 +323,7 @@ export function SessionWorkspacePage() {
           <DialogHeader>
             <DialogTitle>删除该会话</DialogTitle>
             <DialogDescription>
-              会话历史与排队消息都会被清理；论文库与项目不受影响。正在进行的生成会一并终止。
+              会话内容会被删除，论文库和项目不受影响。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

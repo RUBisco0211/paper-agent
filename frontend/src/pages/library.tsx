@@ -53,11 +53,8 @@ export function LibraryPage() {
 
   const upload = useMutation({
     mutationFn: (file: File) => api.library.upload(file),
-    onSuccess: (response) => {
-      notifySuccess(
-        "上传成功",
-        response.ingestion_job ? "已开始后台处理，可查看阶段状态" : "已复用已有解析结果",
-      )
+    onSuccess: () => {
+      notifySuccess("上传成功")
       void queryClient.invalidateQueries({ queryKey: ["papers"] })
     },
     onError: (error) => notifyError(error, "上传失败"),
@@ -69,7 +66,6 @@ export function LibraryPage() {
     <>
       <PageHeader
         title="论文库"
-        description="上传 PDF 或按 DOI/arXiv 导入；处理阶段与可用能力分开显示。"
         actions={
           <>
             <Button
@@ -182,7 +178,7 @@ export function LibraryPage() {
                         {paper.capabilities.has_pdf ? (
                           <Badge variant="secondary">PDF</Badge>
                         ) : (
-                          <Badge variant="muted">待补全文</Badge>
+                          <Badge variant="outline">待补全文</Badge>
                         )}
                         {paper.capabilities.has_fulltext ? (
                           <Badge variant="secondary">全文</Badge>

@@ -97,7 +97,6 @@ export function SessionsPage() {
     <>
       <PageHeader
         title="会话"
-        description="个人全库会话覆盖整个论文库；项目会话只覆盖该项目论文，范围创建后不可修改。"
         actions={
           <Button onClick={() => setCreating(true)}>
             <Plus className="size-4" />
@@ -220,9 +219,6 @@ export function SessionsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>新建会话</DialogTitle>
-            <DialogDescription>
-              范围在创建时确定：项目会话只使用该项目论文，个人全库会话覆盖整个论文库。
-            </DialogDescription>
           </DialogHeader>
           <form
             className="flex flex-col gap-4"
@@ -283,7 +279,7 @@ export function SessionsPage() {
           <DialogHeader>
             <DialogTitle>删除会话「{deleting?.title ?? "未命名"}」</DialogTitle>
             <DialogDescription>
-              会话历史与排队消息会被清理；论文库与项目不受影响。
+              会话内容会被删除，论文库和项目不受影响。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

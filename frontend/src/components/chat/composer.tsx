@@ -46,7 +46,7 @@ export function Composer({
   return (
     <div className="border-border/60 flex flex-col gap-2 border-t p-4">
       {!llmReady ? (
-        <Alert variant="warning">
+        <Alert>
           <AlertDescription>
             还没有可用的模型配置，空闲会话无法发起生成。请先到{" "}
             <Link className="underline" to="/settings">
@@ -88,7 +88,7 @@ export function Composer({
       />
       <div className="flex items-center justify-between gap-2">
         <div className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Badge variant="muted">Enter 发送 · Shift+Enter 换行</Badge>
+          <Badge variant="outline">Enter 发送 · Shift+Enter 换行</Badge>
           {generating ? <Badge variant="outline">生成中</Badge> : null}
         </div>
         <div className="flex items-center gap-2">

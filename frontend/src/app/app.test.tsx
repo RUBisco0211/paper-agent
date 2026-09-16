@@ -17,6 +17,20 @@ class ResizeObserverStub {
   disconnect() {}
 }
 
+/** jsdom lacks matchMedia, which the sidebar provider reads on mount. */
+function matchMediaStub(query: string): MediaQueryList {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  } as unknown as MediaQueryList
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -46,6 +60,7 @@ function renderApp(
 
 beforeEach(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+  vi.stubGlobal("matchMedia", matchMediaStub)
 })
 
 afterEach(() => {
@@ -96,7 +111,8 @@ describe("app bootstrap", () => {
 
     expect(await screen.findByText("论文库还是空的")).toBeTruthy()
     expect(screen.getByRole("link", { name: /论文库/ })).toBeTruthy()
-    expect(screen.getByText("reader@example.com")).toBeTruthy()
+    // 侧边栏底部显示当前账号（显示名优先）
+    expect(screen.getByText("Reader")).toBeTruthy()
   })
 
   it("does not get stuck on the loading screen under StrictMode", async () => {

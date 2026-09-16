@@ -1,15 +1,8 @@
 import { useState } from "react"
 
 import { PageHeader } from "@/app/app-shell"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -31,29 +24,18 @@ export function SettingsPage() {
   function handleSave(event: React.FormEvent) {
     event.preventDefault()
     save({ provider, model: model.trim(), api_key: apiKey.trim() })
-    notifySuccess("已保存到本机浏览器", "提交消息时会作为瞬时配置发给后端")
+    notifySuccess("已保存")
   }
 
   return (
     <>
       <PageHeader
         title="模型设置"
-        description="选择允许的 Provider 并填写模型与 API Key；配置只保存在本机浏览器。"
       />
       <div className="flex max-w-2xl flex-col gap-4 p-6">
-        <Alert>
-          <AlertTitle>API Key 的存放位置</AlertTitle>
-          <AlertDescription>
-            Key 保存在浏览器 localStorage，提交消息时通过请求体传给后端，仅驻留执行器内存：
-            不写入数据库、日志或对象存储。共享电脑上请不要保存。
-          </AlertDescription>
-        </Alert>
         <Card>
           <CardHeader>
-            <CardTitle>Provider 配置</CardTitle>
-            <CardDescription>
-              Base URL 由后端部署配置固定，前端只能选择 Provider 名称。
-            </CardDescription>
+            <CardTitle>模型</CardTitle>
           </CardHeader>
           <CardContent>
             <form className="flex flex-col gap-4" onSubmit={handleSave}>
@@ -109,16 +91,6 @@ export function SettingsPage() {
                 </span>
               </div>
             </form>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>数据流向</CardTitle>
-          </CardHeader>
-          <CardContent className="text-muted-foreground flex flex-col gap-1 text-sm">
-            <p>· PDF 会发往部署者配置的 MinerU 解析服务；</p>
-            <p>· Chunk 文本会发往实例级 Embedding 服务生成向量；</p>
-            <p>· 你的问题与检索到的论文证据会发往上面选择的 LLM Provider。</p>
           </CardContent>
         </Card>
       </div>

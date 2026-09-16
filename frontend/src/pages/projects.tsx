@@ -60,7 +60,7 @@ export function ProjectsPage() {
   const remove = useMutation({
     mutationFn: (projectId: string) => api.projects.remove(projectId),
     onSuccess: () => {
-      notifySuccess("项目已删除", "个人论文库中的论文不受影响")
+      notifySuccess("项目已删除")
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
     },
@@ -73,7 +73,6 @@ export function ProjectsPage() {
     <>
       <PageHeader
         title="项目"
-        description="项目约束会话可以检索的论文范围；同一问题在不同项目中只使用各自授权论文。"
         actions={
           <CreateProjectDialog
             onCreated={(projectId) => navigate(`/projects/${projectId}`)}
@@ -156,7 +155,6 @@ export function ProjectsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>重命名项目</DialogTitle>
-            <DialogDescription>重名不会影响身份，项目由 ID 标识。</DialogDescription>
           </DialogHeader>
           <form
             className="flex flex-col gap-4"
@@ -190,7 +188,7 @@ export function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>删除项目「{deleting?.name}」</DialogTitle>
             <DialogDescription>
-              该项目的论文关联与项目会话都会被清理；个人论文库中的论文与 PDF 不会删除。
+              项目中的会话会一并删除，论文库不受影响。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -189,16 +189,16 @@ export function PaperDetailSheet({
               <div className="flex flex-wrap items-center gap-2">
                 <ProcessingBadge processing={paper.processing} />
                 <Badge variant="outline">{paper.source}</Badge>
-                {paper.doi ? <Badge variant="muted">DOI {paper.doi}</Badge> : null}
+                {paper.doi ? <Badge variant="outline">DOI {paper.doi}</Badge> : null}
                 {paper.arxiv_id ? (
-                  <Badge variant="muted">arXiv {paper.arxiv_id}</Badge>
+                  <Badge variant="outline">arXiv {paper.arxiv_id}</Badge>
                 ) : null}
               </div>
 
               <CapabilityBadges capabilities={paper.capabilities} />
 
               {paper.processing.status === "failed" && paper.processing.job_id ? (
-                <Alert variant="warning">
+                <Alert>
                   <AlertTitle>处理未完成</AlertTitle>
                   <AlertDescription className="flex flex-col gap-2">
                     <span>
@@ -276,7 +276,7 @@ export function PaperDetailSheet({
                                   ? "destructive"
                                   : stage.status === "succeeded"
                                     ? "secondary"
-                                    : "muted"
+                                    : "outline"
                               }
                             >
                               {STATUS_LABEL[stage.status] ?? stage.status}

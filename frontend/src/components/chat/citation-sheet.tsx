@@ -70,7 +70,7 @@ export function CitationSheet({
               <div className="flex flex-wrap gap-1">
                 <Badge variant="outline">chunk {citation.data.chunk_ids.length} 个</Badge>
                 {citation.data.citation_id ? (
-                  <Badge variant="muted">{citation.data.citation_id}</Badge>
+                  <Badge variant="outline">{citation.data.citation_id}</Badge>
                 ) : null}
               </div>
               <Separator />
