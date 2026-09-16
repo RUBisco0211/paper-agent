@@ -8,6 +8,7 @@ import { AuthProvider } from "@/lib/auth/provider"
 import { Toaster } from "@/components/ui/sonner"
 import { createAppRouter } from "@/app/router"
 import { createQueryClient } from "@/app/query"
+import { ThemeProvider } from "@/lib/theme/theme-provider"
 
 import "./index.css"
 
@@ -22,13 +23,15 @@ const router = createAppRouter()
 
 createRoot(container).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ApiProvider>
-        <AuthProvider>
-          <RouterProvider router={router} />
-          <Toaster />
-        </AuthProvider>
-      </ApiProvider>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ApiProvider>
+          <AuthProvider>
+            <RouterProvider router={router} />
+            <Toaster />
+          </AuthProvider>
+        </ApiProvider>
+      </QueryClientProvider>
+    </ThemeProvider>
   </StrictMode>,
 )

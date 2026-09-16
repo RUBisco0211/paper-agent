@@ -58,7 +58,15 @@
 - **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-success`、`text-warning`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
 - **可访问性**：`Dialog`/`Sheet`/`Drawer` 必须有 `DialogTitle`/`SheetTitle`（必要时 `sr-only`）；`Avatar` 必须有 `AvatarFallback`；`TabsTrigger` 必须在 `TabsList` 内。
 
-## 4. 动效
+## 4. 夜间模式
+
+- **自动跟随系统**，不提供手动开关、不持久化偏好：`ThemeProvider` 监听 `prefers-color-scheme`，把 `.dark` 类挂到 `<html>`。
+- `index.html` 里有一段首帧前的内联脚本，避免亮/暗闪烁；`<meta name="color-scheme" content="light dark">` 与 CSS 中的 `color-scheme` 让原生控件（滚动条、表单、PDF 查看器外观）跟随模式。
+- 组件只用语义 token，禁止裸色值；新增颜色必须同时给出 `:root` 与 `.dark` 两套值。
+- 第三方带主题的组件要显式跟随（例如 `Toaster` 使用 `theme="system"`）。
+- PDF 原文由浏览器内置查看器渲染，不额外做暗色处理。
+
+## 5. 动效
 
 - **必须有动效的地方**：页面切换（内容区 `key` 变化 + `animate-page-in`）、侧边栏展开/收起（上游 `Sidebar` 自带宽度过渡）、Sheet/Dialog/Dropdown 开合（上游组件 + `tw-animate-css`）、折叠区展开（`CollapsibleContent` 用 `animate-collapsible-down/up`）、按钮与菜单的 hover/active 过渡。
 - **强度**：入场 160–220ms、`cubic-bezier(0.22, 1, 0.36, 1)`；退场更快（≈160ms、ease-in）。只动 `opacity`/`transform`/`height`，不要动 `width` 之外的布局属性，也不要让内容跳动。
@@ -66,7 +74,7 @@
 - **可访问性**：`prefers-reduced-motion: reduce` 下所有动画时长压到 0.01ms（已在 `index.css` 全局处理）。
 - **依赖**：`tw-animate-css` 提供 `animate-in/out`、`fade-in-0`、`zoom-in-95`、`slide-in-from-*` 等类，缺了它上游组件的动画会静默失效。
 
-## 5. 本项目的前端约定
+## 6. 本项目的前端约定
 
 - **`cn` 来自上游 `cn` 包**（不是自建 `lib/utils.ts`）：`import { cn } from "cn"`。
 - **主题工具类**在 `src/index.css` 中定义：`shimmer`、`scroll-fade`/`-x`/`-b`、`scrollbar-thin`、`scrollbar-gutter-stable`、`no-scrollbar`。上游聊天组件引用它们；不要删，也不要在组件里另写等价动画。
@@ -74,7 +82,7 @@
 - **CLI 环境问题**：本机 Node 26 下 `pnpm dlx shadcn@latest` 会因 `@modelcontextprotocol/sdk` 需要 `zod/v4` 而崩溃。已在 `/tmp/shadcn-cli` 用 npm 安装 `shadcn` + `zod@^3.25` 作为替代运行时；`components.json` 的 aliases 使用相对路径（`src/components` 等），因为根 tsconfig 是 solution-style 没有 `paths`。
 - **页面结构**：受保护页面渲染在 `AppShell`（`SidebarProvider` + `SidebarInset`）内，页头用 `PageHeader`（只有标题与操作）。
 
-## 6. 校验
+## 7. 校验
 
 改动前端后至少执行：
 
