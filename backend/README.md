@@ -1,0 +1,68 @@
+# Paper Agent Backend
+
+Paper Agent 的 FastAPI 模块化单体后端：负责账号与登录态、个人论文库、项目范围、论文处理流水线、混合检索与 Agent 会话。
+
+功能契约见 [../docs/overview/minimal-mvp.md](../docs/overview/minimal-mvp.md)，架构基线见 [../docs/overview/prototype.md](../docs/overview/prototype.md)，技术选型见 [../docs/infrastructure/technical-stack-research.md](../docs/infrastructure/technical-stack-research.md)。
+
+## 本地依赖
+
+- Python 3.13（由 `.python-version` 固定，`uv` 会自动安装）
+- PostgreSQL 16 + pgvector（`docker compose up -d postgres`，见仓库根目录 `docker-compose.yml`）
+
+## 启动
+
+```bash
+uv sync
+cp .env.example .env
+uv run alembic upgrade head
+uv run python main.py
+```
+
+服务启动后可访问：
+
+- API 文档：<http://127.0.0.1:8000/docs>
+- 健康检查：<http://127.0.0.1:8000/health>
+
+## 测试
+
+集成测试直接连接真实 PostgreSQL（用到 pgvector 与全文检索）：:
+
+```bash
+docker compose -f ../docker-compose.yml up -d postgres
+uv run pytest
+```
+
+测试默认使用 `DATABASE_URL` 指向的库，并通过 `TEST_DATABASE_URL` 覆盖。
+
+## 目录结构
+
+```text
+app/
+├── platform/     # 横切设施：配置、数据库、日志、错误、存储、安全
+├── auth/         # 账号、登录态与刷新令牌轮换
+├── library/      # 个人论文库条目、PDF 上传与元数据
+├── projects/     # 项目与项目论文范围
+├── ingestion/    # 处理任务、阶段状态与解析适配器
+├── retrieval/    # Chunk、混合检索与 RRF
+├── sessions/     # 会话、Entry、pending 队列、SSE 与引用
+├── imports/      # DOI/arXiv 标识符导入
+└── main.py       # FastAPI 应用装配
+alembic/          # 版本化数据库迁移
+tests/            # 单元测试与 PostgreSQL 集成测试
+```
+
+每个领域模块沿用仓库既有的垂直切片：`domain.py`（领域规则）、`application.py`（用例编排）、`api.py`（HTTP 适配器）、`persistence.py`（SQLAlchemy 仓储），`platform/` 只放跨领域技术设施。
+
+## 日志
+
+日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。
+
+## 数据流向
+
+为了产出可用回答，系统会把数据发给外部服务：
+
+- PDF 发往 MinerU 解析正文；
+- Chunk 文本发往 Embedding 服务生成向量；
+- 用户问题与检索到的论文证据发往用户自己配置的 LLM Provider。
+
+LLM API Key 只驻留当前执行器内存，不写入数据库、日志、对象存储或队列。MinerU 与 Embedding 为实例级配置，由部署者通过环境变量固定。

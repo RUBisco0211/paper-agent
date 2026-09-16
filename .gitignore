@@ -1,0 +1,31 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Node.js
+node_modules/
+.pnpm-store/
+*.tsbuildinfo
+
+# Local configuration and databases
+.env
+.env.local
+*.db
+*.sqlite
+*.sqlite3
+
+# Test and build artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+frontend/dist/
+
+# Local object storage and runtime data
+.var/

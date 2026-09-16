@@ -1,0 +1,6 @@
+{
+    "files.exclude": {
+        "**/__pycache__": true, // 新增这一行
+    },
+    "pendant.autoGenerateSessionNames": false
+}
