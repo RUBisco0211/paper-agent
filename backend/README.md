@@ -53,6 +53,31 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 
 每个领域模块沿用仓库既有的垂直切片：`domain.py`（领域规则）、`application.py`（用例编排）、`api.py`（HTTP 适配器）、`persistence.py`（SQLAlchemy 仓储），`platform/` 只放跨领域技术设施。
 
+## 接口一览
+
+| 领域 | 接口 |
+|---|---|
+| 认证 | `POST /v1/auth/register\|login\|refresh\|logout`、`GET /v1/auth/me` |
+| 论文库 | `POST/GET /v1/papers`、`GET /v1/papers/{paper_id}`、`GET /v1/papers/{paper_id}/pdf` |
+| 补全文 | `POST /v1/papers/{paper_id}/pdf`、`POST /v1/papers/{paper_id}/fetch-pdf` |
+| 元数据 | `PATCH /v1/papers/{paper_id}/metadata`、`POST /v1/papers/{paper_id}/resolve-metadata` |
+| 处理任务 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry` |
+| 项目 | `/v1/projects`、`/v1/projects/{project_id}`、`GET/POST /v1/projects/{project_id}/papers` |
+| 会话 | `/v1/sessions`、`GET /v1/sessions/{session_id}/entries` |
+| 生成 | `POST /v1/sessions/{session_id}/messages\|stop\|resume`、`GET /v1/sessions/{session_id}/events` |
+| 引用 | `GET /v1/sessions/{session_id}/citations/{citation_id}` |
+| 检索 | `POST /v1/search`（library / project / paper 三种授权范围） |
+| 导入 | `POST /v1/imports`、`GET /v1/imports/{import_id}` |
+
+所有错误统一为 `{"code", "message", "request_id"}`；`code` 是稳定的 snake_case 字符串。上传、消息与重试类操作
+都会校验归属，越权访问统一按“不存在”处理。
+
+## 当前未接入的能力
+
+- AgentScope 执行器：会话、pending 队列、SSE 与引用都已实现，但执行器仍返回 `agent_unavailable`，不会伪造回答；
+- MinerU / Embedding：未配置时对应阶段失败并记录 `provider_not_configured`，已完成的阶段能力继续可用；
+- Redis / Celery / MinIO：后台任务在进程内执行，Entry 日志写本地对象存储，适合单机单进程。
+
 ## 日志
 
 日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。

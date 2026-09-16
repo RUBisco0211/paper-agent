@@ -19,6 +19,7 @@ docs/       产品契约、架构基线与技术选型调研
 | [docs/infrastructure/technical-stack-research.md](docs/infrastructure/technical-stack-research.md) | ORM、日志、中间件选型 |
 | [docs/infrastructure/sse-architecture-research.md](docs/infrastructure/sse-architecture-research.md) | SSE 传输与事件模型 |
 | [docs/infrastructure/logging-conventions.md](docs/infrastructure/logging-conventions.md) | 日志事件命名与字段约定 |
+| [docs/overview/implementation-status.md](docs/overview/implementation-status.md) | 当前已实现范围与明确未接入的部分 |
 | [CONTEXT.md](CONTEXT.md) | 领域术语表（ubiquitous language） |
 
 ## 快速开始
@@ -41,6 +42,20 @@ cd ../frontend
 pnpm install
 pnpm dev                       # http://127.0.0.1:5173
 ```
+
+## 验证
+
+```bash
+# 后端：契约、鉴权隔离、处理流水线、检索与队列语义
+cd backend && uv run pytest -q
+
+# 前端：类型检查、API 客户端与 SSE 适配
+cd frontend && pnpm run typecheck && pnpm run test
+```
+
+接口文档在服务启动后访问 <http://127.0.0.1:8000/docs>（OpenAPI）。当前实现范围与明确未接入的部分见
+[docs/overview/implementation-status.md](docs/overview/implementation-status.md)：会话与流式机制、pending 队列、
+引用校验都已落地，但真正执行 LLM 的 Agent 回合仍是一个显式返回 `agent_unavailable` 的桩。
 
 ## 数据流向
 
