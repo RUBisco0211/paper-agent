@@ -300,6 +300,44 @@ class PaperRepository:
         ).all()
         return [_to_user_paper(record) for record in records]
 
+    def paper_scope_for_user(self, user_id: UUID) -> dict[UUID, UUID]:
+        """Map shared paper ids to the user's own entry ids (PDF-backed only)."""
+        rows = self._session.execute(
+            select(UserPaperRecord.paper_id, UserPaperRecord.id)
+            .where(
+                UserPaperRecord.user_id == user_id,
+                UserPaperRecord.paper_id.isnot(None),
+            )
+            .order_by(UserPaperRecord.created_at),
+        ).all()
+        scope: dict[UUID, UUID] = {}
+        for paper_id, user_paper_id in rows:
+            scope.setdefault(paper_id, user_paper_id)
+        return scope
+
+    def paper_scope_of_entries(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_ids: list[UUID],
+    ) -> dict[UUID, UUID]:
+        """Map shared paper ids to entry ids for owned, PDF-backed entries."""
+        if not user_paper_ids:
+            return {}
+        rows = self._session.execute(
+            select(UserPaperRecord.paper_id, UserPaperRecord.id)
+            .where(
+                UserPaperRecord.user_id == user_id,
+                UserPaperRecord.id.in_(user_paper_ids),
+                UserPaperRecord.paper_id.isnot(None),
+            )
+            .order_by(UserPaperRecord.created_at),
+        ).all()
+        scope: dict[UUID, UUID] = {}
+        for paper_id, user_paper_id in rows:
+            scope.setdefault(paper_id, user_paper_id)
+        return scope
+
     def link_user_paper_to_paper(self, user_paper_id: UUID, paper_id: UUID) -> None:
         record = self._session.get(UserPaperRecord, user_paper_id)
         if record is None:

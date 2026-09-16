@@ -7,6 +7,7 @@ from .ingestion import ingestion_router
 from .library import library_router
 from .platform.config import settings
 from .projects import projects_router
+from .retrieval import retrieval_router
 
 
 def build_api_router() -> APIRouter:
@@ -16,4 +17,5 @@ def build_api_router() -> APIRouter:
     router.include_router(library_router)
     router.include_router(ingestion_router)
     router.include_router(projects_router)
+    router.include_router(retrieval_router)
     return router
