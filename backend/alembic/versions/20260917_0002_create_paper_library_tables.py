@@ -8,8 +8,9 @@ Create Date: 2026-09-17 00:06:09.340258
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "20260917_0002"
 down_revision: str | None = "20260917_0001"
@@ -145,25 +146,16 @@ def upgrade() -> None:
         op.f("ix_user_papers_user_id"), "user_papers", ["user_id"], unique=False
     )
     op.create_index(
-        "uq_user_papers_user_arxiv",
-        "user_papers",
-        ["user_id", "arxiv_id"],
-        unique=True,
-        postgresql_where=sa.text("arxiv_id IS NOT NULL"),
-    )
-    op.create_index(
-        "uq_user_papers_user_doi",
+        "ix_user_papers_user_doi",
         "user_papers",
         ["user_id", "doi"],
-        unique=True,
-        postgresql_where=sa.text("doi IS NOT NULL"),
+        unique=False,
     )
     op.create_index(
-        "uq_user_papers_user_paper",
+        "ix_user_papers_user_arxiv",
         "user_papers",
-        ["user_id", "paper_id"],
-        unique=True,
-        postgresql_where=sa.text("paper_id IS NOT NULL"),
+        ["user_id", "arxiv_id"],
+        unique=False,
     )
     op.create_table(
         "ingestion_stages",
@@ -212,21 +204,8 @@ def downgrade() -> None:
         op.f("ix_ingestion_stages_ingestion_job_id"), table_name="ingestion_stages"
     )
     op.drop_table("ingestion_stages")
-    op.drop_index(
-        "uq_user_papers_user_paper",
-        table_name="user_papers",
-        postgresql_where=sa.text("paper_id IS NOT NULL"),
-    )
-    op.drop_index(
-        "uq_user_papers_user_doi",
-        table_name="user_papers",
-        postgresql_where=sa.text("doi IS NOT NULL"),
-    )
-    op.drop_index(
-        "uq_user_papers_user_arxiv",
-        table_name="user_papers",
-        postgresql_where=sa.text("arxiv_id IS NOT NULL"),
-    )
+    op.drop_index("ix_user_papers_user_doi", table_name="user_papers")
+    op.drop_index("ix_user_papers_user_arxiv", table_name="user_papers")
     op.drop_index(op.f("ix_user_papers_user_id"), table_name="user_papers")
     op.drop_index(op.f("ix_user_papers_paper_id"), table_name="user_papers")
     op.drop_table("user_papers")

@@ -13,12 +13,20 @@ from app.ingestion.persistence import (
     IngestionStageRecordOrm,
 )
 from app.library.application import PaperLibraryService
-from app.library.dependencies import get_paper_library_service
+from app.library.dependencies import (
+    get_paper_library_service,
+)
 from app.library.persistence import PaperRecord, PaperRepository, UserPaperRecord
 from app.platform.storage import LocalObjectStorage
+from app.scholar.metadata import MetadataResolver
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
+
+
+class _NoopPdfFetcher:
+    def download(self, url: str, *, destination: Path):
+        raise AssertionError("该用例不应下载 PDF")
 
 
 def _upload(
@@ -184,6 +192,8 @@ def test_upload_enforces_size_and_page_limits(
                     papers,
                     IngestionService(IngestionRepository(session), papers),
                     LocalObjectStorage(storage_root),
+                    MetadataResolver([]),
+                    _NoopPdfFetcher(),  # type: ignore[arg-type]
                     max_pdf_bytes=max_pdf_bytes,
                     max_pdf_pages=max_pdf_pages,
                 )

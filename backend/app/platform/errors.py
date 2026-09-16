@@ -46,6 +46,7 @@ class ErrorCode(StrEnum):
     PDF_TOO_MANY_PAGES = "pdf_too_many_pages"
     METADATA_NOT_FOUND = "metadata_not_found"
     METADATA_PROVIDER_FAILED = "metadata_provider_failed"
+    METADATA_CONFLICT = "metadata_conflict"
     DUPLICATE_IDENTIFIER = "duplicate_identifier"
 
     # Ingestion

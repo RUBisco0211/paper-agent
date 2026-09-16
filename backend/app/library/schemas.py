@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..ingestion.schemas import IngestionJobRead, ProcessingRead
 from .application import LibraryEntry
@@ -50,6 +50,36 @@ class UserPaperDetail(UserPaperSummary):
 class UploadResponse(BaseModel):
     paper: UserPaperSummary
     ingestion_job: IngestionJobRead | None = None
+
+
+class MetadataCorrectionRequest(BaseModel):
+    """Only the fields the first version is allowed to correct."""
+
+    title: str | None = Field(default=None, min_length=1, max_length=512)
+    authors: list[str] | None = None
+    abstract: str | None = None
+    doi: str | None = Field(default=None, max_length=255)
+    arxiv_id: str | None = Field(default=None, max_length=64)
+    year: int | None = Field(default=None, ge=1500, le=2100)
+    venue: str | None = Field(default=None, max_length=255)
+
+
+class MetadataCompletionRead(BaseModel):
+    """Outcome of an online completion attempt, including its failure mode."""
+
+    status: MetadataStatus
+    source: str | None = None
+    error_code: str | None = None
+    applied_fields: list[str] = []
+
+
+class FetchPdfResponse(UploadResponse):
+    metadata: MetadataCompletionRead
+
+
+class ResolveMetadataResponse(BaseModel):
+    paper: UserPaperDetail
+    metadata: MetadataCompletionRead
 
 
 def _capabilities(capabilities: Capabilities) -> CapabilitiesRead:

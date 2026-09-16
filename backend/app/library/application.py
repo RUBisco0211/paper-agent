@@ -1,6 +1,7 @@
 import hashlib
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
@@ -9,10 +10,14 @@ import structlog
 
 from ..ingestion.domain import IngestionJob
 from ..platform.config import settings as app_settings
-from ..platform.errors import AppError, ErrorCode
+from ..platform.errors import AppError, ConflictError, ErrorCode, NotFoundError
 from ..platform.storage import ObjectStorage, paper_pdf_key
+from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
+from ..scholar.metadata import MetadataResolver, ProviderMetadata
+from ..scholar.pdf_fetch import PdfFetcher
 from .domain import (
     Capabilities,
+    MetadataStatus,
     Paper,
     PaperSource,
     UserPaper,
@@ -21,6 +26,7 @@ from .domain import (
 from .pdf import ensure_pdf_magic, inspect_pdf
 from .persistence import PaperRepository
 from .ports import IngestionStarter
+from .text_extraction import detect_identifiers
 
 logger = structlog.get_logger(__name__)
 
@@ -44,6 +50,44 @@ class StoredPdf:
     byte_size: int
     page_count: int
     storage_key: str
+    detected_identifiers: tuple[Identifier, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataCorrection:
+    """Fields a user explicitly corrected on their own entry."""
+
+    title: str | None = None
+    authors: list[str] | None = None
+    abstract: str | None = None
+    doi: str | None = None
+    arxiv_id: str | None = None
+    year: int | None = None
+    venue: str | None = None
+
+    def is_empty(self) -> bool:
+        return all(
+            getattr(self, name) is None
+            for name in (
+                "title",
+                "authors",
+                "abstract",
+                "doi",
+                "arxiv_id",
+                "year",
+                "venue",
+            )
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MetadataCompletion:
+    entry: LibraryEntry
+    status: MetadataStatus
+    source: str | None = None
+    error_code: str | None = None
+    applied_fields: tuple[str, ...] = field(default_factory=tuple)
+    provider_metadata: ProviderMetadata | None = None
 
 
 class PaperLibraryService:
@@ -54,6 +98,8 @@ class PaperLibraryService:
         papers: PaperRepository,
         ingestion: IngestionStarter,
         storage: ObjectStorage,
+        resolver: MetadataResolver,
+        pdf_fetcher: PdfFetcher,
         *,
         max_pdf_bytes: int | None = None,
         max_pdf_pages: int | None = None,
@@ -61,6 +107,8 @@ class PaperLibraryService:
         self._papers = papers
         self._ingestion = ingestion
         self._storage = storage
+        self._resolver = resolver
+        self._pdf_fetcher = pdf_fetcher
         self._max_pdf_bytes = max_pdf_bytes or app_settings.max_pdf_bytes
         self._max_pdf_pages = max_pdf_pages or app_settings.max_pdf_pages
 
@@ -72,7 +120,7 @@ class PaperLibraryService:
         filename: str | None,
         stream: BinaryIO,
     ) -> tuple[LibraryEntry, IngestionJob | None]:
-        stored = self._store_pdf(stream)
+        stored = self._store_stream(stream)
         paper = self._papers.get_paper_by_hash(stored.file_hash)
         if paper is None:
             paper = self._papers.add_paper(
@@ -103,19 +151,202 @@ class PaperLibraryService:
                 user_id=str(user_id),
                 user_paper_id=str(user_paper.id),
             )
+        return self._finish_write(user_id, user_paper, paper)
 
-        job = self._ingestion.start_for_paper(paper.id)
-        self._papers.commit()
-        entry = self.get_entry(user_id=user_id, user_paper_id=user_paper.id)
-        assert entry is not None
-        return entry, job
-
-    def get_pdf_stream(self, *, user_id: UUID, user_paper_id: UUID) -> BinaryIO:
-        entry = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
-        if entry is None:
-            raise AppError(
-                "论文不存在", code=ErrorCode.PAPER_NOT_FOUND, status_code=404
+    def attach_pdf(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_id: UUID,
+        filename: str | None,
+        stream: BinaryIO,
+    ) -> tuple[LibraryEntry, IngestionJob | None]:
+        """Attach a manually supplied PDF to an existing entry."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        stored = self._store_stream(stream)
+        self._ensure_no_identifier_conflict(entry.user_paper, stored)
+        paper = self._papers.get_paper_by_hash(stored.file_hash)
+        if paper is None:
+            paper = self._papers.add_paper(
+                file_hash=stored.file_hash,
+                byte_size=stored.byte_size,
+                page_count=stored.page_count,
             )
+        self._papers.link_user_paper_to_paper(user_paper_id, paper.id)
+        user_paper = self._papers.get_user_paper(user_paper_id)
+        assert user_paper is not None
+        if user_paper.title is None and filename:
+            self._papers.update_user_paper_metadata(
+                user_paper_id,
+                title=placeholder_title_from_filename(filename),
+            )
+        return self._finish_write(user_id, user_paper, paper)
+
+    def fetch_pdf(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_id: UUID,
+    ) -> tuple[LibraryEntry, IngestionJob | None, MetadataCompletion]:
+        """Re-attempt downloading the PDF for a metadata-only entry."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if entry.paper is not None and entry.capabilities.has_pdf:
+            raise ConflictError(
+                "该条目已经有 PDF",
+                code=ErrorCode.CONFLICT,
+            )
+
+        completion = self.complete_metadata(
+            user_id=user_id,
+            user_paper_id=user_paper_id,
+        )
+        metadata = completion.provider_metadata
+        if metadata is None or not metadata.pdf_url:
+            raise AppError(
+                "来源没有提供公开可用的 PDF，请手动上传全文",
+                code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                status_code=422,
+            )
+
+        with tempfile.TemporaryDirectory(prefix="paper-agent-fetch-") as directory:
+            destination = Path(directory) / "download.pdf"
+            downloaded = self._pdf_fetcher.download(
+                metadata.pdf_url,
+                destination=destination,
+            )
+            stored = self._store_path(downloaded.path)
+        self._ensure_no_identifier_conflict(completion.entry.user_paper, stored)
+
+        paper = self._papers.get_paper_by_hash(stored.file_hash)
+        if paper is None:
+            paper = self._papers.add_paper(
+                file_hash=stored.file_hash,
+                byte_size=stored.byte_size,
+                page_count=stored.page_count,
+            )
+        self._papers.link_user_paper_to_paper(user_paper_id, paper.id)
+        user_paper = self._papers.get_user_paper(user_paper_id)
+        assert user_paper is not None
+        entry, job = self._finish_write(user_id, user_paper, paper)
+        logger.info(
+            "service.library.pdf_fetched",
+            user_paper_id=str(user_paper_id),
+            source=completion.source,
+        )
+        return entry, job, completion
+
+    # Metadata --------------------------------------------------------------
+    def update_metadata(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_id: UUID,
+        correction: MetadataCorrection,
+    ) -> LibraryEntry:
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if correction.is_empty():
+            return entry
+
+        doi = _normalize_doi(correction.doi)
+        arxiv_id = _normalize_arxiv(correction.arxiv_id)
+        sources = _merge_sources(
+            entry.user_paper.metadata_sources,
+            [
+                field
+                for field, value in (
+                    ("title", correction.title),
+                    ("authors", correction.authors),
+                    ("abstract", correction.abstract),
+                    ("doi", doi),
+                    ("arxiv_id", arxiv_id),
+                    ("year", correction.year),
+                    ("venue", correction.venue),
+                )
+                if value is not None
+            ],
+        )
+        self._papers.update_user_paper_metadata(
+            user_paper_id,
+            title=correction.title,
+            authors=correction.authors,
+            abstract=correction.abstract,
+            doi=doi,
+            arxiv_id=arxiv_id,
+            year=correction.year,
+            venue=correction.venue,
+            metadata_status=MetadataStatus.USER_PROVIDED,
+            metadata_sources=sources,
+        )
+        self._papers.commit()
+        refreshed = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
+        assert refreshed is not None
+        logger.info(
+            "service.library.metadata_corrected",
+            user_paper_id=str(user_paper_id),
+            fields=[entry_["field"] for entry_ in sources],
+        )
+        return refreshed
+
+    def complete_metadata(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_id: UUID,
+        identifier: Identifier | None = None,
+    ) -> MetadataCompletion:
+        """Best-effort online completion for the entry's identifier."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        identifier = identifier or _identifier_of(entry.user_paper)
+        if identifier is None:
+            return MetadataCompletion(
+                entry=entry,
+                status=entry.user_paper.metadata_status,
+                error_code=str(ErrorCode.IDENTIFIER_INVALID),
+            )
+
+        outcome = self._resolver.resolve(identifier)
+        if outcome.metadata is None:
+            self._papers.commit()
+            logger.info(
+                "service.library.metadata_incomplete",
+                user_paper_id=str(user_paper_id),
+                status=outcome.status.value,
+                error_code=str(outcome.error_code) if outcome.error_code else None,
+            )
+            return MetadataCompletion(
+                entry=entry,
+                status=outcome.status,
+                source=outcome.source,
+                error_code=str(outcome.error_code) if outcome.error_code else None,
+            )
+
+        applied = self._apply_entry_metadata(
+            entry.user_paper,
+            outcome.metadata,
+            identifier,
+        )
+        if entry.paper is not None:
+            self._apply_paper_metadata(entry.paper, outcome.metadata)
+        self._papers.commit()
+        refreshed = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
+        assert refreshed is not None
+        logger.info(
+            "service.library.metadata_completed",
+            user_paper_id=str(user_paper_id),
+            source=outcome.source,
+            status=outcome.status.value,
+        )
+        return MetadataCompletion(
+            entry=refreshed,
+            status=outcome.status,
+            source=outcome.source,
+            applied_fields=tuple(sorted(applied)),
+            provider_metadata=outcome.metadata,
+        )
+
+    # Queries ---------------------------------------------------------------
+    def get_pdf_stream(self, *, user_id: UUID, user_paper_id: UUID) -> BinaryIO:
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         if entry.paper is None:
             raise AppError(
                 "该条目还没有可用的 PDF",
@@ -131,7 +362,6 @@ class PaperLibraryService:
             )
         return self._storage.open(key)
 
-    # Queries ---------------------------------------------------------------
     def list_entries(
         self,
         *,
@@ -155,6 +385,118 @@ class PaperLibraryService:
         return self._with_related([user_paper])[0]
 
     # Internals -------------------------------------------------------------
+    def _require_entry(self, *, user_id: UUID, user_paper_id: UUID) -> LibraryEntry:
+        entry = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if entry is None:
+            raise NotFoundError("论文不存在", code=ErrorCode.PAPER_NOT_FOUND)
+        return entry
+
+    def _finish_write(
+        self,
+        user_id: UUID,
+        user_paper: UserPaper,
+        paper: Paper,
+    ) -> tuple[LibraryEntry, IngestionJob | None]:
+        job = self._ingestion.start_for_paper(paper.id)
+        self._papers.commit()
+        entry = self.get_entry(user_id=user_id, user_paper_id=user_paper.id)
+        assert entry is not None
+        return entry, job
+
+    def _ensure_no_identifier_conflict(
+        self,
+        user_paper: UserPaper,
+        stored: StoredPdf,
+    ) -> None:
+        """A different identifier in the file must not silently replace data."""
+        for identifier in stored.detected_identifiers:
+            if identifier.type is IdentifierType.DOI:
+                existing = user_paper.doi
+            else:
+                existing = user_paper.arxiv_id
+            if existing and existing.lower() != identifier.value.lower():
+                raise ConflictError(
+                    "该 PDF 识别出的标识符与条目已有标识符冲突，请确认后再处理",
+                    code=ErrorCode.METADATA_CONFLICT,
+                    details={
+                        "existing": existing,
+                        "detected": identifier.value,
+                        "type": identifier.type.value,
+                    },
+                )
+
+    def _apply_entry_metadata(
+        self,
+        user_paper: UserPaper,
+        metadata: ProviderMetadata,
+        identifier: Identifier,
+    ) -> set[str]:
+        """Apply provider fields, never overwriting user corrections.
+
+        An exact identifier lookup is authoritative for its own paper, so a
+        provider value replaces a placeholder (for example a filename-derived
+        title) unless the user corrected that field.
+        """
+        overridden = _user_overridden_fields(user_paper.metadata_sources)
+        applied: set[str] = set()
+
+        def _merge(field: str, current, provided):
+            if field in overridden or provided in (None, "", []):
+                return current
+            if provided != current:
+                applied.add(field)
+            return provided
+
+        title = _merge("title", user_paper.title, metadata.title)
+        authors = _merge("authors", user_paper.authors, metadata.authors)
+        abstract = _merge("abstract", user_paper.abstract, metadata.abstract)
+        doi = _merge("doi", user_paper.doi, metadata.doi)
+        arxiv_id = _merge("arxiv_id", user_paper.arxiv_id, metadata.arxiv_id)
+        year = _merge("year", user_paper.year, metadata.year)
+        venue = _merge("venue", user_paper.venue, metadata.venue)
+        if doi is None and identifier.type is IdentifierType.DOI:
+            doi = identifier.value
+            applied.add("doi")
+        if arxiv_id is None and identifier.type is IdentifierType.ARXIV:
+            arxiv_id = identifier.value
+            applied.add("arxiv_id")
+
+        self._papers.update_user_paper_metadata(
+            user_paper.id,
+            title=title,
+            authors=authors or None,
+            abstract=abstract,
+            doi=doi,
+            arxiv_id=arxiv_id,
+            year=year,
+            venue=venue,
+            bibliographic={
+                **(user_paper.bibliographic or {}),
+                "provider": metadata.bibliographic(),
+            },
+            metadata_status=metadata.metadata_status(),
+            metadata_sources=_merge_sources(
+                user_paper.metadata_sources,
+                sorted(applied),
+                source=metadata.source,
+            ),
+        )
+        return applied
+
+    def _apply_paper_metadata(self, paper: Paper, metadata: ProviderMetadata) -> None:
+        """Merge provider fields into the shared paper facts (fill-only)."""
+        current = paper.bibliographic or {}
+        merged = dict(current)
+        for key, value in metadata.bibliographic().items():
+            if value and not merged.get(key):
+                merged[key] = value
+        self._papers.set_paper_metadata(
+            paper.id,
+            bibliographic=merged,
+            metadata_status=metadata.metadata_status(),
+            metadata_sources=paper.metadata_sources,
+        )
+
     def _with_related(self, user_papers: list[UserPaper]) -> list[LibraryEntry]:
         paper_ids = [
             user_paper.paper_id
@@ -182,13 +524,12 @@ class PaperLibraryService:
             for user_paper in user_papers
         ]
 
-    def _store_pdf(self, stream: BinaryIO) -> StoredPdf:
-        """Stream an untrusted upload to storage after validating it."""
-        hasher = hashlib.sha256()
-        byte_size = 0
-        magic = b""
+    def _store_stream(self, stream: BinaryIO) -> StoredPdf:
         with tempfile.TemporaryDirectory(prefix="paper-agent-upload-") as directory:
             temporary_path = Path(directory) / "upload.pdf"
+            byte_size = 0
+            hasher = hashlib.sha256()
+            magic = b""
             with temporary_path.open("wb") as handle:
                 while chunk := stream.read(CHUNK_SIZE):
                     if not magic:
@@ -202,23 +543,115 @@ class PaperLibraryService:
                         )
                     hasher.update(chunk)
                     handle.write(chunk)
-
             ensure_pdf_magic(magic)
-            inspection = inspect_pdf(temporary_path, max_pages=self._max_pdf_pages)
-            file_hash = hasher.hexdigest()
-            key = paper_pdf_key(file_hash)
-            if not self._storage.exists(key):
-                with temporary_path.open("rb") as source:
-                    self._storage.write_chunks(
-                        key, iter(lambda: source.read(CHUNK_SIZE), b"")
-                    )
+            return self._finalize(temporary_path, hasher.hexdigest(), byte_size)
 
+    def _store_path(self, path: Path) -> StoredPdf:
+        hasher = hashlib.sha256()
+        byte_size = 0
+        magic = b""
+        with path.open("rb") as handle:
+            while chunk := handle.read(CHUNK_SIZE):
+                if not magic:
+                    magic = chunk[: len(b"%PDF-")]
+                byte_size += len(chunk)
+                if byte_size > self._max_pdf_bytes:
+                    raise AppError(
+                        "PDF 超过大小上限",
+                        code=ErrorCode.PDF_TOO_LARGE,
+                        status_code=413,
+                    )
+                hasher.update(chunk)
+        ensure_pdf_magic(magic)
+        return self._finalize(path, hasher.hexdigest(), byte_size)
+
+    def _finalize(
+        self,
+        temporary_path: Path,
+        file_hash: str,
+        byte_size: int,
+    ) -> StoredPdf:
+        inspection = inspect_pdf(temporary_path, max_pages=self._max_pdf_pages)
+        detected = tuple(detect_identifiers(temporary_path))
+        key = paper_pdf_key(file_hash)
+        if not self._storage.exists(key):
+            with temporary_path.open("rb") as source:
+                self._storage.write_chunks(
+                    key,
+                    iter(lambda: source.read(CHUNK_SIZE), b""),
+                )
         return StoredPdf(
             file_hash=file_hash,
             byte_size=byte_size,
             page_count=inspection.page_count,
             storage_key=key,
+            detected_identifiers=detected,
         )
+
+
+def _identifier_of(user_paper: UserPaper) -> Identifier | None:
+    if user_paper.doi:
+        try:
+            return parse_identifier(user_paper.doi)
+        except AppError:
+            pass
+    if user_paper.arxiv_id:
+        try:
+            return parse_identifier(user_paper.arxiv_id)
+        except AppError:
+            pass
+    return None
+
+
+def _normalize_doi(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    identifier = parse_identifier(normalized)
+    if identifier.type is not IdentifierType.DOI:
+        raise AppError(
+            "该字段需要 DOI 形式的标识符",
+            code=ErrorCode.IDENTIFIER_INVALID,
+            status_code=422,
+        )
+    return identifier.value
+
+
+def _normalize_arxiv(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    identifier = parse_identifier(normalized)
+    if identifier.type is not IdentifierType.ARXIV:
+        raise AppError(
+            "该字段需要 arXiv 形式的标识符",
+            code=ErrorCode.IDENTIFIER_INVALID,
+            status_code=422,
+        )
+    return identifier.value
+
+
+def _merge_sources(
+    existing: list | None,
+    fields: list[str],
+    *,
+    source: str = "user",
+) -> list:
+    """Record where each field came from, replacing older entries per field."""
+    replaced = set(fields)
+    now = datetime.now(UTC).isoformat()
+    kept = [entry for entry in (existing or []) if entry.get("field") not in replaced]
+    return [*kept, *({"field": field, "source": source, "at": now} for field in fields)]
+
+
+def _user_overridden_fields(sources: list | None) -> set[str]:
+    return {
+        entry.get("field") for entry in (sources or []) if entry.get("source") == "user"
+    }
 
 
 def _truncate(value: str | None) -> str | None:

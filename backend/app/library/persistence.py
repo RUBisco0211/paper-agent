@@ -10,8 +10,8 @@ from sqlalchemy import (
     Uuid,
     false,
     func,
+    or_,
     select,
-    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -70,28 +70,12 @@ class UserPaperRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     """A user's library entry; stable identity across metadata-only and PDF."""
 
     __tablename__ = "user_papers"
+    # Deliberately no unique constraint on (user_id, paper_id) or identifiers:
+    # F09 keeps entry identity stable, so two entries of the same user may point
+    # at one shared Paper (for example two PDF versions of the same DOI).
     __table_args__ = (
-        Index(
-            "uq_user_papers_user_paper",
-            "user_id",
-            "paper_id",
-            unique=True,
-            postgresql_where=text("paper_id IS NOT NULL"),
-        ),
-        Index(
-            "uq_user_papers_user_doi",
-            "user_id",
-            "doi",
-            unique=True,
-            postgresql_where=text("doi IS NOT NULL"),
-        ),
-        Index(
-            "uq_user_papers_user_arxiv",
-            "user_id",
-            "arxiv_id",
-            unique=True,
-            postgresql_where=text("arxiv_id IS NOT NULL"),
-        ),
+        Index("ix_user_papers_user_doi", "user_id", "doi"),
+        Index("ix_user_papers_user_arxiv", "user_id", "arxiv_id"),
     )
 
     user_id: Mapped[UUID] = mapped_column(
@@ -277,6 +261,28 @@ class PaperRepository:
         records = self._session.scalars(statement).all()
         total = self._session.scalar(count_statement) or 0
         return [_to_user_paper(record) for record in records], int(total)
+
+    def find_user_paper_by_identifier(
+        self,
+        *,
+        user_id: UUID,
+        doi: str | None = None,
+        arxiv_id: str | None = None,
+    ) -> UserPaper | None:
+        conditions = []
+        if doi:
+            conditions.append(UserPaperRecord.doi == doi)
+        if arxiv_id:
+            conditions.append(UserPaperRecord.arxiv_id == arxiv_id)
+        if not conditions:
+            return None
+        record = self._session.scalar(
+            select(UserPaperRecord)
+            .where(UserPaperRecord.user_id == user_id)
+            .where(or_(*conditions))
+            .order_by(UserPaperRecord.created_at),
+        )
+        return _to_user_paper(record) if record else None
 
     def user_papers_by_ids(
         self,

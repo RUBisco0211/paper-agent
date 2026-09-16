@@ -29,3 +29,6 @@ frontend/dist/
 
 # Local object storage and runtime data
 .var/
+
+# Local agent task output
+.pi/

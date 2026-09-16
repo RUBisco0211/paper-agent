@@ -9,8 +9,13 @@ from ..ingestion.domain import IngestionJob
 from ..ingestion.schemas import IngestionJobRead
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
+from .application import MetadataCorrection
 from .dependencies import PaperLibraryServiceDep
 from .schemas import (
+    FetchPdfResponse,
+    MetadataCompletionRead,
+    MetadataCorrectionRequest,
+    ResolveMetadataResponse,
     UploadResponse,
     UserPaperDetail,
     UserPaperSummary,
@@ -123,4 +128,107 @@ def read_paper_pdf(
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "private, max-age=0, must-revalidate",
         },
+    )
+
+
+@router.post(
+    "/{paper_id}/pdf",
+    response_model=UploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="为已有条目补传或替换 PDF",
+)
+def attach_paper_pdf(
+    paper_id: UUID,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+    file: Annotated[UploadFile, File(description="英文 born-digital PDF")],
+) -> UploadResponse:
+    entry, job = service.attach_pdf(
+        user_id=user.id,
+        user_paper_id=paper_id,
+        filename=file.filename,
+        stream=file.file,
+    )
+    return UploadResponse(
+        paper=to_summary(entry),
+        ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
+    )
+
+
+@router.post(
+    "/{paper_id}/fetch-pdf",
+    response_model=FetchPdfResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="按标识符重新尝试获取公开 PDF",
+)
+def fetch_paper_pdf(
+    paper_id: UUID,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+) -> FetchPdfResponse:
+    entry, job, completion = service.fetch_pdf(
+        user_id=user.id,
+        user_paper_id=paper_id,
+    )
+    return FetchPdfResponse(
+        paper=to_summary(entry),
+        ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
+        metadata=MetadataCompletionRead(
+            status=completion.status,
+            source=completion.source,
+            error_code=completion.error_code,
+            applied_fields=list(completion.applied_fields),
+        ),
+    )
+
+
+@router.patch(
+    "/{paper_id}/metadata",
+    response_model=UserPaperDetail,
+    summary="修正当前用户条目的标识符与书目字段",
+)
+def patch_paper_metadata(
+    paper_id: UUID,
+    payload: MetadataCorrectionRequest,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+) -> UserPaperDetail:
+    entry = service.update_metadata(
+        user_id=user.id,
+        user_paper_id=paper_id,
+        correction=MetadataCorrection(
+            title=payload.title,
+            authors=payload.authors,
+            abstract=payload.abstract,
+            doi=payload.doi,
+            arxiv_id=payload.arxiv_id,
+            year=payload.year,
+            venue=payload.venue,
+        ),
+    )
+    return to_detail(entry)
+
+
+@router.post(
+    "/{paper_id}/resolve-metadata",
+    response_model=ResolveMetadataResponse,
+    summary="按标识符精确补全元数据",
+)
+def resolve_paper_metadata(
+    paper_id: UUID,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+) -> ResolveMetadataResponse:
+    completion = service.complete_metadata(
+        user_id=user.id,
+        user_paper_id=paper_id,
+    )
+    return ResolveMetadataResponse(
+        paper=to_detail(completion.entry),
+        metadata=MetadataCompletionRead(
+            status=completion.status,
+            source=completion.source,
+            error_code=completion.error_code,
+            applied_fields=list(completion.applied_fields),
+        ),
     )
