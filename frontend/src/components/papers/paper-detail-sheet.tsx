@@ -17,6 +17,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Table,
@@ -134,7 +135,7 @@ export function PaperDetailSheet({
         arxiv_id: form.arxiv_id || undefined,
       }),
     onSuccess: () => {
-      notifySuccess("已保存你的修正", "后台补全不会覆盖这些字段")
+      notifySuccess("已保存")
       setEditing(false)
       refreshAll()
     },
@@ -207,9 +208,6 @@ export function PaperDetailSheet({
                         "处理失败"}
                       。已完成的阶段能力仍然可用。
                     </span>
-                    <span className="text-xs">
-                      重试只会重做缺失的阶段，不会重复已有产物。
-                    </span>
                     <Button
                       size="sm"
                       variant="outline"
@@ -217,7 +215,11 @@ export function PaperDetailSheet({
                       disabled={retry.isPending}
                       onClick={() => retry.mutate(paper.processing.job_id as string)}
                     >
-                      <Undo2 className="size-4" />
+                      {retry.isPending ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <Undo2 data-icon="inline-start" />
+                      )}
                       重试处理
                     </Button>
                   </AlertDescription>
@@ -228,9 +230,6 @@ export function PaperDetailSheet({
                 <Alert>
                   <AlertTitle>待补全文</AlertTitle>
                   <AlertDescription className="flex flex-col gap-2">
-                    <span>
-                      该条目只有书目信息，可以加入项目，但不会参与全文证据检索。
-                    </span>
                     <div className="flex flex-wrap gap-2">
                       <Button
                         size="sm"
@@ -238,7 +237,11 @@ export function PaperDetailSheet({
                         disabled={fetchPdf.isPending}
                         onClick={() => fetchPdf.mutate()}
                       >
-                        <RefreshCw className="size-4" />
+                        {fetchPdf.isPending ? (
+                          <Spinner data-icon="inline-start" />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
                         重新获取全文
                       </Button>
                       <Button
@@ -246,7 +249,7 @@ export function PaperDetailSheet({
                         variant="outline"
                         onClick={() => fileInput.current?.click()}
                       >
-                        <FileUp className="size-4" />
+                        <FileUp data-icon="inline-start" />
                         上传 PDF
                       </Button>
                     </div>
@@ -312,7 +315,11 @@ export function PaperDetailSheet({
                       disabled={resolveMetadata.isPending}
                       onClick={() => resolveMetadata.mutate()}
                     >
-                      <Sparkles className="size-4" />
+                      {resolveMetadata.isPending ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : (
+                        <Sparkles data-icon="inline-start" />
+                      )}
                       补全元数据
                     </Button>
                     <Button
@@ -437,7 +444,7 @@ export function PaperDetailSheet({
             disabled={startSession.isPending}
             onClick={() => startSession.mutate()}
           >
-            <MessageSquarePlus className="size-4" />
+            <MessageSquarePlus data-icon="inline-start" />
             就用这篇提问
           </Button>
         </div>

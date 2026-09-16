@@ -1,25 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Spinner } from "@/components/ui/spinner"
 import { CitationSheet } from "@/components/chat/citation-sheet"
 import { Composer } from "@/components/chat/composer"
-import { EntryList } from "@/components/chat/entry-list"
+import { MessageThread } from "@/components/chat/message-thread"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { useSessionEvents } from "@/lib/hooks/use-session-events"
@@ -39,7 +50,6 @@ export function SessionWorkspacePage() {
   const [renaming, setRenaming] = useState(false)
   const [title, setTitle] = useState("")
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
 
   const session = useQuery({
     queryKey: queryKeys.session(sessionId),
@@ -99,10 +109,6 @@ export function SessionWorkspacePage() {
   )
 
   const { connected } = useSessionEvents(sessionId || null, handleEvent)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
-  }, [entries.data?.items.length, streamingText])
 
   const send = useMutation({
     mutationFn: (input: { content: string; delivery?: Delivery }) =>
@@ -182,7 +188,7 @@ export function SessionWorkspacePage() {
         <div className="flex min-w-0 items-center gap-3">
           <Button variant="ghost" size="icon" asChild aria-label="返回会话列表">
             <Link to="/sessions">
-              <ArrowLeft className="size-4" />
+              <ArrowLeft />
             </Link>
           </Button>
           <div className="min-w-0">
@@ -195,7 +201,7 @@ export function SessionWorkspacePage() {
                   <Badge variant="outline">
                     项目范围{" "}
                     <Link className="underline" to={`/projects/${data.project_id}`}>
-                      查看
+                      项目
                     </Link>
                   </Badge>
                 ) : (
@@ -205,11 +211,11 @@ export function SessionWorkspacePage() {
               <span className="text-muted-foreground flex items-center gap-1 text-xs">
                 {connected ? (
                   <>
-                    <Wifi className="size-3" /> 事件流已连接
+                    <Wifi /> 已连接
                   </>
                 ) : (
                   <>
-                    <WifiOff className="size-3" /> 正在重连
+                    <WifiOff /> 重连中
                   </>
                 )}
               </span>
@@ -228,56 +234,30 @@ export function SessionWorkspacePage() {
               setRenaming(true)
             }}
           >
-            <Pencil className="size-4" />
+            <Pencil data-icon="inline-start" />
             改名
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
-            <Trash2 className="size-4" />
+            <Trash2 data-icon="inline-start" />
             删除
           </Button>
         </div>
       </header>
 
-      {pendingCount > 0 ? (
-        <div className="border-border/60 bg-muted/30 border-b px-6 py-2">
-          <p className="text-muted-foreground text-xs">
-            待发送的消息：
-            {data?.pending_messages.map((pending) => (
-              <span key={pending.id} className="ml-2 inline-flex items-center gap-1">
-                <Badge variant="outline">
-                  {pending.delivery === "steering" ? "调整" : "追问"} #{pending.position}
-                </Badge>
-                <span className="max-w-[16rem] truncate">{pending.content}</span>
-              </span>
-            ))}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="min-h-0 flex-1">
         {entries.isPending ? (
-          <div className="flex flex-col gap-3">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 p-4">
             <Skeleton className="h-16 w-2/3" />
             <Skeleton className="h-16 w-1/2" />
           </div>
-        ) : (entries.data?.items.length ?? 0) === 0 && !generating ? (
-          <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2 text-sm">
-            <p>还没有历史消息</p>
-            <p>
-              {data?.scope === "project"
-                ? "本会话只会检索该项目内的论文。"
-                : "本会话可以在个人论文库范围内检索。"}
-            </p>
-          </div>
         ) : (
-          <EntryList
+          <MessageThread
             entries={entries.data?.items ?? []}
             streamingText={streamingText}
             generating={generating}
             onCitationClick={setCitationId}
           />
         )}
-        <div ref={bottomRef} />
       </div>
 
       <Composer
@@ -308,9 +288,20 @@ export function SessionWorkspacePage() {
               rename.mutate(title.trim())
             }}
           >
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} required />
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="session-title">标题</FieldLabel>
+                <Input
+                  id="session-title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  required
+                />
+              </Field>
+            </FieldGroup>
             <DialogFooter>
               <Button type="submit" disabled={rename.isPending || !title.trim()}>
+                {rename.isPending ? <Spinner data-icon="inline-start" /> : null}
                 保存
               </Button>
             </DialogFooter>
@@ -318,28 +309,20 @@ export function SessionWorkspacePage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>删除该会话</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除该会话？</AlertDialogTitle>
+            <AlertDialogDescription>
               会话内容会被删除，论文库和项目不受影响。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmDelete(false)}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() => remove.mutate()}
-            >
-              确认删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => remove.mutate()}>删除</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

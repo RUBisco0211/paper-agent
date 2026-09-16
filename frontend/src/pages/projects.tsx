@@ -7,11 +7,26 @@ import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -90,13 +105,19 @@ export function ProjectsPage() {
         {projects.isPending ? (
           <Skeleton className="h-24 w-full" />
         ) : items.length === 0 ? (
-          <Card>
-            <CardContent className="text-muted-foreground flex flex-col items-center gap-2 py-12 text-sm">
-              <FolderOpen className="size-5" />
-              <p>还没有项目</p>
-              <p>创建一个项目，把个人论文库中的论文组织成阅读范围。</p>
-            </CardContent>
-          </Card>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <FolderOpen />
+              </EmptyMedia>
+              <EmptyTitle>还没有项目</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <CreateProjectDialog
+                onCreated={(projectId) => navigate(`/projects/${projectId}`)}
+              />
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="rounded-md border">
             <Table>
@@ -130,7 +151,7 @@ export function ProjectsPage() {
                             setNewName(project.name)
                           }}
                         >
-                          <Pencil className="size-4" />
+                          <Pencil data-icon="inline-start" />
                           改名
                         </Button>
                         <Button
@@ -138,7 +159,7 @@ export function ProjectsPage() {
                           variant="ghost"
                           onClick={() => setDeleting(project)}
                         >
-                          <Trash2 className="size-4" />
+                          <Trash2 data-icon="inline-start" />
                           删除
                         </Button>
                       </div>
@@ -183,28 +204,22 @@ export function ProjectsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>删除项目「{deleting?.name}」</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除项目「{deleting?.name}」？</AlertDialogTitle>
+            <AlertDialogDescription>
               项目中的会话会一并删除，论文库不受影响。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() => deleting && remove.mutate(deleting.id)}
-            >
-              {remove.isPending ? "删除中…" : "确认删除"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleting && remove.mutate(deleting.id)}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

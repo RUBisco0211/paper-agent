@@ -3,78 +3,88 @@ import { useState } from "react"
 import { PageHeader } from "@/app/app-shell"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { ALLOWED_PROVIDERS, useLlmConfig } from "@/lib/settings/llm-config-hooks"
+import { Spinner } from "@/components/ui/spinner"
 import { notifySuccess } from "@/lib/errors"
+import { ALLOWED_PROVIDERS, useLlmConfig } from "@/lib/settings/llm-config-hooks"
 
 export function SettingsPage() {
-  const { config, save, clear, isReady } = useLlmConfig()
+  const { config, save, clear } = useLlmConfig()
   const [provider, setProvider] = useState(config?.provider ?? "openai")
   const [model, setModel] = useState(config?.model ?? "")
   const [apiKey, setApiKey] = useState(config?.api_key ?? "")
+  const [saving, setSaving] = useState(false)
 
   function handleSave(event: React.FormEvent) {
     event.preventDefault()
+    setSaving(true)
     save({ provider, model: model.trim(), api_key: apiKey.trim() })
+    setSaving(false)
     notifySuccess("已保存")
   }
 
   return (
     <>
-      <PageHeader
-        title="模型设置"
-      />
-      <div className="flex max-w-2xl flex-col gap-4 p-6">
+      <PageHeader title="模型设置" />
+      <div className="max-w-xl p-4">
         <Card>
           <CardHeader>
             <CardTitle>模型</CardTitle>
           </CardHeader>
           <CardContent>
             <form className="flex flex-col gap-4" onSubmit={handleSave}>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="provider">Provider</Label>
-                <Select value={provider} onValueChange={setProvider}>
-                  <SelectTrigger id="provider" className="w-full">
-                    <SelectValue placeholder="选择 Provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ALLOWED_PROVIDERS.map((item) => (
-                      <SelectItem key={item} value={item}>
-                        {item}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="model">模型</Label>
-                <Input
-                  id="model"
-                  value={model}
-                  placeholder="例如 gpt-4o-mini"
-                  onChange={(event) => setModel(event.target.value)}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="api_key">API Key</Label>
-                <Input
-                  id="api_key"
-                  type="password"
-                  value={apiKey}
-                  placeholder="sk-…"
-                  onChange={(event) => setApiKey(event.target.value)}
-                />
-              </div>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="provider">Provider</FieldLabel>
+                  <Select value={provider} onValueChange={setProvider}>
+                    <SelectTrigger id="provider" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {ALLOWED_PROVIDERS.map((item) => (
+                          <SelectItem key={item} value={item}>
+                            {item}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="model">模型</FieldLabel>
+                  <Input
+                    id="model"
+                    value={model}
+                    placeholder="gpt-4o-mini"
+                    onChange={(event) => setModel(event.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="api_key">API Key</FieldLabel>
+                  <Input
+                    id="api_key"
+                    type="password"
+                    value={apiKey}
+                    placeholder="sk-…"
+                    onChange={(event) => setApiKey(event.target.value)}
+                  />
+                </Field>
+              </FieldGroup>
               <div className="flex items-center gap-2">
-                <Button type="submit">保存</Button>
+                <Button type="submit" disabled={saving}>
+                  {saving ? <Spinner data-icon="inline-start" /> : null}
+                  保存
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -86,9 +96,6 @@ export function SettingsPage() {
                 >
                   清除
                 </Button>
-                <span className="text-muted-foreground text-xs">
-                  {isReady ? "配置完整，可以开始问答" : "配置不完整，尚不能发起生成"}
-                </span>
               </div>
             </form>
           </CardContent>

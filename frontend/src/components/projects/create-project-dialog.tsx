@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
@@ -55,9 +55,6 @@ export function CreateProjectDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>新建项目</DialogTitle>
-          <DialogDescription>
-            项目是个人论文库的一个子集，用来约束会话可以检索的范围。
-          </DialogDescription>
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
@@ -66,27 +63,30 @@ export function CreateProjectDialog({
             create.mutate()
           }}
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="project-name">名称</Label>
-            <Input
-              id="project-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              required
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="project-description">描述（可选）</Label>
-            <Textarea
-              id="project-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </div>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="project-name">名称</FieldLabel>
+              <Input
+                id="project-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="project-description">描述</FieldLabel>
+              <Textarea
+                id="project-description"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </Field>
+          </FieldGroup>
           {error ? <p className="text-destructive text-sm">{error}</p> : null}
           <DialogFooter>
             <Button type="submit" disabled={create.isPending || !name.trim()}>
-              {create.isPending ? "创建中…" : "创建"}
+              {create.isPending ? <Spinner data-icon="inline-start" /> : null}
+              创建
             </Button>
           </DialogFooter>
         </form>

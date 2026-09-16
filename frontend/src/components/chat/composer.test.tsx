@@ -10,7 +10,7 @@ function setup(props: Partial<React.ComponentProps<typeof Composer>> = {}) {
   const onSend = vi.fn()
   const onStop = vi.fn()
   const onResume = vi.fn()
-  const result = render(
+  render(
     <MemoryRouter>
       <Composer
         generating={false}
@@ -24,7 +24,7 @@ function setup(props: Partial<React.ComponentProps<typeof Composer>> = {}) {
       />
     </MemoryRouter>,
   )
-  return { ...result, onSend, onStop, onResume }
+  return { onSend, onStop, onResume }
 }
 
 describe("Composer", () => {
@@ -38,34 +38,34 @@ describe("Composer", () => {
     expect(onSend).toHaveBeenCalledWith("这篇论文的核心贡献是什么？", undefined)
   })
 
-  it("explains steering and follow-up separately while generating", async () => {
+  it("lets the user choose how a message is delivered while generating", async () => {
     const user = userEvent.setup()
     const { onSend, onStop } = setup({ generating: true })
 
+    // 默认投递方式是“调整当前回答”
     await user.type(screen.getByRole("textbox"), "只看编码器部分")
-    await user.click(screen.getByRole("button", { name: /调整当前回答/ }))
-
+    await user.click(screen.getByRole("button", { name: /发送/ }))
     expect(onSend).toHaveBeenCalledWith("只看编码器部分", "steering")
-    // The same text must not be shown as both queued and sent.
-    expect(screen.queryByRole("button", { name: /发送/ })).toBeNull()
+
+    await user.click(screen.getByRole("radio", { name: /排队追问/ }))
+    await user.type(screen.getByRole("textbox"), "再补一个对比")
+    await user.click(screen.getByRole("button", { name: /发送/ }))
+    expect(onSend).toHaveBeenLastCalledWith("再补一个对比", "follow_up")
 
     await user.click(screen.getByRole("button", { name: /停止/ }))
     expect(onStop).toHaveBeenCalled()
   })
 
-  it("offers an explicit resume when queued input is waiting", async () => {
+  it("offers to continue sending queued messages", async () => {
     const user = userEvent.setup()
-    const { onResume, onSend } = setup({ pendingCount: 2 })
+    const { onResume } = setup({ pendingCount: 2 })
 
-    expect(screen.getByText(/有 2 条排队消息尚未投递/)).toBeTruthy()
-    await user.type(screen.getByRole("textbox"), "继续")
-    await user.click(screen.getByRole("button", { name: /继续处理排队消息/ }))
+    await user.click(screen.getByRole("button", { name: /待发送 2 条/ }))
 
     expect(onResume).toHaveBeenCalled()
-    expect(onSend).not.toHaveBeenCalled()
   })
 
-  it("blocks generation without a complete model configuration", async () => {
+  it("blocks sending without a complete model configuration", async () => {
     const user = userEvent.setup()
     const { onSend } = setup({ llmReady: false })
 
@@ -73,6 +73,6 @@ describe("Composer", () => {
     await user.click(screen.getByRole("button", { name: /发送/ }))
 
     expect(onSend).not.toHaveBeenCalled()
-    expect(screen.getByText(/还没有可用的模型配置/)).toBeTruthy()
+    expect(screen.getByText(/模型设置/)).toBeTruthy()
   })
 })

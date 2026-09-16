@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { FileUp, RefreshCw, Search } from "lucide-react"
+import { BookOpen, FileUp, RefreshCw, Search } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -8,7 +8,14 @@ import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
+import { Spinner } from "@/components/ui/spinner"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -73,8 +80,12 @@ export function LibraryPage() {
               onClick={() => fileInput.current?.click()}
               disabled={upload.isPending}
             >
-              <FileUp className="size-4" />
-              {upload.isPending ? "上传中…" : "上传 PDF"}
+              {upload.isPending ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <FileUp data-icon="inline-start" />
+              )}
+              上传 PDF
             </Button>
             <ImportDialog
               onImported={() => {
@@ -87,7 +98,7 @@ export function LibraryPage() {
               aria-label="刷新"
               onClick={() => void papers.refetch()}
             >
-              <RefreshCw className="size-4" />
+              <RefreshCw />
             </Button>
           </>
         }
@@ -134,14 +145,22 @@ export function LibraryPage() {
             <Skeleton className="h-10 w-full" />
           </div>
         ) : items.length === 0 ? (
-          <Card>
-            <CardContent className="text-muted-foreground flex flex-col items-center gap-2 py-12 text-sm">
-              <p>{query ? "没有匹配的论文" : "论文库还是空的"}</p>
-              {!query ? (
-                <p>上传一篇英文 PDF，或按 DOI/arXiv 导入。</p>
-              ) : null}
-            </CardContent>
-          </Card>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <BookOpen />
+              </EmptyMedia>
+              <EmptyTitle>{query ? "没有匹配的论文" : "还没有论文"}</EmptyTitle>
+            </EmptyHeader>
+            {!query ? (
+              <EmptyContent>
+                <Button onClick={() => fileInput.current?.click()}>
+                  <FileUp data-icon="inline-start" />
+                  上传 PDF
+                </Button>
+              </EmptyContent>
+            ) : null}
+          </Empty>
         ) : (
           <div className="rounded-md border">
             <Table>

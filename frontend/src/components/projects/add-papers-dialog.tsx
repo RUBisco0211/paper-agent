@@ -7,7 +7,6 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -15,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Spinner } from "@/components/ui/spinner"
 import { useApi } from "@/lib/api/provider"
 import { notifyError, notifySuccess } from "@/lib/errors"
 import { queryKeys } from "@/app/query"
@@ -81,9 +81,6 @@ export function AddPapersDialog({
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>从个人论文库添加</DialogTitle>
-          <DialogDescription>
-            首版项目论文只增不减；加入“待补全文”的条目不会让它参与全文检索。
-          </DialogDescription>
         </DialogHeader>
         <Input
           placeholder="按标题过滤"
@@ -138,7 +135,8 @@ export function AddPapersDialog({
             disabled={selected.length === 0 || add.isPending}
             onClick={() => add.mutate()}
           >
-            {add.isPending ? "添加中…" : `添加 ${selected.length} 篇`}
+            {add.isPending ? <Spinner data-icon="inline-start" /> : null}
+            添加 {selected.length} 篇
           </Button>
         </DialogFooter>
       </DialogContent>

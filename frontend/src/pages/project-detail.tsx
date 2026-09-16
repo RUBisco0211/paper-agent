@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, MessageSquarePlus } from "lucide-react"
+import { ArrowLeft, FileText, MessageSquarePlus } from "lucide-react"
 import { useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 
@@ -8,7 +8,13 @@ import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -84,7 +90,7 @@ export function ProjectDetailPage() {
           <>
             <Button variant="ghost" asChild>
               <Link to="/projects">
-                <ArrowLeft className="size-4" />
+                <ArrowLeft data-icon="inline-start" />
                 返回
               </Link>
             </Button>
@@ -102,7 +108,7 @@ export function ProjectDetailPage() {
               disabled={createSession.isPending}
               onClick={() => createSession.mutate()}
             >
-              <MessageSquarePlus className="size-4" />
+              <MessageSquarePlus data-icon="inline-start" />
               新建项目会话
             </Button>
           </>
@@ -115,11 +121,17 @@ export function ProjectDetailPage() {
           {papers.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : items.length === 0 ? (
-            <Card>
-              <CardContent className="text-muted-foreground py-8 text-center text-sm">
-                项目还没有论文。用“添加论文”从个人库选择，或直接按 DOI/arXiv 导入。
-              </CardContent>
-            </Card>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileText />
+                </EmptyMedia>
+                <EmptyTitle>项目还没有论文</EmptyTitle>
+              </EmptyHeader>
+              <EmptyContent>
+                <AddPapersDialog projectId={projectId} existingPaperIds={[]} />
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="rounded-md border">
               <Table>

@@ -8,11 +8,26 @@ import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -22,10 +37,12 @@ import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -99,7 +116,7 @@ export function SessionsPage() {
         title="会话"
         actions={
           <Button onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
+            <Plus data-icon="inline-start" />
             新建会话
           </Button>
         }
@@ -107,32 +124,34 @@ export function SessionsPage() {
 
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="flex items-center gap-3">
-          <Select
+          <ToggleGroup
+            type="single"
+            variant="outline"
             value={scope}
             onValueChange={(value) => {
+              if (!value) {
+                return
+              }
               setScope(value as "library" | "project")
               setProjectId("")
             }}
           >
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="library">个人全库</SelectItem>
-              <SelectItem value="project">项目范围</SelectItem>
-            </SelectContent>
-          </Select>
+            <ToggleGroupItem value="library">个人全库</ToggleGroupItem>
+            <ToggleGroupItem value="project">项目范围</ToggleGroupItem>
+          </ToggleGroup>
           {scope === "project" ? (
             <Select value={projectId} onValueChange={setProjectId}>
               <SelectTrigger className="w-56">
                 <SelectValue placeholder="选择项目" />
               </SelectTrigger>
               <SelectContent>
-                {projects.data?.items.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
+                <SelectGroup>
+                  {projects.data?.items.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           ) : null}
@@ -148,13 +167,20 @@ export function SessionsPage() {
         {sessions.isPending ? (
           <Skeleton className="h-24 w-full" />
         ) : items.length === 0 ? (
-          <Card>
-            <CardContent className="text-muted-foreground flex flex-col items-center gap-2 py-12 text-sm">
-              <MessagesSquare className="size-5" />
-              <p>没有会话</p>
-              <p>新建会话后即可在授权范围内提问。</p>
-            </CardContent>
-          </Card>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MessagesSquare />
+              </EmptyMedia>
+              <EmptyTitle>还没有会话</EmptyTitle>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button onClick={() => setCreating(true)}>
+                <Plus data-icon="inline-start" />
+                新建会话
+              </Button>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="rounded-md border">
             <Table>
@@ -203,7 +229,7 @@ export function SessionsPage() {
                         variant="ghost"
                         onClick={() => setDeleting(session)}
                       >
-                        <Trash2 className="size-4" />
+                        <Trash2 data-icon="inline-start" />
                         删除
                       </Button>
                     </TableCell>
@@ -253,12 +279,14 @@ export function SessionsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="library">个人全库</SelectItem>
-                  {projects.data?.items.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      项目：{project.name}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectItem value="library">个人全库</SelectItem>
+                    {projects.data?.items.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        项目：{project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -274,28 +302,22 @@ export function SessionsPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>删除会话「{deleting?.title ?? "未命名"}」</DialogTitle>
-            <DialogDescription>
+      <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除会话「{deleting?.title ?? "未命名"}」？</AlertDialogTitle>
+            <AlertDialogDescription>
               会话内容会被删除，论文库和项目不受影响。
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              取消
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() => deleting && remove.mutate(deleting.id)}
-            >
-              确认删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleting && remove.mutate(deleting.id)}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }

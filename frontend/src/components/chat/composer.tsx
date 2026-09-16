@@ -1,19 +1,20 @@
-import { ArrowUp, Clock, CornerDownLeft, Square, Undo2 } from "lucide-react"
+import { ArrowUp, Clock, CornerDownLeft, Square } from "lucide-react"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import type { Delivery } from "@/lib/api"
 
 /**
  * Composer for one session.
  *
- * While a generation runs, new input is explained as either "adjust the current
- * answer" (steering) or "queue a follow-up"; the distinction changes when the
- * message is delivered, so the UI never shows one text as both.
+ * While a generation runs the delivery mode is explicit: adjust the current
+ * answer (steering) or queue a follow-up. Both become normal history once sent.
  */
 export function Composer({
   generating,
@@ -33,101 +34,92 @@ export function Composer({
   onResume: () => void
 }) {
   const [content, setContent] = useState("")
+  const [delivery, setDelivery] = useState<Delivery>("steering")
 
-  function submit(delivery?: Delivery) {
+  function submit() {
     const trimmed = content.trim()
     if (!trimmed || busy) {
       return
     }
-    onSend(trimmed, delivery)
+    onSend(trimmed, generating ? delivery : undefined)
     setContent("")
   }
 
   return (
-    <div className="border-border/60 flex flex-col gap-2 border-t p-4">
-      {!llmReady ? (
-        <Alert>
-          <AlertDescription>
-            还没有可用的模型配置，空闲会话无法发起生成。请先到{" "}
-            <Link className="underline" to="/settings">
-              模型设置
-            </Link>{" "}
-            填写 Provider、模型与 API Key。
-          </AlertDescription>
-        </Alert>
-      ) : null}
+    <div className="border-t p-4">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
+        {!llmReady ? (
+          <Alert>
+            <AlertDescription>
+              请先在{" "}
+              <Link className="underline" to="/settings">
+                模型设置
+              </Link>{" "}
+              中填写模型信息
+            </AlertDescription>
+          </Alert>
+        ) : null}
 
-      {pendingCount > 0 && !generating ? (
-        <div className="flex items-center justify-between rounded-md border border-dashed px-3 py-2">
-          <span className="text-muted-foreground flex items-center gap-2 text-sm">
-            <Clock className="size-4" />
-            有 {pendingCount} 条排队消息尚未投递（停止或中断后需要手动继续）
-          </span>
-          <Button size="sm" variant="outline" disabled={busy || !llmReady} onClick={onResume}>
-            <Undo2 className="size-4" />
-            继续处理排队消息
-          </Button>
-        </div>
-      ) : null}
+        <Textarea
+          value={content}
+          placeholder={generating ? "补充或追问…" : "针对论文提问…"}
+          className="max-h-40 min-h-20 resize-none"
+          onChange={(event) => setContent(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault()
+              submit()
+            }
+          }}
+        />
 
-      <Textarea
-        value={content}
-        placeholder={
-          generating
-            ? "输入新内容：可以调整当前回答，或排队追问"
-            : "针对授权范围内的论文提问，例如：这篇论文的核心贡献是什么？"
-        }
-        className="max-h-40 min-h-20 resize-none"
-        onChange={(event) => setContent(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault()
-            submit()
-          }
-        }}
-      />
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Badge variant="outline">Enter 发送 · Shift+Enter 换行</Badge>
-          {generating ? <Badge variant="outline">生成中</Badge> : null}
-        </div>
-        <div className="flex items-center gap-2">
-          {generating ? (
-            <>
-              <Button
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {generating ? (
+              <ToggleGroup
+                type="single"
                 size="sm"
                 variant="outline"
-                disabled={busy || !content.trim()}
-                onClick={() => submit("steering")}
+                value={delivery}
+                onValueChange={(value) => value && setDelivery(value as Delivery)}
               >
-                <CornerDownLeft className="size-4" />
-                调整当前回答
+                <ToggleGroupItem value="steering">
+                  <CornerDownLeft />
+                  调整当前回答
+                </ToggleGroupItem>
+                <ToggleGroupItem value="follow_up">
+                  <Clock />
+                  排队追问
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
+            {pendingCount > 0 && !generating ? (
+              <Button size="sm" variant="outline" disabled={busy || !llmReady} onClick={onResume}>
+                {busy ? <Spinner data-icon="inline-start" /> : <Clock data-icon="inline-start" />}
+                待发送 {pendingCount} 条，继续
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={busy || !content.trim()}
-                onClick={() => submit("follow_up")}
-              >
-                <Clock className="size-4" />
-                排队追问
-              </Button>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {generating ? (
               <Button size="sm" variant="destructive" onClick={onStop}>
-                <Square className="size-4" />
+                <Square data-icon="inline-start" />
                 停止
               </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
-              disabled={busy || !content.trim() || !llmReady}
-              onClick={() => submit()}
-            >
-              <ArrowUp className="size-4" />
+            ) : null}
+            <Button size="sm" disabled={busy || !content.trim() || (!generating && !llmReady)} onClick={submit}>
+              {busy ? <Spinner data-icon="inline-start" /> : <ArrowUp data-icon="inline-start" />}
               发送
             </Button>
-          )}
+          </div>
         </div>
+
+        {generating ? (
+          <Badge variant="outline" className="w-fit">
+            生成中
+          </Badge>
+        ) : null}
       </div>
     </div>
   )

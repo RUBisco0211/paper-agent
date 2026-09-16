@@ -3,33 +3,12 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import { StrictMode } from "react"
 import { MemoryRouter } from "react-router-dom"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
 import { AppRoutes } from "@/app/router"
 import { ApiProvider } from "@/lib/api/provider"
 import { AuthProvider } from "@/lib/auth/provider"
-
-/** Minimal ResizeObserver for Radix primitives under jsdom. */
-class ResizeObserverStub {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-}
-
-/** jsdom lacks matchMedia, which the sidebar provider reads on mount. */
-function matchMediaStub(query: string): MediaQueryList {
-  return {
-    matches: false,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  } as unknown as MediaQueryList
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -57,15 +36,6 @@ function renderApp(
   // StrictMode 会挂载两次，必须仍然只恢复一次登录态并且不能卡在 loading
   return render(strict ? <StrictMode>{tree}</StrictMode> : tree)
 }
-
-beforeEach(() => {
-  vi.stubGlobal("ResizeObserver", ResizeObserverStub)
-  vi.stubGlobal("matchMedia", matchMediaStub)
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
 
 describe("app bootstrap", () => {
   it("falls back to the login page when the refresh cookie is invalid", async () => {
@@ -109,7 +79,7 @@ describe("app bootstrap", () => {
 
     renderApp(fetchImpl as unknown as typeof fetch, ["/library"])
 
-    expect(await screen.findByText("论文库还是空的")).toBeTruthy()
+    expect(await screen.findByText("还没有论文")).toBeTruthy()
     expect(screen.getByRole("link", { name: /论文库/ })).toBeTruthy()
     // 侧边栏底部显示当前账号（显示名优先）
     expect(screen.getByText("Reader")).toBeTruthy()

@@ -42,7 +42,7 @@ export function CitationSheet({
     <Sheet open={Boolean(citationId)} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 overflow-hidden sm:max-w-3xl">
         <SheetHeader className="border-border/60 border-b">
-          <SheetTitle>引用证据</SheetTitle>
+          <SheetTitle>引用原文</SheetTitle>
           <SheetDescription>
             {citation.data?.title_path ?? "论文片段"}
             {citation.data?.page_start
@@ -68,7 +68,7 @@ export function CitationSheet({
                 {citation.data.snippet}
               </blockquote>
               <div className="flex flex-wrap gap-1">
-                <Badge variant="outline">chunk {citation.data.chunk_ids.length} 个</Badge>
+                <Badge variant="outline">{citation.data.chunk_ids.length} 个片段</Badge>
                 {citation.data.citation_id ? (
                   <Badge variant="outline">{citation.data.citation_id}</Badge>
                 ) : null}

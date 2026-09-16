@@ -3,10 +3,11 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { fieldErrors, notifyError } from "@/lib/errors"
+import { Spinner } from "@/components/ui/spinner"
 import { useAuth } from "@/lib/auth/provider"
+import { fieldErrors, notifyError } from "@/lib/errors"
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -16,7 +17,6 @@ export function LoginPage() {
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [formError, setFormError] = useState<string | null>(null)
 
   const redirectTo = (location.state as { from?: string } | null)?.from ?? "/library"
 
@@ -24,7 +24,6 @@ export function LoginPage() {
     event.preventDefault()
     setSubmitting(true)
     setErrors({})
-    setFormError(null)
     try {
       await login(email, password)
       navigate(redirectTo, { replace: true })
@@ -33,11 +32,6 @@ export function LoginPage() {
       setErrors(fields)
       if (Object.keys(fields).length === 0) {
         notifyError(error, "登录失败")
-        setFormError(
-          error instanceof Error && "message" in error
-            ? (error as { message: string }).message
-            : "登录失败",
-        )
       }
     } finally {
       setSubmitting(false)
@@ -52,41 +46,37 @@ export function LoginPage() {
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-4" onSubmit={handleSubmit} noValidate>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="email">邮箱</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                aria-invalid={Boolean(errors.email)}
-                required
-              />
-              {errors.email ? (
-                <p className="text-destructive text-xs">{errors.email}</p>
-              ) : null}
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="password">密码</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                aria-invalid={Boolean(errors.password)}
-                required
-              />
-              {errors.password ? (
-                <p className="text-destructive text-xs">{errors.password}</p>
-              ) : null}
-            </div>
-            {formError ? (
-              <p className="text-destructive text-sm">{formError}</p>
-            ) : null}
+            <FieldGroup>
+              <Field data-invalid={Boolean(errors.email)}>
+                <FieldLabel htmlFor="email">邮箱</FieldLabel>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  aria-invalid={Boolean(errors.email)}
+                  required
+                />
+                <FieldError>{errors.email}</FieldError>
+              </Field>
+              <Field data-invalid={Boolean(errors.password)}>
+                <FieldLabel htmlFor="password">密码</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  aria-invalid={Boolean(errors.password)}
+                  required
+                />
+                <FieldError>{errors.password}</FieldError>
+              </Field>
+            </FieldGroup>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "登录中…" : "登录"}
+              {submitting ? <Spinner data-icon="inline-start" /> : null}
+              登录
             </Button>
             <p className="text-muted-foreground text-center text-sm">
               还没有账号？{" "}

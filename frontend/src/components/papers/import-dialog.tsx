@@ -6,17 +6,19 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Label } from "@/components/ui/label"
+import { Spinner } from "@/components/ui/spinner"
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -119,21 +121,20 @@ export function ImportDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>按标识符导入论文</DialogTitle>
-          <DialogDescription>
-            输入 DOI、arXiv ID 或它们的规范链接。元数据查询成功即入库，全文能否获取另行提示。
-          </DialogDescription>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="identifier">标识符</Label>
-            <Input
-              id="identifier"
-              value={identifier}
-              placeholder="10.1145/3290605.3300233 或 arXiv:1706.03762"
-              onChange={(event) => setIdentifier(event.target.value)}
-              required
-            />
-          </div>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="identifier">DOI 或 arXiv</FieldLabel>
+              <Input
+                id="identifier"
+                value={identifier}
+                placeholder="10.1145/3290605.3300233"
+                onChange={(event) => setIdentifier(event.target.value)}
+                required
+              />
+            </Field>
+          </FieldGroup>
           {!projectId && (projects.data?.items.length ?? 0) > 0 ? (
             <div className="flex flex-col gap-2">
               <Label htmlFor="target-project">同时加入项目（可选）</Label>
@@ -142,12 +143,14 @@ export function ImportDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">不加入项目</SelectItem>
-                  {projects.data?.items.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectItem value="none">不加入项目</SelectItem>
+                    {projects.data?.items.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -177,13 +180,11 @@ export function ImportDialog({
           ) : null}
           <DialogFooter>
             <Button type="submit" disabled={busy || !identifier.trim()}>
-              {busy ? "查询中…" : "导入"}
+              {busy ? <Spinner data-icon="inline-start" /> : null}
+              导入
             </Button>
           </DialogFooter>
         </form>
-        <p className="text-muted-foreground text-xs">
-          后端地址：{api.client.base || "同源（Vite 代理）"}
-        </p>
       </DialogContent>
     </Dialog>
   )

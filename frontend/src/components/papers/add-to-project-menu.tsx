@@ -32,11 +32,7 @@ export function AddToProjectMenu({
   const add = useMutation({
     mutationFn: (projectId: string) => api.projects.addPapers(projectId, [paperId]),
     onSuccess: (result, projectId) => {
-      if (result.already_present.length > 0) {
-        notifySuccess("该论文已在项目中")
-      } else {
-        notifySuccess("已加入项目")
-      }
+      notifySuccess(result.already_present.length > 0 ? "该论文已在项目中" : "已加入项目")
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectPapers(projectId) })
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) })
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
@@ -48,7 +44,7 @@ export function AddToProjectMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" disabled={disabled}>
-          <FolderPlus className="size-4" />
+          <FolderPlus data-icon="inline-start" />
           加入项目
         </Button>
       </DropdownMenuTrigger>
