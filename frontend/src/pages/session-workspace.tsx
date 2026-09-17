@@ -3,6 +3,8 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 
+import { PageHeader } from "@/app/app-shell"
+
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -189,42 +191,39 @@ export function SessionWorkspacePage() {
   const pendingCount = (data?.pending.steering ?? 0) + (data?.pending.follow_up ?? 0)
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="border-border/60 flex items-center justify-between gap-4 border-b px-6 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col">
+      {/* 与其他页面共用 PageHeader，顶栏高度保持一致 */}
+      <PageHeader
+        title={data?.title ?? "未命名会话"}
+        leading={
           <Button variant="ghost" size="icon" aria-label="返回" onClick={() => navigate(-1)}>
             <ArrowLeft />
           </Button>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold">
-              {data?.title ?? "未命名会话"}
-            </h1>
-            <div className="mt-0.5 flex items-center gap-2">
-              {data ? <Badge variant="outline">{SCOPE_LABEL[data.scope]}</Badge> : null}
-              {pendingCount > 0 ? (
-                <Badge variant="secondary">待发送 {pendingCount}</Badge>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setTitle(data?.title ?? "")
-              setRenaming(true)
-            }}
-          >
-            <Pencil data-icon="inline-start" />
-            重命名
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
-            <Trash2 data-icon="inline-start" />
-            删除
-          </Button>
-        </div>
-      </header>
+        }
+        actions={
+          <>
+            {data ? <Badge variant="outline">{SCOPE_LABEL[data.scope]}</Badge> : null}
+            {pendingCount > 0 ? (
+              <Badge variant="secondary">待发送 {pendingCount}</Badge>
+            ) : null}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setTitle(data?.title ?? "")
+                setRenaming(true)
+              }}
+            >
+              <Pencil data-icon="inline-start" />
+              重命名
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
+              <Trash2 data-icon="inline-start" />
+              删除
+            </Button>
+          </>
+        }
+      />
 
       <div className="min-h-0 flex-1">
         {entries.isPending ? (

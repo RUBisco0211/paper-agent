@@ -77,6 +77,29 @@ describe("SessionWorkspacePage", () => {
     expect(screen.queryByRole("radio", { name: /排队追问/ })).toBeNull()
   })
 
+  it("keeps the same top bar height as other pages", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      const url = String(input)
+      if (url.includes("/events")) {
+        return new Response(new ReadableStream({ start: (c) => c.close() }), {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        })
+      }
+      if (url.includes("/entries")) {
+        return json({ items: [], total: 0, limit: 200, offset: 0 })
+      }
+      return json(SESSION)
+    })
+
+    renderWorkspace(fetchImpl as unknown as typeof fetch)
+
+    const header = await screen.findByRole("banner")
+    // 顶栏统一走 PageHeader（h-16 + border-b），项目页与工作区保持一致
+    expect(header.className).toContain("h-16")
+    expect(header.className).toContain("border-b")
+  })
+
   it("shows the delivery mode and stop control while generating", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       const url = String(input)
