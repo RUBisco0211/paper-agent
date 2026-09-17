@@ -34,7 +34,7 @@ export function CreateProjectDialog({
   const create = useMutation({
     mutationFn: () => api.projects.create({ name: name.trim(), description }),
     onSuccess: (project) => {
-      notifySuccess("项目已创建", `${project.name} 目前还没有论文`)
+      notifySuccess("项目已创建", `${project.name} 目前还没有文献`)
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
       setOpen(false)
       setName("")

@@ -38,7 +38,7 @@ const STATUS_TEXT: Record<PaperImport["status"], string> = {
 }
 
 const ERROR_TEXT: Record<string, string> = {
-  metadata_not_found: "没有查询到该标识符对应的论文",
+  metadata_not_found: "没有查询到该标识符对应的文献",
   metadata_provider_failed: "元数据服务暂时不可用，可稍后重试",
   provider_rate_limited: "来源限流，请稍后重试",
   paper_pdf_not_available: "来源没有提供公开可用的 PDF，可手动上传",
@@ -120,7 +120,7 @@ export function ImportDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>按标识符导入论文</DialogTitle>
+          <DialogTitle>按标识符导入文献</DialogTitle>
         </DialogHeader>
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <FieldGroup>
@@ -172,7 +172,7 @@ export function ImportDialog({
                     to="/library"
                     onClick={() => handleOpenChange(false)}
                   >
-                    在论文库中查看
+                    在文献库中查看
                   </Link>
                 </p>
               ) : null}

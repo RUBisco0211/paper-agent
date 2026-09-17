@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table"
 import { ImportDialog } from "@/components/papers/import-dialog"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
-import { ProcessingBadge } from "@/components/papers/capability-badges"
+import { PaperStatusBadge } from "@/components/papers/paper-status"
 import { PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
@@ -73,7 +73,7 @@ export function LibraryPage() {
   return (
     <>
       <PageHeader
-        title="论文库"
+        title="文献库"
         actions={
           <>
             <Button
@@ -123,7 +123,7 @@ export function LibraryPage() {
           <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2" />
           <Input
             className="pl-9"
-            aria-label="搜索论文"
+            aria-label="搜索文献"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value)
@@ -151,7 +151,7 @@ export function LibraryPage() {
               <EmptyMedia variant="icon">
                 <BookOpen />
               </EmptyMedia>
-              <EmptyTitle>{query ? "没有匹配的论文" : "还没有论文"}</EmptyTitle>
+              <EmptyTitle>{query ? "没有匹配的文献" : "还没有文献"}</EmptyTitle>
             </EmptyHeader>
             {!query ? (
               <EmptyContent>
@@ -169,8 +169,7 @@ export function LibraryPage() {
                 <TableRow>
                   <TableHead>标题</TableHead>
                   <TableHead>来源</TableHead>
-                  <TableHead>能力</TableHead>
-                  <TableHead>处理</TableHead>
+                  <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -194,25 +193,10 @@ export function LibraryPage() {
                       <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {paper.capabilities.has_pdf ? (
-                          <Badge variant="secondary">PDF</Badge>
-                        ) : (
-                          <Badge variant="outline">待补全文</Badge>
-                        )}
-                        {paper.capabilities.has_fulltext ? (
-                          <Badge variant="secondary">全文</Badge>
-                        ) : null}
-                        {paper.capabilities.has_keyword_index ? (
-                          <Badge variant="secondary">关键词检索</Badge>
-                        ) : null}
-                        {paper.capabilities.has_embedding ? (
-                          <Badge variant="secondary">语义检索</Badge>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <ProcessingBadge processing={paper.processing} />
+                      <PaperStatusBadge
+                        capabilities={paper.capabilities}
+                        processing={paper.processing}
+                      />
                     </TableCell>
                     <TableCell className="text-right">
                       <Button
@@ -222,7 +206,7 @@ export function LibraryPage() {
                           event.stopPropagation()
                           void (async () => {
                             const session = await api.sessions.create({
-                              title: paper.title ?? "论文提问",
+                              title: paper.title ?? "文献提问",
                             })
                             navigate(`/sessions/${session.id}`)
                           })()

@@ -184,7 +184,8 @@ export interface AddProjectPapersResponse {
 }
 
 // --- Sessions -------------------------------------------------------------
-export type SessionScope = "library" | "project"
+/** 界面用词：library = 全局，project = 项目，paper = 单篇文献 */
+export type SessionScope = "library" | "project" | "paper"
 export type Delivery = "steering" | "follow_up"
 
 export interface PendingCounts {
@@ -197,6 +198,7 @@ export interface Session {
   title: string | null
   scope: SessionScope
   project_id?: Uuid | null
+  paper_id?: Uuid | null
   pending: PendingCounts
   created_at: string
   updated_at: string

@@ -71,7 +71,7 @@ export function PdfViewer({
   return (
     <iframe
       key={src}
-      title="论文原文"
+      title="文献原文"
       src={src}
       className={className ?? "h-full w-full border-0"}
     />

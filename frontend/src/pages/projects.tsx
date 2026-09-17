@@ -125,7 +125,7 @@ export function ProjectsPage() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>描述</TableHead>
-                  <TableHead>论文数</TableHead>
+                  <TableHead>文献数</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -209,7 +209,7 @@ export function ProjectsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>删除项目「{deleting?.name}」？</AlertDialogTitle>
             <AlertDialogDescription>
-              项目中的会话会一并删除，论文库不受影响。
+              项目中的会话会一并删除，文献库不受影响。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

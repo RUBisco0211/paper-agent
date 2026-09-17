@@ -32,10 +32,10 @@ describe("Composer", () => {
     const user = userEvent.setup()
     const { onSend } = setup()
 
-    await user.type(screen.getByRole("textbox"), "这篇论文的核心贡献是什么？")
+    await user.type(screen.getByRole("textbox"), "这篇文献的核心贡献是什么？")
     await user.click(screen.getByRole("button", { name: /发送/ }))
 
-    expect(onSend).toHaveBeenCalledWith("这篇论文的核心贡献是什么？", undefined)
+    expect(onSend).toHaveBeenCalledWith("这篇文献的核心贡献是什么？", undefined)
   })
 
   it("lets the user choose how a message is delivered while generating", async () => {

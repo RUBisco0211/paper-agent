@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, FileText, MessageSquarePlus } from "lucide-react"
 import { useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -26,7 +25,7 @@ import {
 } from "@/components/ui/table"
 import { AddPapersDialog } from "@/components/projects/add-papers-dialog"
 import { ImportDialog } from "@/components/papers/import-dialog"
-import { ProcessingBadge } from "@/components/papers/capability-badges"
+import { PaperStatusBadge } from "@/components/papers/paper-status"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError } from "@/lib/errors"
@@ -37,6 +36,9 @@ export function ProjectDetailPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [selectedPaper, setSelectedPaper] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  // 侧边栏的“添加文献”直接打开添加对话框
+  const [addingPapers, setAddingPapers] = useState(searchParams.get("add") === "1")
 
   const project = useQuery({
     queryKey: queryKeys.project(projectId),
@@ -86,17 +88,20 @@ export function ProjectDetailPage() {
     <>
       <PageHeader
         title={project.data?.name ?? "项目详情"}
+        leading={
+          <Button variant="ghost" size="icon" asChild aria-label="返回项目列表">
+            <Link to="/projects">
+              <ArrowLeft />
+            </Link>
+          </Button>
+        }
         actions={
           <>
-            <Button variant="ghost" asChild>
-              <Link to="/projects">
-                <ArrowLeft data-icon="inline-start" />
-                返回
-              </Link>
-            </Button>
             <AddPapersDialog
               projectId={projectId}
               existingPaperIds={items.map((item) => item.id)}
+              open={addingPapers}
+              onOpenChange={setAddingPapers}
             />
             <ImportDialog
               projectId={projectId}
@@ -117,7 +122,7 @@ export function ProjectDetailPage() {
 
       <div className="flex flex-1 flex-col gap-6 p-6">
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">项目论文（{papers.data?.total ?? 0}）</h2>
+          <h2 className="text-sm font-medium">项目文献（{papers.data?.total ?? 0}）</h2>
           {papers.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : items.length === 0 ? (
@@ -126,10 +131,15 @@ export function ProjectDetailPage() {
                 <EmptyMedia variant="icon">
                   <FileText />
                 </EmptyMedia>
-                <EmptyTitle>项目还没有论文</EmptyTitle>
+                <EmptyTitle>项目还没有文献</EmptyTitle>
               </EmptyHeader>
               <EmptyContent>
-                <AddPapersDialog projectId={projectId} existingPaperIds={[]} />
+                <AddPapersDialog
+                  projectId={projectId}
+                  existingPaperIds={[]}
+                  open={addingPapers}
+                  onOpenChange={setAddingPapers}
+                />
               </EmptyContent>
             </Empty>
           ) : (
@@ -138,8 +148,7 @@ export function ProjectDetailPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>标题</TableHead>
-                    <TableHead>能力</TableHead>
-                    <TableHead>处理</TableHead>
+                    <TableHead>状态</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -159,14 +168,10 @@ export function ProjectDetailPage() {
                         </p>
                       </TableCell>
                       <TableCell>
-                        {paper.capabilities.has_fulltext ? (
-                          <Badge variant="secondary">可检索全文</Badge>
-                        ) : (
-                          <Badge variant="outline">待补全文</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <ProcessingBadge processing={paper.processing} />
+                        <PaperStatusBadge
+                          capabilities={paper.capabilities}
+                          processing={paper.processing}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
@@ -196,7 +201,7 @@ export function ProjectDetailPage() {
             </ul>
           ) : (
             <p className="text-muted-foreground text-sm">
-              还没有项目会话。项目会话只覆盖该项目论文，创建后范围不可修改。
+              还没有项目会话。项目会话只覆盖该项目文献，创建后范围不可修改。
             </p>
           )}
         </section>

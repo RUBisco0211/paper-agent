@@ -43,7 +43,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe("PaperDetailSheet", () => {
-  it("starts a library session (not attached to any project) from a paper", async () => {
+  it("starts a single-paper session from a paper", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input)
@@ -90,6 +90,8 @@ describe("PaperDetailSheet", () => {
     const created = calls.find((call) => call.url.endsWith("/v1/sessions"))
     expect(created).toBeTruthy()
     const body = JSON.parse(String(created?.init?.body))
+    // 单篇文献会话：带上条目 ID，且不属于任何项目
+    expect(body.paper_id).toBe("p1")
     expect(body).not.toHaveProperty("project_id")
     expect(body.title).toBe("注意力机制")
   })

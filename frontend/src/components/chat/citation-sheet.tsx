@@ -43,7 +43,7 @@ export function CitationSheet({
         <SheetHeader className="border-border/60 border-b">
           <SheetTitle>引用原文</SheetTitle>
           <SheetDescription>
-            {citation.data?.title_path ?? "论文片段"}
+            {citation.data?.title_path ?? "文献片段"}
             {citation.data?.page_start
               ? ` · 第 ${citation.data.page_start}${
                   citation.data.page_end && citation.data.page_end !== citation.data.page_start

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Pencil, Trash2, Wifi, WifiOff } from "lucide-react"
+import { ArrowLeft, Pencil, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { useNavigate, useParams } from "react-router-dom"
 
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -36,6 +36,12 @@ import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { useSessionEvents } from "@/lib/hooks/use-session-events"
 import { useLlmConfig } from "@/lib/settings/llm-config-hooks"
 import type { Delivery, SessionEvent } from "@/lib/api"
+
+const SCOPE_LABEL: Record<string, string> = {
+  library: "全局",
+  project: "项目",
+  paper: "单篇文献",
+}
 
 export function SessionWorkspacePage() {
   const { sessionId = "" } = useParams()
@@ -108,7 +114,7 @@ export function SessionWorkspacePage() {
     [queryClient, refreshHistory, sessionId],
   )
 
-  const { connected } = useSessionEvents(sessionId || null, handleEvent)
+  useSessionEvents(sessionId || null, handleEvent)
 
   const send = useMutation({
     mutationFn: (input: { content: string; delivery?: Delivery }) =>
@@ -163,7 +169,7 @@ export function SessionWorkspacePage() {
     onSuccess: () => {
       notifySuccess("会话已删除")
       void queryClient.invalidateQueries({ queryKey: ["sessions"] })
-      navigate("/sessions", { replace: true })
+      navigate("/library", { replace: true })
     },
     onError: (error) => notifyError(error, "删除失败"),
   })
@@ -186,41 +192,17 @@ export function SessionWorkspacePage() {
     <div className="flex h-screen flex-col">
       <header className="border-border/60 flex items-center justify-between gap-4 border-b px-6 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="icon" asChild aria-label="返回会话列表">
-            <Link to="/sessions">
-              <ArrowLeft />
-            </Link>
+          <Button variant="ghost" size="icon" aria-label="返回" onClick={() => navigate(-1)}>
+            <ArrowLeft />
           </Button>
           <div className="min-w-0">
             <h1 className="truncate text-base font-semibold">
               {data?.title ?? "未命名会话"}
             </h1>
             <div className="mt-0.5 flex items-center gap-2">
-              {data ? (
-                data.scope === "project" ? (
-                  <Badge variant="outline">
-                    项目范围{" "}
-                    <Link className="underline" to={`/projects/${data.project_id}`}>
-                      项目
-                    </Link>
-                  </Badge>
-                ) : (
-                  <Badge variant="outline">个人全库</Badge>
-                )
-              ) : null}
-              <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                {connected ? (
-                  <>
-                    <Wifi /> 已连接
-                  </>
-                ) : (
-                  <>
-                    <WifiOff /> 重连中
-                  </>
-                )}
-              </span>
+              {data ? <Badge variant="outline">{SCOPE_LABEL[data.scope]}</Badge> : null}
               {pendingCount > 0 ? (
-                <Badge variant="secondary">排队 {pendingCount}</Badge>
+                <Badge variant="secondary">待发送 {pendingCount}</Badge>
               ) : null}
             </div>
           </div>
@@ -314,7 +296,7 @@ export function SessionWorkspacePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>删除该会话？</AlertDialogTitle>
             <AlertDialogDescription>
-              会话内容会被删除，论文库和项目不受影响。
+              会话内容会被删除，文献库和项目不受影响。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

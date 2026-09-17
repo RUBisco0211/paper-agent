@@ -29,14 +29,20 @@ export function AddPapersDialog({
   projectId,
   existingPaperIds,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: {
   projectId: string
   existingPaperIds: string[]
   trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const { api } = useApi()
   const queryClient = useQueryClient()
-  const [open, setOpen] = useState(false)
+  const [openState, setOpenState] = useState(false)
+  const open = openProp ?? openState
+  const setOpen = onOpenChange ?? setOpenState
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<string[]>([])
 
@@ -53,7 +59,7 @@ export function AddPapersDialog({
     mutationFn: () => api.projects.addPapers(projectId, selected),
     onSuccess: (result) => {
       notifySuccess(
-        `已加入 ${result.added.length} 篇论文`,
+        `已加入 ${result.added.length} 篇文献`,
         result.already_present.length
           ? `${result.already_present.length} 篇此前已存在`
           : undefined,
@@ -77,13 +83,13 @@ export function AddPapersDialog({
         }
       }}
     >
-      <DialogTrigger asChild>{trigger ?? <Button variant="outline">添加论文</Button>}</DialogTrigger>
+      <DialogTrigger asChild>{trigger ?? <Button variant="outline">添加文献</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>从个人论文库添加</DialogTitle>
+          <DialogTitle>从文献库添加</DialogTitle>
         </DialogHeader>
         <Input
-          aria-label="搜索论文"
+          aria-label="搜索文献"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -92,7 +98,7 @@ export function AddPapersDialog({
             <p className="text-muted-foreground p-4 text-sm">加载中…</p>
           ) : candidates.length === 0 ? (
             <p className="text-muted-foreground p-4 text-sm">
-              没有可添加的论文（可能都已在该项目中）。
+              没有可添加的文献（可能都已在该项目中）。
             </p>
           ) : (
             <ul className="flex flex-col">

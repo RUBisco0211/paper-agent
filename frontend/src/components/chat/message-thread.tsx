@@ -33,7 +33,7 @@ import { cn } from "cn"
 const ERROR_TEXT: Record<string, string> = {
   agent_unavailable: "暂时无法生成回答，请稍后重试",
   llm_not_configured: "模型配置不完整，请到模型设置中补齐",
-  search_unavailable: "检索暂时不可用，本次回答没有使用论文内容",
+  search_unavailable: "检索暂时不可用，本次回答没有使用文献内容",
   internal_error: "生成中断，请重试",
 }
 

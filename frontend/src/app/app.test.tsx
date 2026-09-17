@@ -79,8 +79,8 @@ describe("app bootstrap", () => {
 
     renderApp(fetchImpl as unknown as typeof fetch, ["/library"])
 
-    expect(await screen.findByText("还没有论文")).toBeTruthy()
-    expect(screen.getByRole("link", { name: /论文库/ })).toBeTruthy()
+    expect(await screen.findByText("还没有文献")).toBeTruthy()
+    expect(screen.getByRole("link", { name: /文献库/ })).toBeTruthy()
     // 侧边栏底部显示当前账号（显示名优先）
     expect(screen.getByText("Reader")).toBeTruthy()
   })

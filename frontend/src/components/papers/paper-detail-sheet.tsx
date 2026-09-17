@@ -35,7 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { AddToProjectMenu } from "@/components/papers/add-to-project-menu"
-import { CapabilityBadges, ProcessingBadge, stageLabel } from "@/components/papers/capability-badges"
+import { PaperStatusBadge, stageLabel } from "@/components/papers/paper-status"
 import { PdfViewer } from "@/components/papers/pdf-viewer"
 import { METADATA_STATUS_LABEL, PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
@@ -159,8 +159,13 @@ export function PaperDetailSheet({
     onError: (error) => notifyError(error, "重试失败"),
   })
 
+  // 单篇文献会话只覆盖这一篇，不属于任何项目。
   const startSession = useMutation({
-    mutationFn: () => api.sessions.create({ title: detail.data?.title ?? undefined }),
+    mutationFn: () =>
+      api.sessions.create({
+        paper_id: paperId as string,
+        title: detail.data?.title ?? undefined,
+      }),
     onSuccess: (session) => {
       onOpenChange(false)
       navigate(`/sessions/${session.id}`)
@@ -174,7 +179,7 @@ export function PaperDetailSheet({
     <Sheet open={Boolean(paperId)} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 overflow-hidden sm:max-w-4xl">
         <SheetHeader className="border-border/60 border-b">
-          <SheetTitle className="pr-8">{paper?.title ?? "论文详情"}</SheetTitle>
+          <SheetTitle className="pr-8">{paper?.title ?? "文献详情"}</SheetTitle>
           <SheetDescription>
             {paper
               ? `${paper.authors.join("、") || "作者未知"}${paper.year ? ` · ${paper.year}` : ""}`
@@ -196,15 +201,16 @@ export function PaperDetailSheet({
           ) : paper ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <ProcessingBadge processing={paper.processing} />
+                <PaperStatusBadge
+                  capabilities={paper.capabilities}
+                  processing={paper.processing}
+                />
                 <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                 {paper.doi ? <Badge variant="outline">DOI {paper.doi}</Badge> : null}
                 {paper.arxiv_id ? (
                   <Badge variant="outline">arXiv {paper.arxiv_id}</Badge>
                 ) : null}
               </div>
-
-              <CapabilityBadges capabilities={paper.capabilities} />
 
               {paper.processing.status === "failed" && paper.processing.job_id ? (
                 <Alert variant="warning">

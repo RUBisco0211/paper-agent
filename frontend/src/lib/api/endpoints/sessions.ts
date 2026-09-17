@@ -20,12 +20,15 @@ export interface SessionListParams {
   offset?: number
   scope?: SessionScope
   project_id?: Uuid
+  paper_id?: Uuid
 }
 
 export function sessionEndpoints(client: ApiClient) {
   return {
-    create: (input: { title?: string; project_id?: Uuid } = {}) =>
-      client.request<Session>(SESSIONS, { method: "POST", json: input }),
+    /** 范围三选一：全局（都不传）、项目、单篇文献。 */
+    create: (
+      input: { title?: string; project_id?: Uuid; paper_id?: Uuid } = {},
+    ) => client.request<Session>(SESSIONS, { method: "POST", json: input }),
 
     list: (params: SessionListParams = {}) =>
       client.request<Page<Session>>(SESSIONS, { query: { ...params } }),
