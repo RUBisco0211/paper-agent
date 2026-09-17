@@ -132,7 +132,7 @@ export function PaperDetailSheet({
       )
       refreshAll()
     },
-    onError: (error) => notifyError(error, "补全元数据失败"),
+    onError: (error) => notifyError(error, "获取元数据失败"),
   })
 
   const patchMetadata = useMutation({
@@ -330,7 +330,7 @@ export function PaperDetailSheet({
                       ) : (
                         <Sparkles data-icon="inline-start" />
                       )}
-                      补全元数据
+                      获取元数据
                     </Button>
                     <Button
                       size="sm"
@@ -344,7 +344,7 @@ export function PaperDetailSheet({
                         setEditing((value) => !value)
                       }}
                     >
-                      修正标识符
+                      编辑信息
                     </Button>
                   </div>
                 </div>

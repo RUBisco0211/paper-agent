@@ -166,7 +166,7 @@ def test_attach_pdf_reports_identifier_conflict(
     assert detail["doi"] == "10.5555/1111111.2222222"
 
 
-def test_patch_metadata_records_user_provenance(
+def test_edit_info_records_user_provenance(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -176,7 +176,7 @@ def test_patch_metadata_records_user_provenance(
     paper_id = create_entry(token, title="placeholder", doi=None)
 
     patched = client.patch(
-        f"{api_prefix}/papers/{paper_id}/metadata",
+        f"{api_prefix}/papers/{paper_id}/info",
         headers=auth_headers(token),
         json={
             "title": "Corrected Title",
@@ -198,7 +198,7 @@ def test_patch_metadata_records_user_provenance(
     }
 
 
-def test_patch_metadata_rejects_a_mismatched_identifier(
+def test_edit_info_rejects_a_mismatched_identifier(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -208,7 +208,7 @@ def test_patch_metadata_rejects_a_mismatched_identifier(
     paper_id = create_entry(token)
 
     response = client.patch(
-        f"{api_prefix}/papers/{paper_id}/metadata",
+        f"{api_prefix}/papers/{paper_id}/info",
         headers=auth_headers(token),
         json={"arxiv_id": "10.1145/3290605.3300233"},
     )
@@ -217,7 +217,7 @@ def test_patch_metadata_rejects_a_mismatched_identifier(
     assert response.json()["code"] == "identifier_invalid"
 
 
-def test_resolve_metadata_fills_missing_fields(
+def test_fetch_metadata_fills_missing_fields(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -241,7 +241,7 @@ def test_resolve_metadata_fills_missing_fields(
     )
 
     response = client.post(
-        f"{api_prefix}/papers/{paper_id}/resolve-metadata",
+        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
         headers=auth_headers(token),
     )
 
@@ -256,7 +256,7 @@ def test_resolve_metadata_fills_missing_fields(
     assert provider.calls[0].value == "10.1145/3290605.3300233"
 
 
-def test_resolve_metadata_does_not_overwrite_user_corrections(
+def test_fetch_metadata_does_not_overwrite_user_edits(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -265,7 +265,7 @@ def test_resolve_metadata_does_not_overwrite_user_corrections(
     token = register_user(email="reader@example.com")["access_token"]
     paper_id = create_entry(token, doi="10.1145/3290605.3300233")
     client.patch(
-        f"{api_prefix}/papers/{paper_id}/metadata",
+        f"{api_prefix}/papers/{paper_id}/info",
         headers=auth_headers(token),
         json={"title": "My Title", "authors": ["Me"]},
     )
@@ -282,7 +282,7 @@ def test_resolve_metadata_does_not_overwrite_user_corrections(
     )
 
     response = client.post(
-        f"{api_prefix}/papers/{paper_id}/resolve-metadata",
+        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
         headers=auth_headers(token),
     )
 
@@ -315,7 +315,7 @@ def test_resolve_metadata_surfaces_provider_failure_without_crashing(
     )
 
     response = client.post(
-        f"{api_prefix}/papers/{paper_id}/resolve-metadata",
+        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
         headers=auth_headers(token),
     )
 
@@ -422,12 +422,12 @@ def test_pdf_operations_are_scoped_to_the_owner(
         files={"file": ("fulltext.pdf", make_pdf(), "application/pdf")},
     )
     patch = client.patch(
-        f"{api_prefix}/papers/{paper_id}/metadata",
+        f"{api_prefix}/papers/{paper_id}/info",
         headers=auth_headers(stranger["access_token"]),
         json={"title": "Stolen"},
     )
     resolve = client.post(
-        f"{api_prefix}/papers/{paper_id}/resolve-metadata",
+        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
         headers=auth_headers(stranger["access_token"]),
     )
 

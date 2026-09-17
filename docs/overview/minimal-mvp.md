@@ -133,7 +133,7 @@ Agentero 使用 liteparse/PDFium 在本地 worker 中生成词级布局，再将
 
 - Python 本地提取器在实施时用样例验证页、行、词、字体、坐标是否满足识别输入；功能规格不预先宣称某个库与 liteparse 等价。
 - metadata 状态区分识别成功、部分字段、未识别与服务失败；正文 ready 不要求 metadata 必须完整。元数据失败时可用文件名识别引用来源。
-- 提供补填/修正当前用户条目 DOI/arXiv 的小表单并重新查询；不要求首版做完整书目编辑器。
+- 提供「编辑信息」表单补填当前用户条目的 DOI/arXiv 等信息，并用「获取元数据」按标识符在线查询；不要求首版做完整书目编辑器。
 - 元数据保留来源；异步识别不能覆盖用户刚提交的标识符/修正。用户修正只作用于用户条目，不能改掉其他用户的共享信息。
 - 最小来源实现建议：arXiv 精确查询、Crossref DOI 查询；其他来源作为配置化补全适配器后续按命中率增加，不把完整六源搜索作为验收依赖。
 - 不要求首版部署 Agentero 的 Translator 服务；本项目借鉴“布局识别 → 标识符查询”流程，元数据可直连来源 API。README 列明识别会发送部分文献文本布局，MinerU 会接收 PDF。
@@ -225,7 +225,7 @@ Agentero 使用 liteparse/PDFium 在本地 worker 中生成词级布局，再将
 | 上传/列文献 | `POST /v1/papers`、`GET /v1/papers` | 上传 multipart；列表分页和过滤 |
 | 文献详情/PDF | `GET /v1/papers/{paper_id}`、`GET /v1/papers/{paper_id}/pdf` | 返回元数据、能力及授权原文 |
 | 补充全文 | `POST /v1/papers/{paper_id}/pdf`、`POST /v1/papers/{paper_id}/fetch-pdf` | 手动补传或重新获取，不新建用户条目 |
-| 标识符修正/补全 | `PATCH /v1/papers/{paper_id}/metadata`、`POST /v1/papers/{paper_id}/resolve-metadata` | 首版仅必要标识符字段及精确补全，不扩展为完整编辑器 |
+| 编辑信息 / 获取元数据 | `PATCH /v1/papers/{paper_id}/info`、`POST /v1/papers/{paper_id}/fetch-metadata` | 编辑仅限必要书目字段，不扩展为完整编辑器；获取元数据按条目标识符在线查询并记录来源 |
 | 处理进度/重试 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry` | 显示各阶段；轮询即可满足最低验收 |
 | 项目管理 | `/v1/projects`、`/v1/projects/{project_id}` | 创建、列表、详情、重命名、删除 |
 | 项目文献 | `GET/POST /v1/projects/{project_id}/papers` | 列表与追加，无移除接口 |

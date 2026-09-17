@@ -120,7 +120,7 @@ export function LibraryPage() {
 
       <div className="flex flex-1 flex-col gap-4 p-6">
         <div className="relative max-w-sm">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2" />
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
           <Input
             className="pl-9"
             aria-label="搜索文献"

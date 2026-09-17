@@ -9,13 +9,13 @@ from ..ingestion.domain import IngestionJob
 from ..ingestion.schemas import IngestionJobRead
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
-from .application import MetadataCorrection
+from .application import PaperInfoUpdate
 from .dependencies import PaperLibraryServiceDep
 from .schemas import (
+    FetchMetadataResponse,
     FetchPdfResponse,
-    MetadataCompletionRead,
-    MetadataCorrectionRequest,
-    ResolveMetadataResponse,
+    MetadataFetchRead,
+    PaperInfoUpdateRequest,
     UploadResponse,
     UserPaperDetail,
     UserPaperSummary,
@@ -166,37 +166,37 @@ def fetch_paper_pdf(
     user: CurrentUser,
     service: PaperLibraryServiceDep,
 ) -> FetchPdfResponse:
-    entry, job, completion = service.fetch_pdf(
+    entry, job, result = service.fetch_pdf(
         user_id=user.id,
         user_paper_id=paper_id,
     )
     return FetchPdfResponse(
         paper=to_summary(entry),
         ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
-        metadata=MetadataCompletionRead(
-            status=completion.status,
-            source=completion.source,
-            error_code=completion.error_code,
-            applied_fields=list(completion.applied_fields),
+        metadata=MetadataFetchRead(
+            status=result.status,
+            source=result.source,
+            error_code=result.error_code,
+            applied_fields=list(result.applied_fields),
         ),
     )
 
 
 @router.patch(
-    "/{paper_id}/metadata",
+    "/{paper_id}/info",
     response_model=UserPaperDetail,
-    summary="修正当前用户条目的标识符与书目字段",
+    summary="编辑当前用户条目的书目信息",
 )
-def patch_paper_metadata(
+def update_paper_info(
     paper_id: UUID,
-    payload: MetadataCorrectionRequest,
+    payload: PaperInfoUpdateRequest,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
 ) -> UserPaperDetail:
-    entry = service.update_metadata(
+    entry = service.update_info(
         user_id=user.id,
         user_paper_id=paper_id,
-        correction=MetadataCorrection(
+        update=PaperInfoUpdate(
             title=payload.title,
             authors=payload.authors,
             abstract=payload.abstract,
@@ -210,25 +210,25 @@ def patch_paper_metadata(
 
 
 @router.post(
-    "/{paper_id}/resolve-metadata",
-    response_model=ResolveMetadataResponse,
-    summary="按标识符精确补全元数据",
+    "/{paper_id}/fetch-metadata",
+    response_model=FetchMetadataResponse,
+    summary="按条目标识符获取元数据",
 )
-def resolve_paper_metadata(
+def fetch_paper_metadata(
     paper_id: UUID,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
-) -> ResolveMetadataResponse:
-    completion = service.complete_metadata(
+) -> FetchMetadataResponse:
+    result = service.fetch_metadata(
         user_id=user.id,
         user_paper_id=paper_id,
     )
-    return ResolveMetadataResponse(
-        paper=to_detail(completion.entry),
-        metadata=MetadataCompletionRead(
-            status=completion.status,
-            source=completion.source,
-            error_code=completion.error_code,
-            applied_fields=list(completion.applied_fields),
+    return FetchMetadataResponse(
+        paper=to_detail(result.entry),
+        metadata=MetadataFetchRead(
+            status=result.status,
+            source=result.source,
+            error_code=result.error_code,
+            applied_fields=list(result.applied_fields),
         ),
     )

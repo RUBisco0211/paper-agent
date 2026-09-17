@@ -62,6 +62,28 @@ def _run_migrations(url: str) -> None:
     command.upgrade(config, "head")
 
 
+@pytest.fixture(autouse=True, scope="session")
+def isolated_provider_config() -> Iterator[None]:
+    """测试不依赖开发者 .env 里的 Provider 配置。
+
+    否则本地填了真实 MinerU/Embedding 凭据时，用例会去调用外部服务，
+    结果随环境而变（既慢又不确定）。
+    """
+    provider_settings = [
+        "mineru_api_url",
+        "mineru_api_key",
+        "embedding_api_url",
+        "embedding_api_key",
+        "zotero_recognizer_url",
+    ]
+    original = {name: getattr(settings, name) for name in provider_settings}
+    for name in provider_settings:
+        setattr(settings, name, None)
+    yield
+    for name, value in original.items():
+        setattr(settings, name, value)
+
+
 @pytest.fixture(scope="session")
 def engine() -> Iterator[Engine]:
     url = settings.resolved_test_database_url

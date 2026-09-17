@@ -54,8 +54,8 @@ class StoredPdf:
 
 
 @dataclass(frozen=True, slots=True)
-class MetadataCorrection:
-    """Fields a user explicitly corrected on their own entry."""
+class PaperInfoUpdate:
+    """用户在自己的条目上编辑的书目信息（界面「编辑信息」）。"""
 
     title: str | None = None
     authors: list[str] | None = None
@@ -81,7 +81,9 @@ class MetadataCorrection:
 
 
 @dataclass(frozen=True, slots=True)
-class MetadataCompletion:
+class MetadataFetchResult:
+    """一次在线获取元数据的结果（界面「获取元数据」）。"""
+
     entry: LibraryEntry
     status: MetadataStatus
     source: str | None = None
@@ -187,7 +189,7 @@ class PaperLibraryService:
         *,
         user_id: UUID,
         user_paper_id: UUID,
-    ) -> tuple[LibraryEntry, IngestionJob | None, MetadataCompletion]:
+    ) -> tuple[LibraryEntry, IngestionJob | None, MetadataFetchResult]:
         """Re-attempt downloading the PDF for a metadata-only entry."""
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         if entry.paper is not None and entry.capabilities.has_pdf:
@@ -196,7 +198,7 @@ class PaperLibraryService:
                 code=ErrorCode.CONFLICT,
             )
 
-        completion = self.complete_metadata(
+        completion = self.fetch_metadata(
             user_id=user_id,
             user_paper_id=user_paper_id,
         )
@@ -236,44 +238,44 @@ class PaperLibraryService:
         return entry, job, completion
 
     # Metadata --------------------------------------------------------------
-    def update_metadata(
+    def update_info(
         self,
         *,
         user_id: UUID,
         user_paper_id: UUID,
-        correction: MetadataCorrection,
+        update: PaperInfoUpdate,
     ) -> LibraryEntry:
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
-        if correction.is_empty():
+        if update.is_empty():
             return entry
 
-        doi = _normalize_doi(correction.doi)
-        arxiv_id = _normalize_arxiv(correction.arxiv_id)
+        doi = _normalize_doi(update.doi)
+        arxiv_id = _normalize_arxiv(update.arxiv_id)
         sources = merge_sources(
             entry.user_paper.metadata_sources,
             [
                 field
                 for field, value in (
-                    ("title", correction.title),
-                    ("authors", correction.authors),
-                    ("abstract", correction.abstract),
+                    ("title", update.title),
+                    ("authors", update.authors),
+                    ("abstract", update.abstract),
                     ("doi", doi),
                     ("arxiv_id", arxiv_id),
-                    ("year", correction.year),
-                    ("venue", correction.venue),
+                    ("year", update.year),
+                    ("venue", update.venue),
                 )
                 if value is not None
             ],
         )
         self._papers.update_user_paper_metadata(
             user_paper_id,
-            title=correction.title,
-            authors=correction.authors,
-            abstract=correction.abstract,
+            title=update.title,
+            authors=update.authors,
+            abstract=update.abstract,
             doi=doi,
             arxiv_id=arxiv_id,
-            year=correction.year,
-            venue=correction.venue,
+            year=update.year,
+            venue=update.venue,
             metadata_status=MetadataStatus.USER_PROVIDED,
             metadata_sources=sources,
         )
@@ -281,24 +283,24 @@ class PaperLibraryService:
         refreshed = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
         assert refreshed is not None
         logger.info(
-            "service.library.metadata_corrected",
+            "service.library.info_edited",
             user_paper_id=str(user_paper_id),
             fields=[entry_["field"] for entry_ in sources],
         )
         return refreshed
 
-    def complete_metadata(
+    def fetch_metadata(
         self,
         *,
         user_id: UUID,
         user_paper_id: UUID,
         identifier: Identifier | None = None,
-    ) -> MetadataCompletion:
-        """Best-effort online completion for the entry's identifier."""
+    ) -> MetadataFetchResult:
+        """按标识符在线获取元数据；失败只记录原因，不改动已有内容。"""
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         identifier = identifier or _identifier_of(entry.user_paper)
         if identifier is None:
-            return MetadataCompletion(
+            return MetadataFetchResult(
                 entry=entry,
                 status=entry.user_paper.metadata_status,
                 error_code=str(ErrorCode.IDENTIFIER_INVALID),
@@ -313,7 +315,7 @@ class PaperLibraryService:
                 status=outcome.status.value,
                 error_code=str(outcome.error_code) if outcome.error_code else None,
             )
-            return MetadataCompletion(
+            return MetadataFetchResult(
                 entry=entry,
                 status=outcome.status,
                 source=outcome.source,
@@ -331,12 +333,12 @@ class PaperLibraryService:
         refreshed = self.get_entry(user_id=user_id, user_paper_id=user_paper_id)
         assert refreshed is not None
         logger.info(
-            "service.library.metadata_completed",
+            "service.library.metadata_fetched",
             user_paper_id=str(user_paper_id),
             source=outcome.source,
             status=outcome.status.value,
         )
-        return MetadataCompletion(
+        return MetadataFetchResult(
             entry=refreshed,
             status=outcome.status,
             source=outcome.source,

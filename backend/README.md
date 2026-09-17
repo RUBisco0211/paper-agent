@@ -72,6 +72,14 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 所有错误统一为 `{"code", "message", "request_id"}`；`code` 是稳定的 snake_case 字符串。上传、消息与重试类操作
 都会校验归属，越权访问统一按“不存在”处理。
 
+## Provider 配置说明
+
+`MINERU_API_URL` 只填 **base URL**（例如 `https://mineru.net`）：适配器会自行拼接
+`/api/v4/file-urls/batch`（申请上传地址）与 `/api/v4/extract-results/batch/{batch_id}`（轮询结果）。
+把某个具体端点写进这个变量会拼出不存在的地址，阶段会以 `provider_unavailable` 失败。
+
+用测试时不需要这些凭据：集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`。
+
 ## 当前未接入的能力
 
 - AgentScope 执行器：会话、pending 队列、SSE 与引用都已实现，但执行器仍返回 `agent_unavailable`，不会伪造回答；

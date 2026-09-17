@@ -52,8 +52,8 @@ class UploadResponse(BaseModel):
     ingestion_job: IngestionJobRead | None = None
 
 
-class MetadataCorrectionRequest(BaseModel):
-    """Only the fields the first version is allowed to correct."""
+class PaperInfoUpdateRequest(BaseModel):
+    """用户可以编辑的书目信息字段（界面「编辑信息」）。"""
 
     title: str | None = Field(default=None, min_length=1, max_length=512)
     authors: list[str] | None = None
@@ -64,8 +64,8 @@ class MetadataCorrectionRequest(BaseModel):
     venue: str | None = Field(default=None, max_length=255)
 
 
-class MetadataCompletionRead(BaseModel):
-    """Outcome of an online completion attempt, including its failure mode."""
+class MetadataFetchRead(BaseModel):
+    """一次「获取元数据」的结果，包含失败原因（界面「获取元数据」）。"""
 
     status: MetadataStatus
     source: str | None = None
@@ -74,12 +74,12 @@ class MetadataCompletionRead(BaseModel):
 
 
 class FetchPdfResponse(UploadResponse):
-    metadata: MetadataCompletionRead
+    metadata: MetadataFetchRead
 
 
-class ResolveMetadataResponse(BaseModel):
+class FetchMetadataResponse(BaseModel):
     paper: UserPaperDetail
-    metadata: MetadataCompletionRead
+    metadata: MetadataFetchRead
 
 
 def _capabilities(capabilities: Capabilities) -> CapabilitiesRead:
