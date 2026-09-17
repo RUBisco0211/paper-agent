@@ -2,6 +2,7 @@ from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, inspect
 
 from app.platform.storage import LocalObjectStorage
 from app.sessions.domain import EntryType, MessageRole
@@ -342,6 +343,50 @@ def test_single_paper_session_scope(
         params={"scope": "paper", "paper_id": paper_id},
     ).json()
     assert filtered["total"] == 1
+
+
+def test_single_paper_session_keeps_scope_in_the_entry_log(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    engine: Engine,
+    storage_root: Path,
+) -> None:
+    """范围通过会话上下文注入，不在数据库里建立会话与文献的关联。"""
+    from app.sessions.domain import EntryType
+    from app.sessions.entries import EntryStore
+
+    token = register_user(email="reader@example.com")["access_token"]
+    uploaded = client.post(
+        f"{api_prefix}/papers",
+        headers=auth_headers(token),
+        files={"file": ("attention.pdf", make_pdf(), "application/pdf")},
+    ).json()
+    paper_id = uploaded["paper"]["id"]
+
+    created = client.post(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        json={"paper_id": paper_id},
+    ).json()
+    user_id = UUID(
+        client.get(f"{api_prefix}/auth/me", headers=auth_headers(token)).json()["id"],
+    )
+
+    store = EntryStore(LocalObjectStorage(storage_root))
+    entries = store.list_entries(user_id=user_id, session_id=UUID(created["id"]))
+    assert entries[0].type is EntryType.SESSION_CONTEXT
+    assert entries[0].payload["kind"] == "paper"
+    assert entries[0].payload["paper_id"] == paper_id
+
+    context = store.session_context(user_id=user_id, session_id=UUID(created["id"]))
+    assert context.kind == "paper"
+    assert context.paper_id == UUID(paper_id)
+
+    # sessions 表没有指向文献的列
+    columns = {column["name"] for column in inspect(engine).get_columns("sessions")}
+    assert "user_paper_id" not in columns
 
 
 def test_single_paper_session_validates_input(

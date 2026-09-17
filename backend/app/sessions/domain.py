@@ -21,6 +21,8 @@ class EntryType(StrEnum):
     TOOL_RESULT = "tool_result"
     MODEL_CHANGE = "model_change"
     CONTEXT_COMPACTION = "context_compaction"
+    #: 记录本会话的讨论范围（例如"只讨论某一篇文献"），构建上下文时注入系统提示词
+    SESSION_CONTEXT = "session_context"
 
 
 class MessageRole(StrEnum):
@@ -44,6 +46,27 @@ class StopReason(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class SessionContext:
+    """会话上下文：本次会话允许使用哪些文献。
+
+    它不是数据库里的一条关联，而是会话自身内容的一部分：单篇文献会话在创建时写入一条
+    ``session_context`` Entry，构建上下文时再注入系统提示词。这样会话不需要与文献建立
+    关系，历史里也能看到"这次到底在讨论什么"。
+
+    ``kind`` 与 API 的 scope 一致：``library``（界面「全局」）、``project``、``paper``。
+    """
+
+    kind: str = "library"
+    project_id: UUID | None = None
+    paper_id: UUID | None = None
+    paper_title: str | None = None
+
+    @property
+    def scope(self) -> str:
+        return self.kind
+
+
+@dataclass(frozen=True, slots=True)
 class Session:
     id: UUID
     user_id: UUID
@@ -51,18 +74,11 @@ class Session:
     title: str | None
     created_at: datetime
     updated_at: datetime
-    #: Set when the session is about exactly one library entry. API value
-    #: ``paper``; the interface calls this scope "单篇文献".
-    user_paper_id: UUID | None = None
 
     @property
     def scope(self) -> str:
-        """``project`` | ``paper`` | ``library`` (界面「全局」)."""
-        if self.project_id is not None:
-            return "project"
-        if self.user_paper_id is not None:
-            return "paper"
-        return "library"
+        """项目会话由 project_id 决定；其余由会话上下文决定（见 SessionContext）。"""
+        return "project" if self.project_id is not None else "library"
 
 
 @dataclass(frozen=True, slots=True)

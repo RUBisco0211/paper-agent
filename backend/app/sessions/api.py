@@ -49,7 +49,7 @@ def create_session(
         project_id=payload.project_id,
         paper_id=payload.paper_id,
     )
-    return to_session_read(session, {})
+    return to_session_read(service.view_for(session))
 
 
 @router.get(
@@ -65,17 +65,17 @@ def list_sessions(
     project_id: Annotated[UUID | None, Query()] = None,
     paper_id: Annotated[UUID | None, Query()] = None,
 ) -> Page[SessionRead]:
-    sessions, total = service.list_sessions(
+    views, total = service.list_sessions(
         user_id=user.id,
         limit=params.limit,
         offset=params.offset,
         project_id=project_id,
         library_only=scope == "library",
-        paper_id=paper_id,
         paper_only=scope == "paper",
+        paper_id=paper_id,
     )
     return Page.create(
-        [to_session_read(session, counts) for session, counts in sessions],
+        [to_session_read(view) for view in views],
         total=total,
         params=params,
     )
@@ -96,7 +96,7 @@ def read_session(
     counts = {"steering": 0, "follow_up": 0}
     for item in pending:
         counts[item.delivery.value] = counts.get(item.delivery.value, 0) + 1
-    base = to_session_read(session, counts).model_dump()
+    base = to_session_read(service.view_for(session)).model_dump()
     return SessionDetail(
         **base,
         pending_messages=[to_pending_read(item) for item in pending],
@@ -120,7 +120,7 @@ def update_session(
         session_id=session_id,
         title=payload.title,
     )
-    return to_session_read(session, {})
+    return to_session_read(service.view_for(session))
 
 
 @router.delete(

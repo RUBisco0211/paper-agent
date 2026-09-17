@@ -131,7 +131,10 @@ def test_message_starts_a_generation_and_writes_entries(
     assert "api_key" not in json.dumps(history)
 
     assert runner.requests, "the runner must receive the projected turn"
-    assert runner.requests[0].messages[0]["role"] == "user"
+    messages = runner.requests[0].messages
+    # 会话范围以 system 提示词注入（单篇/项目/全局都一样）
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
 
 
 def test_failed_generation_is_recorded_and_not_reported_as_success(

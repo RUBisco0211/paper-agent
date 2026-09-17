@@ -147,7 +147,9 @@ Agentero 使用 liteparse/PDFium 在本地 worker 中生成词级布局，再将
   - **全局**：覆盖当前用户文献库全部条目（默认范围）；
   - **项目**：只覆盖该项目当前文献；
   - **单篇文献**：只覆盖该条目，用于针对一篇文献提问。
-- 范围由后端注入文献工具；模型不能通过传参突破。无全文条目可以被列举，但不能伪装为已读取的全文证据。
+- 范围表达与注入方式：**项目**范围由会话的 `project_id` 表达；**单篇文献**范围不建立会话与文献的数据库关联，
+  而是在会话创建时写入一条会话上下文记录（会话日志的一部分），构建上下文时作为 system 提示词注入，
+  并在检索/工具调用时收窄可见文献集合。模型不能通过传参突破范围。无全文条目可以被列举，但不能伪装为已读取的全文证据。
 - 删除项目不删除个人库中的文献，但按原型终止并清理项目会话；前端展示删除后果与处理中状态。
 - 验收：同一问题在不同项目中只使用各自授权文献，新加入文献就绪后可被后续工具调用发现。
 
@@ -227,7 +229,7 @@ Agentero 使用 liteparse/PDFium 在本地 worker 中生成词级布局，再将
 | 处理进度/重试 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry` | 显示各阶段；轮询即可满足最低验收 |
 | 项目管理 | `/v1/projects`、`/v1/projects/{project_id}` | 创建、列表、详情、重命名、删除 |
 | 项目文献 | `GET/POST /v1/projects/{project_id}/papers` | 列表与追加，无移除接口 |
-| 会话管理 | `/v1/sessions`、`/v1/sessions/{session_id}` | 创建（`project_id` 与 `paper_id` 互斥，都不传即全局）、列表（`scope=library\|project\|paper`）、详情、重命名、删除 |
+| 会话管理 | `/v1/sessions`、`/v1/sessions/{session_id}` | 创建（`project_id` 与 `paper_id` 互斥，都不传即全局）、列表（`scope=library\|project\|paper`）、详情、重命名、删除；`paper_id` 只作为创建入参，不落库 |
 | 历史/提问/停止 | `/v1/sessions/{session_id}/entries`、`messages`、`stop` | 支持 steering/follow_up；会话详情返回 pending 快照与顺序 |
 | 继续消费队列 | `POST /v1/sessions/{session_id}/resume` | 提交瞬时 LLM 配置，继续已排队输入；不创建占位 user Entry |
 | 流式订阅 | `GET /v1/sessions/{session_id}/events` | fetch + Bearer；支持事件游标 |

@@ -454,8 +454,12 @@ export function PaperDetailSheet({
             disabled={startSession.isPending}
             onClick={() => startSession.mutate()}
           >
-            <MessageSquarePlus data-icon="inline-start" />
-            就用这篇提问
+            {startSession.isPending ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <MessageSquarePlus data-icon="inline-start" />
+            )}
+            提问
           </Button>
         </div>
       </SheetContent>

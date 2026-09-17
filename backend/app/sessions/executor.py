@@ -22,7 +22,14 @@ from .agent import (
     UnconfiguredAgentRunner,
 )
 from .context import project_messages
-from .domain import Delivery, EntryType, MessageRole, Session, StopReason
+from .domain import (
+    Delivery,
+    EntryType,
+    MessageRole,
+    Session,
+    SessionContext,
+    StopReason,
+)
 from .entries import EntryStore
 from .events import EventBroker
 from .persistence import SessionRepository
@@ -129,17 +136,16 @@ class SessionExecutor:
             data={"provider": llm_config.provider, "model": llm_config.model},
         )
         entries = self._entries.list_entries(user_id=user_id, session_id=session_id)
+        context = self._resolve_context(session)
         request = AgentTurnRequest(
             session_id=session_id,
             user_id=user_id,
             scope={
-                "kind": session.scope,
-                "project_id": str(session.project_id) if session.project_id else None,
-                "paper_id": str(session.user_paper_id)
-                if session.user_paper_id
-                else None,
+                "kind": context.kind,
+                "project_id": str(context.project_id) if context.project_id else None,
+                "paper_id": str(context.paper_id) if context.paper_id else None,
             },
-            messages=project_messages(entries),
+            messages=project_messages(entries, context=context),
             llm_config=llm_config,
         )
 
@@ -200,6 +206,14 @@ class SessionExecutor:
             self._publish_queue_state(session.id)
             return None
         return self._dequeue_next_pending(session.id)
+
+    def _resolve_context(self, session: Session) -> SessionContext:
+        if session.project_id is not None:
+            return SessionContext(kind="project", project_id=session.project_id)
+        return self._entries.session_context(
+            user_id=session.user_id,
+            session_id=session.id,
+        )
 
     def _finalize(
         self,

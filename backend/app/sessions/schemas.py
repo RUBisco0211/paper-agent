@@ -3,13 +3,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from .application import MessageSubmission, ResumeOutcome
+from .application import MessageSubmission, ResumeOutcome, SessionView
 from .domain import (
     Citation,
     Delivery,
     EntryType,
     PendingMessage,
-    Session,
     SessionEntry,
 )
 
@@ -72,19 +71,20 @@ class SessionEntryRead(BaseModel):
     payload: dict
 
 
-def to_session_read(session: Session, counts: dict[str, int]) -> SessionRead:
+def to_session_read(view: SessionView) -> SessionRead:
+    """范围来自会话上下文（单篇文献会话不在数据库里建关联）。"""
     return SessionRead(
-        id=session.id,
-        title=session.title,
-        scope=session.scope,
-        project_id=session.project_id,
-        paper_id=session.user_paper_id,
+        id=view.session.id,
+        title=view.session.title,
+        scope=view.context.scope,
+        project_id=view.session.project_id,
+        paper_id=view.context.paper_id,
         pending=PendingCountsRead(
-            steering=counts.get("steering", 0),
-            follow_up=counts.get("follow_up", 0),
+            steering=view.pending_counts.get("steering", 0),
+            follow_up=view.pending_counts.get("follow_up", 0),
         ),
-        created_at=session.created_at,
-        updated_at=session.updated_at,
+        created_at=view.session.created_at,
+        updated_at=view.session.updated_at,
     )
 
 

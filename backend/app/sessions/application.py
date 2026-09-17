@@ -15,6 +15,7 @@ from .domain import (
     MessageRole,
     PendingMessage,
     Session,
+    SessionContext,
     SessionEntry,
     normalize_message,
     normalize_title,
@@ -25,6 +26,15 @@ from .executor import SessionExecutor
 from .persistence import SessionRepository
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class SessionView:
+    """会话 + 会话上下文 + 待投递计数（界面需要的信息一次给全）。"""
+
+    session: Session
+    context: SessionContext
+    pending_counts: dict[str, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,9 +94,26 @@ class SessionService:
         session = self._repository.add_session(
             user_id=user_id,
             project_id=project_id,
-            user_paper_id=paper_id,
             title=normalize_title(title) if title else None,
         )
+        if paper_id is not None:
+            # 单篇文献会话：范围写进会话自己的日志（不与文献建库表关联），
+            # 构建上下文时再注入系统提示词。
+            self._entries.write_session_context(
+                user_id=user_id,
+                session_id=session.id,
+                context=SessionContext(
+                    kind="paper",
+                    paper_id=paper_id,
+                    paper_title=entry.user_paper.title if entry else None,
+                ),
+            )
+        elif project_id is not None:
+            self._entries.write_session_context(
+                user_id=user_id,
+                session_id=session.id,
+                context=SessionContext(kind="project", project_id=project_id),
+            )
         self._repository.commit()
         logger.info(
             "service.session.created",
@@ -103,20 +130,65 @@ class SessionService:
         offset: int,
         project_id: UUID | None = None,
         library_only: bool = False,
-        paper_id: UUID | None = None,
         paper_only: bool = False,
-    ) -> tuple[list[tuple[Session, dict[str, int]]], int]:
+        paper_id: UUID | None = None,
+    ) -> tuple[list[SessionView], int]:
+        """列出会话。
+
+        ``library`` / ``project`` 由数据库过滤；单篇文献会话的范围写在会话日志里，
+        所以这一种在内存里筛（用户会话数量有界）。
+        """
+        if paper_only or library_only:
+            # 单篇文献会话不在数据库里体现范围，因此这两种列表都在内存里筛
+            # （只统计当前用户自己的会话，数量有界）。
+            candidates, _ = self._repository.list_sessions(
+                user_id=user_id,
+                limit=1000,
+                offset=0,
+                library_only=library_only,
+            )
+            views = [
+                view
+                for view in self._views(candidates)
+                if (
+                    view.context.kind == "paper"
+                    and (paper_id is None or view.context.paper_id == paper_id)
+                    if paper_only
+                    else view.context.kind != "paper"
+                )
+            ]
+            return views[offset : offset + limit], len(views)
+
         sessions, total = self._repository.list_sessions(
             user_id=user_id,
             limit=limit,
             offset=offset,
             project_id=project_id,
-            library_only=library_only,
-            paper_id=paper_id,
-            paper_only=paper_only,
         )
+        return self._views(sessions), total
+
+    def context_for(self, session: Session) -> SessionContext:
+        """会话范围：项目会话看 project_id，其余看会话日志里的上下文。"""
+        if session.project_id is not None:
+            return SessionContext(kind="project", project_id=session.project_id)
+        return self._entries.session_context(
+            user_id=session.user_id,
+            session_id=session.id,
+        )
+
+    def view_for(self, session: Session) -> SessionView:
+        return self._views([session])[0]
+
+    def _views(self, sessions: list[Session]) -> list[SessionView]:
         counts = self._repository.pending_counts([session.id for session in sessions])
-        return [(session, counts.get(session.id, {})) for session in sessions], total
+        return [
+            SessionView(
+                session=session,
+                context=self.context_for(session),
+                pending_counts=counts.get(session.id, {}),
+            )
+            for session in sessions
+        ]
 
     def get(self, *, user_id: UUID, session_id: UUID) -> Session:
         session = self._repository.get_session(session_id)
@@ -309,10 +381,11 @@ class SessionService:
     # Scope -----------------------------------------------------------------
     def scope_entries(self, session: Session) -> list[LibraryEntry]:
         """Papers the agent of this session is allowed to read."""
-        if session.user_paper_id is not None:
+        context = self.context_for(session)
+        if context.kind == "paper" and context.paper_id is not None:
             entry = self._library.get_entry(
                 user_id=session.user_id,
-                user_paper_id=session.user_paper_id,
+                user_paper_id=context.paper_id,
             )
             return [entry] if entry is not None else []
         if session.project_id is None:

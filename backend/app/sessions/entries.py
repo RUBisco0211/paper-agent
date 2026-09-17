@@ -14,7 +14,7 @@ from uuid import UUID, uuid4
 import structlog
 
 from ..platform.storage import ObjectStorage, session_entries_key
-from .domain import EntryType, MessageRole, SessionEntry
+from .domain import EntryType, MessageRole, SessionContext, SessionEntry
 
 logger = structlog.get_logger(__name__)
 
@@ -51,6 +51,44 @@ class EntryStore:
 
     def count_entries(self, *, user_id: UUID, session_id: UUID) -> int:
         return len(self._read(user_id=user_id, session_id=session_id))
+
+    def session_context(self, *, user_id: UUID, session_id: UUID) -> SessionContext:
+        """本会话的讨论范围。
+
+        范围不落数据库，而是会话自己在创建时写入的一条 ``session_context`` Entry：
+        它排在日志最前面，所以这里只需要读到第一条匹配即可。
+        """
+        key = session_entries_key(str(user_id), str(session_id))
+        if not self._storage.exists(key):
+            return SessionContext()
+        for entry in _iter_entries(self._storage.open(key)):
+            if entry.type is EntryType.SESSION_CONTEXT:
+                return SessionContext(
+                    kind=str(entry.payload.get("kind") or "library"),
+                    project_id=_uuid_or_none(entry.payload.get("project_id")),
+                    paper_id=_uuid_or_none(entry.payload.get("paper_id")),
+                    paper_title=entry.payload.get("paper_title"),
+                )
+        return SessionContext()
+
+    def write_session_context(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        context: SessionContext,
+    ) -> SessionEntry:
+        return self.append(
+            user_id=user_id,
+            session_id=session_id,
+            entry_type=EntryType.SESSION_CONTEXT,
+            payload={
+                "kind": context.kind,
+                "project_id": str(context.project_id) if context.project_id else None,
+                "paper_id": str(context.paper_id) if context.paper_id else None,
+                "paper_title": context.paper_title,
+            },
+        )
 
     # Writes ----------------------------------------------------------------
     def append(
@@ -118,6 +156,15 @@ class EntryStore:
         if not self._storage.exists(key):
             return []
         return list(_iter_entries(self._storage.open(key)))
+
+
+def _uuid_or_none(value: object) -> UUID | None:
+    if not value:
+        return None
+    try:
+        return UUID(str(value))
+    except ValueError:
+        return None
 
 
 def _iter_entries(stream: BinaryIO):
