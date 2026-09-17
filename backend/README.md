@@ -116,19 +116,26 @@ TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
 1. **容器内下载**（服务器默认）：`EMBEDDING_MODEL=BAAI/bge-m3`，权重缓存在 `embedding-data`
    卷里。需要容器能访问 HuggingFace；容器**不会**继承宿主机代理，网络受限时可在仓库根 `.env`
    设 `HF_ENDPOINT` 指向镜像。
-2. **宿主机预下载 + 挂载**（镜像源缺 etag 时唯一可行）：
+2. **宿主机预下载 + 挂载**（无法直连 HF、或镜像源缺 etag 时用这条）：
 
    ```bash
    cd <仓库根>
-   HF_ENDPOINT=https://hf-mirror.com hf download BAAI/bge-m3 --local-dir models/bge-m3 \
-     --include "*.json" "*.bin" "*.txt" "*.model"
+   ./scripts/fetch-embedding-model.sh        # 默认取 BAAI/bge-m3 的 dense 权重
    # 仓库根 .env
    EMBEDDING_MODEL=/models/bge-m3
    docker compose up -d embedding
    ```
 
-   只取 dense 权重即可（不下载 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`）；
-   `./models` 以只读方式挂到容器 `/models`。
+   该脚本只取 dense 推理需要的文件（不含 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`，
+   省掉约 2GB），`./models` 以只读方式挂到容器 `/models`。
+
+   实测踩到的两个坑（脚本已规避）：
+
+   - `hf download` 的 `--include` 只接受单个模式，多写会被当作显式文件名并给出
+     "Ignoring `--include`" 警告；用脚本里的 curl 列表最直观。
+   - 宿主机若配置了 HTTP 代理，`curl`/`hf` 会默认走代理，而代理对 GB 级文件常常中途卡死
+     （表现为下载停在某个字节不再增长）。脚本对镜像源设了 `--noproxy '*'`，
+     直连镜像源可稳定跑到 3MB/s 以上。
 
 服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
 模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。
