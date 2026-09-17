@@ -64,11 +64,15 @@ def _run_migrations(url: str) -> None:
 
 @pytest.fixture(autouse=True, scope="session")
 def isolated_provider_config() -> Iterator[None]:
-    """测试不依赖开发者 .env 里的 Provider 配置。
+    """测试默认不依赖开发者 .env 里的 Provider 配置。
 
-    否则本地填了真实 MinerU/Embedding 凭据时，用例会去调用外部服务，
-    结果随环境而变（既慢又不确定）。
+    本地填了真实 MinerU/Embedding 凭据时，用例会去调用外部服务，结果随环境而变。
+    想用真实服务跑测试时设置 ``PAPER_AGENT_LIVE_PROVIDERS=1``；验证真实链路更推荐
+    backend/README 里的手工方式（上传真实 PDF 观察阶段与检索）。
     """
+    if os.environ.get("PAPER_AGENT_LIVE_PROVIDERS") == "1":
+        yield
+        return
     provider_settings = [
         "mineru_api_url",
         "mineru_api_key",

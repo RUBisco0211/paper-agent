@@ -76,9 +76,49 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 
 `MINERU_API_URL` 只填 **base URL**（例如 `https://mineru.net`）：适配器会自行拼接
 `/api/v4/file-urls/batch`（申请上传地址）与 `/api/v4/extract-results/batch/{batch_id}`（轮询结果）。
-把某个具体端点写进这个变量会拼出不存在的地址，阶段会以 `provider_unavailable` 失败。
+即使误填了具体端点（例如 `https://mineru.net/api/v4/extract/task`），适配器也会归一化到 base URL；
+只有自建服务挂在子路径下（不含 `/api/v4`）时才原样使用。
 
-用测试时不需要这些凭据：集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`。
+适配器已经处理的两个 MinerU 实际行为（都有回归用例）：
+
+1. **预签名上传地址不能带 `Content-Type`**：OSS 签名按空 Content-Type 计算，多带一个头会返回
+   `403 SignatureDoesNotMatch`。
+2. 响应由 `code/msg/trace_id/data` 包装：`code != 0` 时把 `msg` 映射成稳定错误码（鉴权 →
+   `provider_not_configured`、限流 → `provider_rate_limited`、其他 → `provider_unavailable`）；
+   `waiting-file` 持续过久会明确报"未收到上传的文件"。
+
+用测试时不需要这些凭据：集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`；
+确实想用真实服务跑测试时设置 `PAPER_AGENT_LIVE_PROVIDERS=1`。
+
+## 手工验证真实解析
+
+```bash
+cd backend
+# 用 .env 里的 MinerU 凭据上传一篇真实英文论文，观察阶段与检索
+uv run python - <<'SCRIPT'
+import time, uuid
+from pathlib import Path
+import httpx
+
+pdf = Path("/path/to/paper.pdf")
+with httpx.Client(base_url="http://127.0.0.1:8000", timeout=120) as c:
+    email = f"check-{uuid.uuid4().hex[:6]}@example.com"
+    token = c.post("/v1/auth/register", json={"email": email, "password": "check-pass-1"}).json()["access_token"]
+    auth = {"Authorization": f"Bearer {token}"}
+    with pdf.open("rb") as fh:
+        job = c.post("/v1/papers", headers=auth, files={"file": (pdf.name, fh, "application/pdf")}).json()
+    job_id, paper_id = job["ingestion_job"]["id"], job["paper"]["id"]
+    while True:
+        detail = c.get(f"/v1/ingestion-jobs/{job_id}", headers=auth).json()
+        print({stage["stage"]: stage["status"] for stage in detail["stages"]}, detail["status"])
+        if detail["status"] in {"succeeded", "failed"}:
+            break
+        time.sleep(3)
+    print(c.get(f"/v1/papers/{paper_id}", headers=auth).json()["capabilities"])
+    print(c.post("/v1/search", headers=auth, json={"query": "your query"}).json()["status"])
+SCRIPT
+```
+
 
 ## 当前未接入的能力
 

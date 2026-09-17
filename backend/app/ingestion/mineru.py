@@ -12,6 +12,7 @@ import zipfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -31,6 +32,9 @@ MAX_TOTAL_IMAGE_BYTES = 128 * 1024 * 1024
 POLL_INTERVAL_SECONDS = 3.0
 SUCCESS_STATES = {"done", "success", "succeeded", "finished"}
 FAILURE_STATES = {"failed", "error"}
+# 已提交但还看不到文件的轮询次数上限（超过说明上传没有生效）
+MAX_WAITING_FILE_POLLS = 10
+API_PATH_MARKER = "/api/v4"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +58,10 @@ class MineruParser:
         timeout_seconds: float = 600.0,
         http_client_factory: HttpClientFactory = default_http_client_factory,
         poll_interval: float = POLL_INTERVAL_SECONDS,
+        model_version: str | None = None,
     ) -> None:
-        self._base_url = (base_url or "").rstrip("/")
+        self._base_url = _normalize_base_url(base_url or "")
+        self._model_version = model_version
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._client_factory = http_client_factory
@@ -86,11 +92,13 @@ class MineruParser:
         client: httpx.Client,
         pdf_path: Path,
     ) -> tuple[str, str]:
-        payload = {
+        payload: dict = {
             "enable_formula": True,
             "language": "en",
             "files": [{"name": pdf_path.name, "is_ocr": False}],
         }
+        if self._model_version:
+            payload["model_version"] = self._model_version
         response = self._post(
             client, f"{self._base_url}{UPLOAD_URL_PATH}", json=payload
         )
@@ -102,25 +110,40 @@ class MineruParser:
         return str(batch_id), str(urls[0])
 
     def _upload(self, client: httpx.Client, upload_url: str, pdf_path: Path) -> None:
+        """把 PDF PUT 到预签名地址。
+
+        注意：**不能带 Content-Type**。MinerU 返回的 OSS 预签名 URL 是按空
+        Content-Type 计算的，多带一个头会让 OSS 报 SignatureDoesNotMatch（实测 403）。
+        """
         try:
             with pdf_path.open("rb") as handle:
-                response = client.put(
-                    upload_url,
-                    content=handle.read(),
-                    headers={"Content-Type": "application/pdf"},
-                )
+                response = client.put(upload_url, content=handle.read())
         except httpx.HTTPError as exc:
             raise _provider_unavailable("上传 PDF 到 MinerU 失败") from exc
         if response.status_code >= 400:
-            raise _provider_unavailable("MinerU 拒绝了 PDF 上传")
+            raise _provider_unavailable(
+                f"MinerU 拒绝了 PDF 上传（HTTP {response.status_code}："
+                f"{_summarize(response.text)}）",
+            )
 
     def _await_result(self, client: httpx.Client, batch_id: str) -> bytes:
         deadline = time.monotonic() + self._timeout_seconds
         url = f"{self._base_url}{BATCH_RESULT_PATH.format(batch_id=batch_id)}"
+        waiting_file_polls = 0
         while True:
             response = self._get(client, url)
             result = _first_result(response)
             state = str(result.get("state", "")).lower()
+
+            if state == "waiting-file":
+                # 上传地址已申请但服务端还没看到文件：重复太多次说明上传没生效
+                waiting_file_polls += 1
+                if waiting_file_polls > MAX_WAITING_FILE_POLLS:
+                    raise _provider_unavailable(
+                        "MinerU 未收到上传的文件，请检查上传地址是否可用",
+                    )
+            else:
+                waiting_file_polls = 0
             if state in SUCCESS_STATES:
                 zip_url = result.get("full_zip_url") or result.get("zip_url")
                 if not zip_url:
@@ -203,10 +226,56 @@ def _data_of(response: httpx.Response) -> dict:
         raise _invalid_artifact("MinerU 返回内容不是 JSON") from exc
     if not isinstance(payload, dict):
         raise _invalid_artifact("MinerU 返回结构不兼容")
+
+    # MinerU 用 code/msg/trace_id/data 包装响应，非 0 一律视为失败并带出 msg
+    code = payload.get("code")
+    message = str(payload.get("msg") or "").strip()
+    if code not in (0, None):
+        raise _provider_error(code, message)
+
     data = payload.get("data")
     if not isinstance(data, dict):
-        raise _invalid_artifact(f"MinerU 返回缺少 data：{payload.get('msg') or ''}")
+        raise _invalid_artifact(f"MinerU 返回缺少 data：{message}")
     return data
+
+
+def _provider_error(code: object, message: str) -> AppError:
+    """把 MinerU 的业务错误码映射成稳定错误码。"""
+    text = message or f"MinerU 返回 code={code}"
+    lowered = text.lower()
+    if any(word in lowered for word in ("token", "auth", "unauthorized", "permission")):
+        return AppError(
+            f"MinerU 鉴权失败：{text}",
+            code=ErrorCode.PROVIDER_NOT_CONFIGURED,
+            status_code=503,
+        )
+    if any(word in lowered for word in ("limit", "quota", "频繁", "限流")):
+        return AppError(
+            f"MinerU 限流或额度不足：{text}",
+            code=ErrorCode.PROVIDER_RATE_LIMITED,
+            status_code=429,
+        )
+    return AppError(
+        f"MinerU 拒绝了请求：{text}",
+        code=ErrorCode.PROVIDER_UNAVAILABLE,
+        status_code=502,
+    )
+
+
+def _normalize_base_url(value: str) -> str:
+    """只保留 base URL。
+
+    部署者常把某个端点写进配置（例如 https://mineru.net/api/v4/extract/task），
+    直接拼接会得到不存在的路径，因此这里把 API 路径去掉；
+    自建服务若挂在子路径下（不含 /api/v4）则原样保留。
+    """
+    candidate = (value or "").strip().rstrip("/")
+    if not candidate:
+        return ""
+    parsed = urlparse(candidate)
+    if API_PATH_MARKER in parsed.path:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return candidate
 
 
 def _first_result(response: httpx.Response) -> dict:
@@ -281,6 +350,12 @@ def _load_content_list(payload: bytes) -> list[dict]:
     if not any(isinstance(block, dict) for block in parsed):
         raise _invalid_artifact("content_list.json 缺少有效块")
     return [block for block in parsed if isinstance(block, dict)]
+
+
+def _summarize(text: str, *, limit: int = 200) -> str:
+    """压缩第三方错误体，便于定位又不刷屏。"""
+    collapsed = " ".join((text or "").split())
+    return collapsed[:limit]
 
 
 def _provider_unavailable(message: str) -> AppError:
