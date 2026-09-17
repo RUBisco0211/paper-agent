@@ -31,7 +31,7 @@
 |---|---|---|
 | Agent 回合执行 | `UnconfiguredAgentRunner` 返回稳定错误 `agent_unavailable`，并写入 `stop_reason=failed` 的 assistant Entry | 会话机制、pending 队列、SSE、引用校验均可测；真实回答需要接入 AgentScope 执行器 |
 | MinerU 正文解析 | 已用真实凭据与真实英文论文验证：133 blocks / 14 图片 → 17 chunks，关键词检索可命中并带页码。未配置时 fulltext 阶段失败并记录 `provider_not_configured` | 适配器已处理"配置带端点需归一化"与"预签名上传不能带 Content-Type"两个实际行为 |
-| Embedding | 由 compose 里的 TEI 服务提供（`BAAI/bge-m3`，1024 维）；未启动/未配置时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索；适配层与模型档案见 `app/retrieval/embedding/` |
+| Embedding | 适配层已就绪（`EmbeddingAdapter` + 模型档案）；当前配置指向云服务 DashScope `text-embedding-v3`（1024 维，待填 Key）。未配置/未启动时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索；**向量通道尚未用真实服务验证**，留到部署时验收 |
 | Redis / Celery / MinIO | 未引入；后台任务在 FastAPI 进程内、Entry 日志写本地对象存储 | 单机单进程语义；重启后活动生成中断（pending 仍保留） |
 | 前端页面 | 已实现登录/注册、论文库、项目、会话工作区与模型设置 | 见第 3 节；`/v1/search` 暂无独立页面（按规格不做搜索页） |
 
@@ -71,6 +71,7 @@ cd ../frontend && pnpm install && pnpm run test && pnpm run typecheck && pnpm de
 
 - 真实 LLM 问答与工具摘要的浏览器闭环：页面已具备，但执行器仍返回 `agent_unavailable`，因此只验证到“失败可解释”；
 - 引用展开页面已实现，但没有真实回答产生引用（依赖 Agent 接入后写入证据）；
-- Embedding 真实链路（需要实例级 Embedding 服务；当前 `has_embedding=false`、检索为 degraded）；
+- Embedding 真实链路：适配层与供应商档案已完成（含 DashScope 的 ≤10 条/请求与整批 token 上限、bge 系前缀规则），但尚未用真实云服务跑通端到端；
+- 自建 TEI 的权重已下载并 sha256 校验（`./models/bge-m3`，被 .gitignore 忽略），因本机内存不足（swap 已用 18.8GB）未在本机加载；
 - 多用户并发上传同一 PDF 的全局锁竞争（当前依赖唯一约束与幂等写入，未做 Redis 锁）；
 - 浏览器端到端用例（Playwright）与 Yaak 集合。

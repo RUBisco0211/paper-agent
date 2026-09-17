@@ -198,6 +198,15 @@ __init__.py          build_embedding_adapter()：按配置装配（EMBEDDING_ADA
 启动时会比对 `EMBEDDING_DIMENSIONS` 与 `chunks.embedding` 的实际维度，不一致会记录
 `configuration.embedding_dimension_mismatch` 错误日志（而不是等到写入时才发现）。
 
+### 本机实测的容量提醒
+
+fp32 `bge-m3` 权重 2.3GB，加载后常驻约 2.5~3GB。在一台已用 18.8GB swap 的笔记本上强启，
+OrbStack 与 Docker 守护进程会一起被换页拖死（`docker ps` 无响应）。因此：
+
+- 本地开发优先用云 Embedding（上面的 DashScope / SiliconFlow），零内存占用；
+- 自建留给内存充足的服务器，并用 `--profile embeddings` 显式启用；
+- 服务器上按 GPU 选镜像（`TEI_IMAGE`），CPU 上跑 bge-m3 会比较慢。
+
 注意事项：
 
 - **维度必须与迁移一致**：`chunks.embedding` 是 `vector(1024)`（迁移 `20260917_0007`）。
