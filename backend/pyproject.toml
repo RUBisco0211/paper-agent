@@ -10,6 +10,7 @@ dependencies = [
     "argon2-cffi>=23.1.0",
     "asgi-correlation-id>=5.0.1",
     "fastapi>=0.141.1",
+    "fonttools>=4.60.0",
     "httpx>=0.28",
     "pyjwt>=2.10.1",
     "psycopg[binary]>=3.2",
