@@ -31,7 +31,7 @@
 |---|---|---|
 | Agent 回合执行 | `UnconfiguredAgentRunner` 返回稳定错误 `agent_unavailable`，并写入 `stop_reason=failed` 的 assistant Entry | 会话机制、pending 队列、SSE、引用校验均可测；真实回答需要接入 AgentScope 执行器 |
 | MinerU 正文解析 | 已用真实凭据与真实英文论文验证：133 blocks / 14 图片 → 17 chunks，关键词检索可命中并带页码。未配置时 fulltext 阶段失败并记录 `provider_not_configured` | 适配器已处理"配置带端点需归一化"与"预签名上传不能带 Content-Type"两个实际行为 |
-| Embedding | 未配置时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索 |
+| Embedding | 由 compose 里的 TEI 服务提供（`BAAI/bge-m3`，1024 维）；未启动/未配置时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索；适配层与模型档案见 `app/retrieval/embedding/` |
 | Redis / Celery / MinIO | 未引入；后台任务在 FastAPI 进程内、Entry 日志写本地对象存储 | 单机单进程语义；重启后活动生成中断（pending 仍保留） |
 | 前端页面 | 已实现登录/注册、论文库、项目、会话工作区与模型设置 | 见第 3 节；`/v1/search` 暂无独立页面（按规格不做搜索页） |
 

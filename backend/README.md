@@ -96,18 +96,29 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 （1024 维 / 8192 上下文 / 不需要 query、document 前缀，适合英文论文长句）。
 推荐 `text-embeddings-inference`（TEI）：本地与服务器同一套接口，只是镜像/安装方式不同。
 
+Docker 是唯一入口（本地与服务器同一套）：
+
 ```bash
-# 本地（Apple Silicon，Metal 加速，最快）
-brew install text-embeddings-inference
-text-embeddings-router --model-id BAAI/bge-m3 --port 8080
+cd <仓库根>
 
-# 容器（仓库根，Apple Silicon 走 CPU）
-docker compose --profile embeddings up -d embedding
+# 只跑数据库（日常开发，不起模型）
+docker compose up -d postgres
 
-# 服务器：把 TEI_IMAGE 换成对应 GPU 的镜像，例如 A100 用
-# ghcr.io/huggingface/text-embeddings-inference:1.9
-TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose --profile embeddings up -d embedding
+# 本地联调：数据库 + Embedding（首次会拉镜像约 1.5GB、模型约 2.3GB）
+./start.sh --with-embeddings
+
+# 服务器：把 TEI_IMAGE 换成匹配 GPU 的镜像后整体拉起
+TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
 ```
+
+拉取权重需要能访问 HuggingFace：容器**不会**继承宿主机代理，若直连不通，在仓库根 `.env` 里设
+`HF_ENDPOINT=https://hf-mirror.com`（compose 会自动读取该文件）；已经下载过的权重缓存在
+`embedding-data` 卷里，之后重启不再联网。
+
+服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
+模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。
+镜像后缀按计算能力选：A100/A30→无后缀、A10/A40→`86-`、RTX 4000→`89-`、H100→`hopper-`、
+纯 CPU（x86）→`cpu-`、Apple Silicon→`cpu-arm64-`（版本号 1.9）。
 
 对应配置（`backend/.env`）：
 

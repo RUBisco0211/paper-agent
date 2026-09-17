@@ -27,12 +27,15 @@ services:
   #   NVIDIA Hopper（H100）        ghcr.io/huggingface/text-embeddings-inference:hopper-1.9
   #   x86_64 纯 CPU                ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
   #   Apple Silicon（Docker/CPU）  ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
-  # 启动：docker compose --profile embeddings up -d embedding
+  # 服务端：`docker compose up -d` 会连它一起拉起；本地只跑库时用 `up -d postgres`。
   embedding:
     image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9}
     container_name: paper-agent-embedding
-    profiles: ["embeddings"]
     restart: unless-stopped
+    environment:
+      # 拉取权重的 HF 端点。默认官方站点；网络无法直连 HF 时在仓库根 .env 里设
+      # HF_ENDPOINT=https://hf-mirror.com（容器不会自动继承宿主机代理）
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
     command:
       - --model-id
       - ${EMBEDDING_MODEL:-BAAI/bge-m3}
@@ -43,8 +46,10 @@ services:
       - "32"
       - --auto-truncate
     ports:
-      - "8080:80"
+      # 只绑本机：TEI 自身没有鉴权，服务器上不要对外暴露；后端与它同机或走内网
+      - "127.0.0.1:8080:80"
     volumes:
+      # 模型权重缓存在卷里，重启不重复下载
       - embedding-data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/health || exit 1"]

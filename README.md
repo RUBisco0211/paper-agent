@@ -23,6 +23,7 @@ docs/       产品契约、架构基线与技术选型调研
 | [docs/frontend/ui-spec.md](docs/frontend/ui-spec.md) | 前端文案、布局与 shadcn 组件规范（改前端前必读） |
 | [CONTEXT.md](CONTEXT.md) | 领域术语表（ubiquitous language） |
 | [AGENTS.md](AGENTS.md) | 协作约定与必读文档索引 |
+| [.env.example](.env.example) | compose 变量（HF 端点、TEI 镜像、向量模型） |
 
 ## 快速开始
 
@@ -31,6 +32,11 @@ docs/       产品契约、架构基线与技术选型调研
 ```bash
 # 1. 依赖服务（PostgreSQL 16 + pgvector）
 docker compose up -d postgres
+
+# 可选：向量检索所需的 Embedding 服务（TEI + BAAI/bge-m3，首次拉镜像与权重）
+# 直连 huggingface.co 不通时，在仓库根 .env 里设 HF_ENDPOINT=https://hf-mirror.com
+cp .env.example .env
+docker compose up -d embedding
 
 # 2. 后端
 cd backend
