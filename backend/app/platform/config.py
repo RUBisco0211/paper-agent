@@ -61,8 +61,10 @@ class Settings(BaseSettings):
     mineru_timeout_seconds: float = 600.0
     embedding_api_url: str | None = None
     embedding_api_key: str | None = None
-    embedding_model: str = "text-embedding-3-small"
-    embedding_dimensions: int = 1536
+    # 默认按 BAAI/bge-m3：1024 维、8192 上下文、无需 query/document 前缀。
+    # 维度必须与 alembic 迁移里 chunks.embedding 的维度一致。
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimensions: int = 1024
     crossref_api_url: str = "https://api.crossref.org"
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
     arxiv_pdf_url: str = "https://arxiv.org/pdf"

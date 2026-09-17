@@ -19,5 +19,40 @@ services:
       timeout: 5s
       retries: 10
 
+  # Embedding 服务（text-embeddings-inference + BAAI/bge-m3，1024 维）
+  # 默认镜像适用于 Apple Silicon 的 Docker（纯 CPU）；服务器按硬件替换 TEI_IMAGE：
+  #   NVIDIA Ampere 8.0（A100/A30） ghcr.io/huggingface/text-embeddings-inference:1.9
+  #   NVIDIA Ampere 8.6（A10/A40） ghcr.io/huggingface/text-embeddings-inference:86-1.9
+  #   NVIDIA Ada（RTX 4000）       ghcr.io/huggingface/text-embeddings-inference:89-1.9
+  #   NVIDIA Hopper（H100）        ghcr.io/huggingface/text-embeddings-inference:hopper-1.9
+  #   x86_64 纯 CPU                ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
+  #   Apple Silicon（Docker/CPU）  ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
+  # 启动：docker compose --profile embeddings up -d embedding
+  embedding:
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9}
+    container_name: paper-agent-embedding
+    profiles: ["embeddings"]
+    restart: unless-stopped
+    command:
+      - --model-id
+      - ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      - --port
+      - "80"
+      # 与后端每批 32 条一致；bge-m3 上下文 8192，超长自动截断
+      - --max-client-batch-size
+      - "32"
+      - --auto-truncate
+    ports:
+      - "8080:80"
+    volumes:
+      - embedding-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+
 volumes:
   postgres-data:
+  embedding-data:

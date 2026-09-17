@@ -90,6 +90,44 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 用测试时不需要这些凭据：集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`；
 确实想用真实服务跑测试时设置 `PAPER_AGENT_LIVE_PROVIDERS=1`。
 
+## Embedding（可选）
+
+向量通道由一个 **OpenAI 兼容的 `/embeddings`** 服务提供，默认按 `BAAI/bge-m3` 配置
+（1024 维 / 8192 上下文 / 不需要 query、document 前缀，适合英文论文长句）。
+推荐 `text-embeddings-inference`（TEI）：本地与服务器同一套接口，只是镜像/安装方式不同。
+
+```bash
+# 本地（Apple Silicon，Metal 加速，最快）
+brew install text-embeddings-inference
+text-embeddings-router --model-id BAAI/bge-m3 --port 8080
+
+# 容器（仓库根，Apple Silicon 走 CPU）
+docker compose --profile embeddings up -d embedding
+
+# 服务器：把 TEI_IMAGE 换成对应 GPU 的镜像，例如 A100 用
+# ghcr.io/huggingface/text-embeddings-inference:1.9
+TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose --profile embeddings up -d embedding
+```
+
+对应配置（`backend/.env`）：
+
+```dotenv
+EMBEDDING_API_URL=http://127.0.0.1:8080/v1
+EMBEDDING_MODEL=BAAI/bge-m3
+EMBEDDING_DIMENSIONS=1024
+```
+
+注意事项：
+
+- **维度必须与迁移一致**：`chunks.embedding` 是 `vector(1024)`（迁移 `20260917_0007`）。
+  换模型且维度不同时，需要一次离线迁移：改迁移里的维度 → 重建列 → 迁移会重置
+  `papers.has_embedding`，之后对条目重试处理即可重新生成向量。
+- **模型名要跟着一起改**：`EMBEDDING_MODEL` 会写进 `chunks.embedding_model`，向量检索按它过滤，
+  避免新旧模型向量混用。
+- 未配置时 embedding 阶段会以 `provider_not_configured` 失败，全文与关键词检索照常可用（检索状态为 `degraded`）。
+- 需要前缀的模型（`e5`、`nomic-embed-text`、`embeddinggemma`）当前不支持：适配层对 query 与 chunk
+  使用同一套文本，不注入 `query:`/`passage:` 前缀。
+
 ## 手工验证真实解析
 
 ```bash

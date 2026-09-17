@@ -7,6 +7,7 @@
 #   ./start.sh --frontend-only  只启动前端（需后端已在别处运行）
 #   ./start.sh --no-install     跳过 uv sync / pnpm install
 #   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库）
+#   ./start.sh --with-embeddings 同时启动本地 Embedding 服务（TEI + bge-m3，首次会下载模型）
 #
 # 环境变量：BACKEND_PORT（默认 8000）、FRONTEND_PORT（默认 5173）、
 #          BACKEND_HOST / FRONTEND_HOST（默认 127.0.0.1）
@@ -28,6 +29,7 @@ FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 START_DB=1
 START_BACKEND=1
 START_FRONTEND=1
+START_EMBEDDINGS=0
 DO_INSTALL=1
 
 BACKEND_PID=""
@@ -61,6 +63,7 @@ while [[ $# -gt 0 ]]; do
     --frontend-only) START_BACKEND=0; START_DB=0 ;;
     --no-install)    DO_INSTALL=0 ;;
     --skip-db)       START_DB=0 ;;
+    --with-embeddings) START_EMBEDDINGS=1 ;;
     -h|--help)       usage; exit 0 ;;
     *) die "未知参数：$1（使用 --help 查看用法）" ;;
   esac
@@ -165,6 +168,18 @@ if [[ "$START_DB" -eq 1 ]]; then
       pg_isready -U paper_agent -d paper_agent) >/dev/null 2>&1 \
     || die "PostgreSQL 未就绪，请查看 docker compose logs postgres"
   ok "PostgreSQL 已就绪（localhost:5432）"
+  echo
+fi
+
+# --- Embedding 服务（可选）--------------------------------------------------
+if [[ "$START_EMBEDDINGS" -eq 1 ]]; then
+  step "启动 Embedding 服务（TEI + bge-m3，首次会下载模型）"
+  (cd "$ROOT_DIR" && docker compose --profile embeddings up -d embedding) >/dev/null
+  if wait_for_http "http://127.0.0.1:8080/health" "embedding" 240; then
+    ok "Embedding 已就绪（http://127.0.0.1:8080/v1）"
+  else
+    warn "Embedding 未在预期时间内就绪，可稍后再看：docker compose logs embedding"
+  fi
   echo
 fi
 
