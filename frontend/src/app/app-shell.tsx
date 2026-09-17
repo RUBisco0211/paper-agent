@@ -1,7 +1,8 @@
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   BookOpen,
-  ChevronRight,
+  Eye,
+  FilePlus,
   FolderOpen,
   LogOut,
   MoreHorizontal,
@@ -11,7 +12,6 @@ import {
   Trash2,
 } from "lucide-react"
 import { useCallback, useState } from "react"
-import { cn } from "cn"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
 import { queryKeys } from "@/app/query"
@@ -221,20 +221,24 @@ export function AppShell() {
                     actions={[
                       {
                         label: "查看详情",
+                        icon: Eye,
                         onSelect: () => navigate(`/projects/${project.id}`),
                       },
                       {
                         label: "添加文献",
+                        icon: FilePlus,
                         onSelect: () => navigate(`/projects/${project.id}?add=1`),
                       },
                       {
                         label: "新建会话",
+                        icon: Plus,
                         onSelect: () =>
                           void openSession({ project_id: project.id, title: project.name }),
                       },
                     ]}
                     destructiveAction={{
                       label: "删除项目",
+                      icon: Trash2,
                       onSelect: () => setDeletingProject({ id: project.id, name: project.name }),
                     }}
                   />
@@ -249,6 +253,7 @@ export function AppShell() {
                     actions={[
                       {
                         label: "新建会话",
+                        icon: Plus,
                         onSelect: () => void openSession({ paper_id: paperId }),
                       },
                     ]}
@@ -417,15 +422,13 @@ function SessionGroup({
   return (
     <Collapsible open={open} onOpenChange={setOpen} asChild>
       <SidebarMenuItem>
-        <SidebarMenuButton tooltip={label} onClick={() => setOpen((value) => !value)}>
+        <SidebarMenuButton
+          tooltip={label}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
           {Icon ? <Icon /> : <FolderOpen />}
           <span className="truncate">{label}</span>
-          <ChevronRight
-            className={cn(
-              "ml-auto transition-transform group-data-[collapsible=icon]:hidden",
-              open && "rotate-90",
-            )}
-          />
         </SidebarMenuButton>
 
         <DropdownMenu>
@@ -451,7 +454,7 @@ function SessionGroup({
                     variant="destructive"
                     onSelect={destructiveAction.onSelect}
                   >
-                    <Trash2 />
+                    {destructiveAction.icon ? <destructiveAction.icon /> : null}
                     {destructiveAction.label}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>

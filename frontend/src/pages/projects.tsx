@@ -152,7 +152,7 @@ export function ProjectsPage() {
                           }}
                         >
                           <Pencil data-icon="inline-start" />
-                          改名
+                          重命名
                         </Button>
                         <Button
                           size="sm"

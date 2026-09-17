@@ -161,7 +161,7 @@ export function SessionWorkspacePage() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
       void queryClient.invalidateQueries({ queryKey: ["sessions"] })
     },
-    onError: (error) => notifyError(error, "改名失败"),
+    onError: (error) => notifyError(error, "重命名失败"),
   })
 
   const remove = useMutation({
@@ -217,7 +217,7 @@ export function SessionWorkspacePage() {
             }}
           >
             <Pencil data-icon="inline-start" />
-            改名
+            重命名
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(true)}>
             <Trash2 data-icon="inline-start" />

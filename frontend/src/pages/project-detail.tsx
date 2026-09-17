@@ -36,9 +36,19 @@ export function ProjectDetailPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [selectedPaper, setSelectedPaper] = useState<string | null>(null)
-  const [searchParams] = useSearchParams()
-  // 侧边栏的“添加文献”直接打开添加对话框
-  const [addingPapers, setAddingPapers] = useState(searchParams.get("add") === "1")
+  // 侧边栏的“添加文献”跳到这里并带 ?add=1；对话框开关直接由 URL 决定，
+  // 这样重复点击同一个菜单项也能再次打开。
+  const [searchParams, setSearchParams] = useSearchParams()
+  const addingPapers = searchParams.get("add") === "1"
+  const setAddingPapers = (open: boolean) => {
+    const next = new URLSearchParams(searchParams)
+    if (open) {
+      next.set("add", "1")
+    } else {
+      next.delete("add")
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   const project = useQuery({
     queryKey: queryKeys.project(projectId),
