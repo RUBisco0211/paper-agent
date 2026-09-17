@@ -29,6 +29,7 @@ def build_embedding_adapter() -> EmbeddingAdapter:
         dimensions=settings.embedding_dimensions,
         max_input_chars=settings.embedding_max_input_chars,
         max_batch_items=settings.embedding_max_batch_items,
+        max_batch_chars=settings.embedding_max_batch_chars,
         query_prefix=settings.embedding_query_prefix,
         document_prefix=settings.embedding_document_prefix,
     )

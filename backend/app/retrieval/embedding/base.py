@@ -21,6 +21,8 @@ class EmbeddingProfile:
     max_input_chars: int = 6000
     #: 单个 HTTP 请求里允许的文本条数（供应商限制，例如 DashScope 为 10）
     max_batch_items: int = 32
+    #: 单个请求的输入总字符上限（供应商常按 token 限制整批，如 DashScope）
+    max_batch_chars: int = 24000
     query_prefix: str = ""
     document_prefix: str = ""
     notes: str = ""

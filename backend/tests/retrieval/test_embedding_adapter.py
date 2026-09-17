@@ -131,3 +131,23 @@ def test_provider_batch_limit_splits_requests(monkeypatch) -> None:
 def test_dashscope_profile_keeps_its_small_batch_limit() -> None:
     assert profile_for("text-embedding-v3").max_batch_items == 10
     assert profile_for("BAAI/bge-m3").max_batch_items == 32
+
+
+def test_request_batches_respect_the_char_budget(tmp_path) -> None:
+    """除了条数，供应商还限制整批 token/字符时也要拆包。"""
+    from app.retrieval.embedding.openai_compatible import _split_batches
+
+    batches = _split_batches(["a" * 8, "b" * 8, "c" * 8], max_items=10, max_chars=20)
+
+    assert [len(batch) for batch in batches] == [2, 1]
+    assert all(sum(len(text) for text in batch) <= 20 for batch in batches)
+    # 单个超限文本单独成包，不会被丢弃
+    assert _split_batches(["x" * 50], max_items=10, max_chars=10) == [["x" * 50]]
+
+
+def test_dashscope_profile_bounds_both_items_and_chars() -> None:
+    dashscope = profile_for("text-embedding-v3")
+
+    assert dashscope.max_batch_items == 10
+    assert dashscope.max_batch_chars <= 24000
+    assert dashscope.dimensions == 1024

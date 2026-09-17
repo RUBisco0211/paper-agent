@@ -17,6 +17,7 @@ MODEL_PROFILES: dict[str, EmbeddingProfile] = {
         dimensions=1024,
         max_input_chars=24000,
         max_batch_items=32,
+        max_batch_chars=32000,
         notes="多语言，8192 上下文，无需前缀；自建 TEI 与 SiliconFlow 均为此维度",
     ),
     "baai/bge-large-en-v1.5": EmbeddingProfile(
@@ -65,18 +66,21 @@ MODEL_PROFILES: dict[str, EmbeddingProfile] = {
         max_input_chars=8000,
         max_batch_items=2048,
     ),
-    # 阿里云百炼（OpenAI 兼容模式）：1024 维，但单请求最多 10 条
+    # 阿里云百炼（OpenAI 兼容模式）：1024 维；单请求最多 10 条且整批 token 有上限，
+    # 因此同时收紧条数与总字符预算（约 8192 tokens ≈ 2 万英文字符的保守取值）
     "text-embedding-v3": EmbeddingProfile(
         dimensions=1024,
         max_input_chars=6000,
         max_batch_items=10,
-        notes="DashScope，单请求最多 10 条",
+        max_batch_chars=12000,
+        notes="DashScope，单请求 ≤10 条且整批 token 有上限",
     ),
     "text-embedding-v4": EmbeddingProfile(
         dimensions=1024,
         max_input_chars=6000,
         max_batch_items=10,
-        notes="DashScope Qwen3-Embedding 系列，单请求最多 10 条",
+        max_batch_chars=12000,
+        notes="DashScope Qwen3-Embedding 系列，单请求 ≤10 条且整批 token 有上限",
     ),
     # 智谱：维度可调（默认 2048），这里用 1024 以匹配现有向量列
     "embedding-3": EmbeddingProfile(
@@ -94,6 +98,7 @@ def profile_for(
     dimensions: int | None = None,
     max_input_chars: int | None = None,
     max_batch_items: int | None = None,
+    max_batch_chars: int | None = None,
     query_prefix: str | None = None,
     document_prefix: str | None = None,
 ) -> EmbeddingProfile:
@@ -103,6 +108,7 @@ def profile_for(
         dimensions=dimensions or base.dimensions,
         max_input_chars=max_input_chars or base.max_input_chars,
         max_batch_items=max_batch_items or base.max_batch_items,
+        max_batch_chars=max_batch_chars or base.max_batch_chars,
         query_prefix=base.query_prefix if query_prefix is None else query_prefix,
         document_prefix=(
             base.document_prefix if document_prefix is None else document_prefix

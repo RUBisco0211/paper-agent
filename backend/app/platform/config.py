@@ -69,6 +69,7 @@ class Settings(BaseSettings):
     # 留空则用模型档案里的默认值（见 retrieval/embedding/profiles.py）
     embedding_max_input_chars: int | None = None
     embedding_max_batch_items: int | None = None
+    embedding_max_batch_chars: int | None = None
     embedding_query_prefix: str | None = None
     embedding_document_prefix: str | None = None
     crossref_api_url: str = "https://api.crossref.org"

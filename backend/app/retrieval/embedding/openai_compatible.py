@@ -73,10 +73,13 @@ class OpenAICompatibleEmbeddingAdapter:
             )
             for text in texts
         ]
-        limit = max(1, self._profile.max_batch_items)
         vectors: list[list[float]] = []
-        for start in range(0, len(prepared), limit):
-            vectors.extend(self._embed(prepared[start : start + limit]))
+        for batch in _split_batches(
+            prepared,
+            max_items=self._profile.max_batch_items,
+            max_chars=self._profile.max_batch_chars,
+        ):
+            vectors.extend(self._embed(batch))
         return vectors
 
     def embed_query(self, text: str) -> list[float]:
@@ -167,3 +170,32 @@ class OpenAICompatibleEmbeddingAdapter:
 
 def _index_of(item: dict) -> int:
     return int(item.get("index", 0))
+
+
+def _split_batches(
+    texts: Sequence[str],
+    *,
+    max_items: int,
+    max_chars: int,
+) -> list[list[str]]:
+    """同时满足条数与总字符两个上限（任一超限都要拆包）。
+
+    单个文本本身就超过字符预算时单独成包——截断由 :func:`prepare` 负责，
+    这里只保证不会把明显超限的整批发给供应商。
+    """
+    batches: list[list[str]] = []
+    current: list[str] = []
+    current_chars = 0
+    for text in texts:
+        exceeds = current and (
+            len(current) >= max(1, max_items) or current_chars + len(text) > max_chars
+        )
+        if exceeds:
+            batches.append(current)
+            current = []
+            current_chars = 0
+        current.append(text)
+        current_chars += len(text)
+    if current:
+        batches.append(current)
+    return batches

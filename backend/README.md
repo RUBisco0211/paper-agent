@@ -96,6 +96,24 @@ tests/            # 单元测试与 PostgreSQL 集成测试
 （1024 维 / 8192 上下文 / 不需要 query、document 前缀，适合英文论文长句）。
 推荐 `text-embeddings-inference`（TEI）：本地与服务器同一套接口，只是镜像/安装方式不同。
 
+### 云服务（本地开发推荐）
+
+本地不需要跑模型，把 `.env` 指向云即可（与自建走同一套适配器）：
+
+```dotenv
+# 阿里云百炼 DashScope（当前默认）：text-embedding-v3，1024 维
+EMBEDDING_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+EMBEDDING_API_KEY=sk-...
+EMBEDDING_MODEL=text-embedding-v3
+EMBEDDING_DIMENSIONS=1024
+```
+
+供应商差异都在模型档案里：DashScope 单请求 **≤10 条**且整批 token 有上限，适配层会同时按
+「条数」和「总字符」拆包；SiliconFlow 提供同款 `BAAI/bge-m3`（1024 维，32 条/请求），
+复用同一份档案。两者维度都是 1024，与迁移一致，**不需要迁移**。
+
+### 自建（服务器）
+
 Docker 是唯一入口（本地与服务器同一套）：
 
 ```bash
