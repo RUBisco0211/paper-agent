@@ -7,7 +7,7 @@ from ..platform.config import settings
 from ..platform.database import SessionDep
 from ..projects.persistence import ProjectRepository
 from .application import SearchService
-from .embedding import EmbeddingClient
+from .embedding import EmbeddingAdapter, build_embedding_adapter
 from .persistence import ChunkRepository
 
 
@@ -25,19 +25,19 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
 ProjectRepositoryDep = Annotated[ProjectRepository, Depends(get_project_repository)]
 
 
-def get_embedding_client() -> EmbeddingClient:
+def get_embedding_adapter() -> EmbeddingAdapter:
     """Instance-level embedding model; user input never selects it."""
-    return EmbeddingClient()
+    return build_embedding_adapter()
 
 
-EmbeddingClientDep = Annotated[EmbeddingClient, Depends(get_embedding_client)]
+EmbeddingAdapterDep = Annotated[EmbeddingAdapter, Depends(get_embedding_adapter)]
 
 
 def get_search_service(
     chunks: ChunkRepositoryDep,
     session: SessionDep,
     projects: ProjectRepositoryDep,
-    embeddings: EmbeddingClientDep,
+    embeddings: EmbeddingAdapterDep,
 ) -> SearchService:
     return SearchService(
         chunks,

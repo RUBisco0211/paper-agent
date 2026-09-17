@@ -14,7 +14,7 @@ from .domain import (
     SearchScope,
     SearchStatus,
 )
-from .embedding import EmbeddingClient
+from .embedding import EmbeddingAdapter
 from .fusion import apply_budgets, reciprocal_rank_fusion
 from .persistence import ChunkRepository
 
@@ -32,7 +32,7 @@ class SearchService:
         chunks: ChunkRepository,
         papers: PaperRepository,
         projects: ProjectRepository,
-        embeddings: EmbeddingClient,
+        embeddings: EmbeddingAdapter,
         *,
         keyword_top_n: int,
         vector_top_n: int,
@@ -165,7 +165,7 @@ class SearchService:
             )
             return []
         try:
-            vectors = self._embeddings.embed([query])
+            vector = self._embeddings.embed_query(query)
         except Exception as exc:  # provider errors carry stable codes already
             logger.warning(
                 "service.retrieval.embedding_failed",
@@ -182,7 +182,7 @@ class SearchService:
         try:
             matches = self._chunks.search_vector(
                 paper_ids=paper_ids,
-                embedding=vectors[0],
+                embedding=vector,
                 model=self._embeddings.model,
                 limit=self._vector_top_n,
             )

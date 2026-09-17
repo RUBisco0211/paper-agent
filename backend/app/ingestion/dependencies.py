@@ -7,7 +7,7 @@ from ..platform.config import settings
 from ..platform.database import SessionDep, SessionFactory, SessionFactoryDep
 from ..platform.storage import StorageDep
 from ..platform.tasks import TaskScheduler, TaskSchedulerDep
-from ..retrieval.embedding import EmbeddingClient
+from ..retrieval.embedding import build_embedding_adapter
 from ..scholar.metadata import build_default_resolver
 from .application import IngestionService
 from .mineru import MineruParser
@@ -38,7 +38,7 @@ def build_ingestion_service(
             timeout_seconds=settings.mineru_timeout_seconds,
         ),
         resolver=build_default_resolver(),
-        embeddings=EmbeddingClient(),
+        embeddings=build_embedding_adapter(),
         target_tokens=settings.chunk_token_num,
         max_chars=settings.chunk_max_chars,
     )

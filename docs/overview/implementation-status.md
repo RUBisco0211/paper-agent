@@ -22,6 +22,7 @@
 - PostgreSQL 16 + pgvector：`tsvector` 生成列 + GIN 索引、`vector(1536)` 余弦距离；
 - structlog + 标准库 logging、`X-Request-ID` 关联、统一错误契约（稳定错误码 + request_id）；
 - 对象存储抽象与本地实现（PDF、MinerU 产物、会话 Entry JSONL）；
+- 向量适配层（`EmbeddingAdapter` + 模型档案）：换模型/换服务是配置变更，非 OpenAI 兼容服务只需新增一个适配器；
 - 进程内任务调度器（`AsyncioTaskScheduler`），测试使用 `InlineTaskScheduler`。
 
 ## 2. 明确未接入（不是“已完成”）

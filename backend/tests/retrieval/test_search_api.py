@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.library.persistence import PaperRepository
 from app.platform.config import settings
-from app.retrieval.dependencies import get_embedding_client
+from app.retrieval.dependencies import get_embedding_adapter
 from app.retrieval.domain import ChunkDraft
 from app.retrieval.persistence import ChunkRepository
 from tests.conftest import auth_headers
@@ -57,17 +57,24 @@ def _index_chunks(
     db_session.commit()
 
 
-class FakeEmbeddingClient:
-    is_configured = True
+class FakeEmbeddingAdapter:
+    """实现 EmbeddingAdapter：记录查询文本，返回固定向量。"""
+
+    name = "fake"
     model = settings.embedding_model
+    dimensions = settings.embedding_dimensions
+    is_configured = True
 
     def __init__(self, vector: list[float]) -> None:
         self.vector = vector
         self.queries: list[str] = []
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        self.queries.extend(texts)
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return [self.vector for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        self.queries.append(text)
+        return self.vector
 
 
 def test_keyword_search_returns_evidence_with_stable_ids(
@@ -248,8 +255,8 @@ def test_hybrid_search_fuses_keyword_and_vector_channels(
         indexes=[0, 5],
         embedding=vector,
     )
-    fake = FakeEmbeddingClient(vector)
-    client.app.dependency_overrides[get_embedding_client] = lambda: fake
+    fake = FakeEmbeddingAdapter(vector)
+    client.app.dependency_overrides[get_embedding_adapter] = lambda: fake
 
     response = client.post(
         f"{api_prefix}/search",

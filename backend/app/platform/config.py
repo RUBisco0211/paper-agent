@@ -63,8 +63,13 @@ class Settings(BaseSettings):
     embedding_api_key: str | None = None
     # 默认按 BAAI/bge-m3：1024 维、8192 上下文、无需 query/document 前缀。
     # 维度必须与 alembic 迁移里 chunks.embedding 的维度一致。
+    embedding_adapter: str = "openai_compatible"
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
+    # 留空则用模型档案里的默认值（见 retrieval/embedding/profiles.py）
+    embedding_max_input_chars: int | None = None
+    embedding_query_prefix: str | None = None
+    embedding_document_prefix: str | None = None
     crossref_api_url: str = "https://api.crossref.org"
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
     arxiv_pdf_url: str = "https://arxiv.org/pdf"

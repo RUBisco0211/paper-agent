@@ -17,8 +17,7 @@ from app.library.persistence import PaperRepository
 from app.platform.config import settings
 from app.platform.storage import LocalObjectStorage
 from app.platform.tasks import InlineTaskScheduler
-from app.retrieval.dependencies import get_embedding_client
-from app.retrieval.embedding import EmbeddingClient
+from app.retrieval.dependencies import get_embedding_adapter
 from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers, build_pdf_with_text
 from tests.library.test_pdf_and_metadata import FakeProvider
@@ -65,26 +64,38 @@ class FakeMineruParser(MineruParser):
         return self.artifact
 
 
-class FakeEmbeddingClient(EmbeddingClient):
+class FakeEmbeddingAdapter:
+    """实现 EmbeddingAdapter：可切换"已配置/未配置"，返回固定维度向量。"""
+
+    name = "fake"
+    model = settings.embedding_model
+
     def __init__(self, *, configured: bool = True) -> None:
-        super().__init__(base_url="https://embedding.invalid" if configured else "")
-        self.vectors: list[list[float]] = []
         self.enabled = configured
+        self.vectors: list[list[float]] = []
+        self.documents: list[str] = []
 
     def configure(self) -> None:
         self.enabled = True
 
     @property
+    def dimensions(self) -> int:
+        return settings.embedding_dimensions
+
+    @property
     def is_configured(self) -> bool:
         return self.enabled
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.documents.extend(texts)
         vectors = [
-            [0.1 + index * 0.001 for index in range(settings.embedding_dimensions)]
-            for _ in texts
+            [0.1 + index * 0.001 for index in range(self.dimensions)] for _ in texts
         ]
         self.vectors.extend(vectors)
         return vectors
+
+    def embed_query(self, text: str) -> list[float]:
+        return self.embed_documents([text])[0]
 
 
 def _override_services(
@@ -93,7 +104,7 @@ def _override_services(
     session_factory: Callable[[], Session],
     storage_root: Path,
     mineru: MineruParser,
-    embeddings: EmbeddingClient,
+    embeddings: FakeEmbeddingAdapter,
     resolver: MetadataResolver,
 ) -> None:
     storage = LocalObjectStorage(storage_root)
@@ -122,7 +133,7 @@ def _override_services(
     # use the same stand-in providers.
     client.app.dependency_overrides[get_ingestion_starter] = build_ingestion
     client.app.dependency_overrides[get_ingestion_service] = build_ingestion
-    client.app.dependency_overrides[get_embedding_client] = lambda: embeddings
+    client.app.dependency_overrides[get_embedding_adapter] = lambda: embeddings
 
 
 def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
@@ -141,7 +152,7 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     storage_root: Path,
 ) -> None:
     mineru = FakeMineruParser()
-    embeddings = FakeEmbeddingClient()
+    embeddings = FakeEmbeddingAdapter()
     provider = FakeProvider(
         ProviderMetadata(
             source="fake",
@@ -235,7 +246,7 @@ def test_fulltext_survives_an_unavailable_embedding_provider(
         session_factory=session_factory,
         storage_root=storage_root,
         mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingClient(configured=False),
+        embeddings=FakeEmbeddingAdapter(configured=False),
         resolver=MetadataResolver([]),
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -293,7 +304,7 @@ def test_metadata_failure_does_not_block_fulltext(
         session_factory=session_factory,
         storage_root=storage_root,
         mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingClient(),
+        embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -337,7 +348,7 @@ def test_retry_after_a_successful_run_is_rejected(
         session_factory=session_factory,
         storage_root=storage_root,
         mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingClient(),
+        embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -366,7 +377,7 @@ def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
     session_factory: sessionmaker[Session],
     storage_root: Path,
 ) -> None:
-    embeddings = FakeEmbeddingClient(configured=False)
+    embeddings = FakeEmbeddingAdapter(configured=False)
     _override_services(
         client,
         session_factory=session_factory,

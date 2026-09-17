@@ -117,6 +117,32 @@ EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_DIMENSIONS=1024
 ```
 
+### 适配层
+
+向量差异都收敛在 `app/retrieval/embedding/`：
+
+```text
+base.py              EmbeddingAdapter 协议 + EmbeddingProfile（维度/截断/前缀）+ prepare()
+profiles.py          已知模型的默认行为（bge-m3、bge-*-en-v1.5、e5、nomic、embeddinggemma、
+                     qwen3-embedding、text-embedding-3-*）；未知模型走默认档案
+openai_compatible.py 实现协议：组装 /embeddings 请求、解析响应、映射错误码
+__init__.py          build_embedding_adapter()：按配置装配（EMBEDDING_ADAPTER 分支）
+```
+
+上层只调用 `embed_documents()`（chunk）与 `embed_query()`（查询），前缀与截断由档案决定，
+因此**换模型只需要改配置**；换成非 OpenAI 兼容的服务时，新增一个实现 `EmbeddingAdapter`
+的类并在 `build_embedding_adapter()` 里注册即可，检索与流水线代码不用动。
+
+### 换模型
+
+1. 改 `EMBEDDING_MODEL`（模型档案会自动带上维度、截断长度与前缀；除非要覆盖）
+2. 维度变了就做一次离线迁移：改 `alembic/versions/*_resize_chunk_embeddings_for_bge.py`
+   里的 `NEW_DIMENSIONS` → 新增一次迁移（重建列并重置 `papers.has_embedding`）
+3. 对受影响的条目重试处理，重新生成向量（`papers.has_embedding=false` 的条目会被重跑）
+
+启动时会比对 `EMBEDDING_DIMENSIONS` 与 `chunks.embedding` 的实际维度，不一致会记录
+`configuration.embedding_dimension_mismatch` 错误日志（而不是等到写入时才发现）。
+
 注意事项：
 
 - **维度必须与迁移一致**：`chunks.embedding` 是 `vector(1024)`（迁移 `20260917_0007`）。

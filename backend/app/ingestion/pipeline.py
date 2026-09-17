@@ -27,7 +27,7 @@ from ..platform.storage import (
     paper_pdf_key,
 )
 from ..platform.tasks import TaskScheduler
-from ..retrieval.embedding import EmbeddingClient
+from ..retrieval.embedding import EmbeddingAdapter
 from ..retrieval.persistence import ChunkRepository
 from ..scholar.identifiers import Identifier, IdentifierType
 from ..scholar.metadata import MetadataResolver
@@ -55,7 +55,7 @@ class IngestionPipeline:
         storage: ObjectStorage,
         mineru: MineruParser,
         resolver: MetadataResolver,
-        embeddings: EmbeddingClient,
+        embeddings: EmbeddingAdapter,
         target_tokens: int | None = None,
         max_chars: int | None = None,
     ) -> None:
@@ -343,8 +343,9 @@ class IngestionPipeline:
         for batch in _batched(
             chunks.pending_embedding_chunks(paper_id), EMBEDDING_BATCH_SIZE
         ):
-            vectors = self._embeddings.embed(
-                [chunk.content[: self._max_chars] for chunk in batch],
+            # 前缀与截断由适配器按模型档案处理，这里只负责分批
+            vectors = self._embeddings.embed_documents(
+                [chunk.content for chunk in batch],
             )
             for chunk, vector in zip(batch, vectors, strict=True):
                 chunks.set_embedding(

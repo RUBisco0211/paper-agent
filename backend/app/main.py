@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import structlog
 from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,10 +20,38 @@ from .sessions.events import EventBroker
 from .sessions.executor import SessionExecutor
 
 configure_logging()
+logger = structlog.get_logger(__name__)
+
+
+def check_embedding_dimensions() -> None:
+    """配置的向量维度必须与迁移建的列一致，否则写入会在数据库层失败。"""
+    from .platform.database import SessionLocal
+    from .retrieval.persistence import chunk_embedding_dimension
+
+    try:
+        with SessionLocal() as session:
+            column_dimension = chunk_embedding_dimension(session)
+    except Exception as exc:  # 数据库尚未迁移等情况：启动不因此失败
+        logger.warning(
+            "configuration.embedding_check_skipped", error=type(exc).__name__
+        )
+        return
+
+    if (
+        column_dimension is not None
+        and column_dimension != settings.embedding_dimensions
+    ):
+        logger.error(
+            "configuration.embedding_dimension_mismatch",
+            configured=settings.embedding_dimensions,
+            column=column_dimension,
+            hint="改 EMBEDDING_DIMENSIONS 后需要一次离线迁移（见 backend/README）",
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    check_embedding_dimensions()
     scheduler = AsyncioTaskScheduler()
     scheduler.bind_loop(asyncio.get_running_loop())
     broker = EventBroker(buffer_size=settings.session_event_buffer_size)

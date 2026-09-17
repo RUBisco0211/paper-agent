@@ -14,6 +14,7 @@ from sqlalchemy import (
     Uuid,
     func,
     select,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -65,6 +66,27 @@ class ChunkRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     embedding_model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     embedding_dimensions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+def chunk_embedding_dimension(session: Session) -> int | None:
+    """读取 ``chunks.embedding`` 的实际维度，用于启动自检。
+
+    换模型时最容易踩的坑是「配置维度改了、迁移没做」：写入会在数据库层失败。
+    这里把两边的值拿出来比较，失败时给一条明确的日志。
+    """
+    row = session.execute(
+        text(
+            "SELECT format_type(atttypid, atttypmod) "
+            "FROM pg_attribute "
+            "WHERE attrelid = 'chunks'::regclass AND attname = 'embedding'",
+        ),
+    ).scalar()
+    if not row or "(" not in str(row):
+        return None
+    try:
+        return int(str(row).split("(")[1].rstrip(")"))
+    except ValueError:
+        return None
 
 
 class ChunkRepository:
