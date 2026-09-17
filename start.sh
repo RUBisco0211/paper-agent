@@ -7,7 +7,8 @@
 #   ./start.sh --frontend-only  只启动前端（需后端已在别处运行）
 #   ./start.sh --no-install     跳过 uv sync / pnpm install
 #   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库）
-#   ./start.sh --with-embeddings 同时启动 Embedding 服务（TEI + bge-m3，首次会下载镜像与模型）
+#   ./start.sh --with-embeddings 同时启动自建 Embedding 服务（TEI + bge-m3）
+#                               注意：bge-m3 常驻约 2.5~3GB 内存，内存吃紧时改用云 Embedding
 #
 # 环境变量：BACKEND_PORT（默认 8000）、FRONTEND_PORT（默认 5173）、
 #          BACKEND_HOST / FRONTEND_HOST（默认 127.0.0.1）
@@ -174,7 +175,7 @@ fi
 # --- Embedding 服务（可选）--------------------------------------------------
 if [[ "$START_EMBEDDINGS" -eq 1 ]]; then
   step "启动 Embedding 服务（TEI + bge-m3，首次会下载模型）"
-  (cd "$ROOT_DIR" && docker compose up -d embedding) >/dev/null
+  (cd "$ROOT_DIR" && docker compose --profile embeddings up -d embedding) >/dev/null
   if wait_for_http "http://127.0.0.1:8080/health" "embedding" 240; then
     ok "Embedding 已就绪（http://127.0.0.1:8080/v1）"
   else

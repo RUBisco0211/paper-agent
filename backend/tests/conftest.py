@@ -113,12 +113,15 @@ def _truncate_all(engine: Engine) -> None:
         connection.execute(text(f"TRUNCATE {quoted} RESTART IDENTITY CASCADE"))
 
 
-@pytest.fixture(autouse=True)
-def _clean_tables(engine: Engine) -> Iterator[None]:
+@pytest.fixture
+def clean_tables(engine: Engine) -> None:
+    """按需清库：只有真正用到数据库的用例才触发连接。
+
+    这样纯单元测试（分块、RRF、适配器）不需要 Postgres 也能跑。
+    """
     # Truncate before each test so a killed run can never leak state into the
     # next one.
     _truncate_all(engine)
-    yield
 
 
 @pytest.fixture
@@ -127,7 +130,10 @@ def session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 @pytest.fixture
-def db_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+def db_session(
+    session_factory: sessionmaker[Session],
+    clean_tables: None,
+) -> Iterator[Session]:
     with session_factory() as session:
         yield session
 
@@ -143,6 +149,7 @@ def storage_root(tmp_path: Path) -> Path:
 def client(
     session_factory: sessionmaker[Session],
     storage_root: Path,
+    clean_tables: None,
 ) -> Iterator[TestClient]:
     app = create_app()
     storage = LocalObjectStorage(storage_root)

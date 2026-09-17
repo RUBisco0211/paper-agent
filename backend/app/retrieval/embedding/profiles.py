@@ -12,10 +12,12 @@ DEFAULT_PROFILE = EmbeddingProfile(
 
 # 默认选型：多语言、8192 上下文、无需前缀，适合英文论文长句
 MODEL_PROFILES: dict[str, EmbeddingProfile] = {
+    # 同一份档案同时适用于自建 TEI 与云上同款模型（如 SiliconFlow 的 BAAI/bge-m3）
     "baai/bge-m3": EmbeddingProfile(
         dimensions=1024,
         max_input_chars=24000,
-        notes="多语言，8192 上下文，无需前缀",
+        max_batch_items=32,
+        notes="多语言，8192 上下文，无需前缀；自建 TEI 与 SiliconFlow 均为此维度",
     ),
     "baai/bge-large-en-v1.5": EmbeddingProfile(
         dimensions=1024,
@@ -53,8 +55,36 @@ MODEL_PROFILES: dict[str, EmbeddingProfile] = {
         ),
         notes="32K 上下文，支持 Matryoshka 截断",
     ),
-    "text-embedding-3-small": EmbeddingProfile(dimensions=1536, max_input_chars=8000),
-    "text-embedding-3-large": EmbeddingProfile(dimensions=3072, max_input_chars=8000),
+    "text-embedding-3-small": EmbeddingProfile(
+        dimensions=1536,
+        max_input_chars=8000,
+        max_batch_items=2048,
+    ),
+    "text-embedding-3-large": EmbeddingProfile(
+        dimensions=3072,
+        max_input_chars=8000,
+        max_batch_items=2048,
+    ),
+    # 阿里云百炼（OpenAI 兼容模式）：1024 维，但单请求最多 10 条
+    "text-embedding-v3": EmbeddingProfile(
+        dimensions=1024,
+        max_input_chars=6000,
+        max_batch_items=10,
+        notes="DashScope，单请求最多 10 条",
+    ),
+    "text-embedding-v4": EmbeddingProfile(
+        dimensions=1024,
+        max_input_chars=6000,
+        max_batch_items=10,
+        notes="DashScope Qwen3-Embedding 系列，单请求最多 10 条",
+    ),
+    # 智谱：维度可调（默认 2048），这里用 1024 以匹配现有向量列
+    "embedding-3": EmbeddingProfile(
+        dimensions=1024,
+        max_input_chars=4000,
+        max_batch_items=64,
+        notes="智谱 embedding-3，需在请求维度上取 1024",
+    ),
 }
 
 
@@ -63,6 +93,7 @@ def profile_for(
     *,
     dimensions: int | None = None,
     max_input_chars: int | None = None,
+    max_batch_items: int | None = None,
     query_prefix: str | None = None,
     document_prefix: str | None = None,
 ) -> EmbeddingProfile:
@@ -71,6 +102,7 @@ def profile_for(
     return EmbeddingProfile(
         dimensions=dimensions or base.dimensions,
         max_input_chars=max_input_chars or base.max_input_chars,
+        max_batch_items=max_batch_items or base.max_batch_items,
         query_prefix=base.query_prefix if query_prefix is None else query_prefix,
         document_prefix=(
             base.document_prefix if document_prefix is None else document_prefix

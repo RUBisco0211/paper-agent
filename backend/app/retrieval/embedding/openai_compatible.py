@@ -60,17 +60,24 @@ class OpenAICompatibleEmbeddingAdapter:
 
     # EmbeddingAdapter -----------------------------------------------------
     def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        """Chunk 向量：套文档前缀，并按模型窗口截断而不是提交失败。"""
-        return self._embed(
-            [
-                prepare(
-                    text,
-                    prefix=self._profile.document_prefix,
-                    max_input_chars=self._profile.max_input_chars,
-                )
-                for text in texts
-            ],
-        )
+        """Chunk 向量：套文档前缀、按模型窗口截断，并按供应商条数上限切分请求。
+
+        上层可以一次给一批（例如一整页 chunk），切分由适配器按档案负责，
+        调用方不需要知道某个供应商单请求最多几条。
+        """
+        prepared = [
+            prepare(
+                text,
+                prefix=self._profile.document_prefix,
+                max_input_chars=self._profile.max_input_chars,
+            )
+            for text in texts
+        ]
+        limit = max(1, self._profile.max_batch_items)
+        vectors: list[list[float]] = []
+        for start in range(0, len(prepared), limit):
+            vectors.extend(self._embed(prepared[start : start + limit]))
+        return vectors
 
     def embed_query(self, text: str) -> list[float]:
         """查询向量：套查询前缀（检索模型常要求 query/document 不同前缀）。"""

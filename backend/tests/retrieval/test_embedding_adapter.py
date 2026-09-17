@@ -114,3 +114,20 @@ def test_explicit_settings_override_profile_prefixes() -> None:
     assert (profile.query_prefix, profile.document_prefix) == ("Q: ", "D: ")
     # 维度仍来自模型档案
     assert profile.dimensions == 1024
+
+
+def test_provider_batch_limit_splits_requests(monkeypatch) -> None:
+    """供应商限制单请求条数时（例如 DashScope 10 条），适配器负责切分。"""
+    transport, seen = _transport()
+    # _transport 按输入条数返回等量向量，这里用 dims=3 与档案一致
+    adapter = _adapter(transport, EmbeddingProfile(dimensions=3, max_batch_items=2))
+
+    vectors = adapter.embed_documents(["a", "b", "c", "d", "e"])
+
+    assert len(vectors) == 5
+    assert [len(json.loads(request.content)["input"]) for request in seen] == [2, 2, 1]
+
+
+def test_dashscope_profile_keeps_its_small_batch_limit() -> None:
+    assert profile_for("text-embedding-v3").max_batch_items == 10
+    assert profile_for("BAAI/bge-m3").max_batch_items == 32

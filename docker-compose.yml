@@ -27,10 +27,15 @@ services:
   #   NVIDIA Hopper（H100）        ghcr.io/huggingface/text-embeddings-inference:hopper-1.9
   #   x86_64 纯 CPU                ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
   #   Apple Silicon（Docker/CPU）  ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
-  # 服务端：`docker compose up -d` 会连它一起拉起；本地只跑库时用 `up -d postgres`。
+  # 自建向量服务。默认**不随 `docker compose up -d` 启动**，需要显式启用：
+  #   本地/服务器：docker compose --profile embeddings up -d embedding
+  # 原因：bge-m3 是 fp32 的 2.3GB 权重，加载后常驻约 2.5~3GB；内存吃紧的机器
+  # （笔记本）会被拖进换页。本地开发建议用云 Embedding（见 backend/.env.example），
+  # 自建留给内存充足的服务器。
   embedding:
     image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9}
     container_name: paper-agent-embedding
+    profiles: ["embeddings"]
     restart: unless-stopped
     environment:
       # 拉取权重的 HF 端点。默认官方站点；网络无法直连 HF 时在仓库根 .env 里设
