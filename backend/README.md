@@ -111,9 +111,24 @@ docker compose up -d postgres
 TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
 ```
 
-拉取权重需要能访问 HuggingFace：容器**不会**继承宿主机代理，若直连不通，在仓库根 `.env` 里设
-`HF_ENDPOINT=https://hf-mirror.com`（compose 会自动读取该文件）；已经下载过的权重缓存在
-`embedding-data` 卷里，之后重启不再联网。
+### 权重来源（两条路）
+
+1. **容器内下载**（服务器默认）：`EMBEDDING_MODEL=BAAI/bge-m3`，权重缓存在 `embedding-data`
+   卷里。需要容器能访问 HuggingFace；容器**不会**继承宿主机代理，网络受限时可在仓库根 `.env`
+   设 `HF_ENDPOINT` 指向镜像。
+2. **宿主机预下载 + 挂载**（镜像源缺 etag 时唯一可行）：
+
+   ```bash
+   cd <仓库根>
+   HF_ENDPOINT=https://hf-mirror.com hf download BAAI/bge-m3 --local-dir models/bge-m3 \
+     --include "*.json" "*.bin" "*.txt" "*.model"
+   # 仓库根 .env
+   EMBEDDING_MODEL=/models/bge-m3
+   docker compose up -d embedding
+   ```
+
+   只取 dense 权重即可（不下载 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`）；
+   `./models` 以只读方式挂到容器 `/models`。
 
 服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
 模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。

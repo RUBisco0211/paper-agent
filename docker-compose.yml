@@ -38,6 +38,7 @@ services:
       HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
     command:
       - --model-id
+      # 默认按模型名由容器内下载；网络受限时可预下载到 ./models 并把该值设成 /models/bge-m3
       - ${EMBEDDING_MODEL:-BAAI/bge-m3}
       - --port
       - "80"
@@ -51,6 +52,8 @@ services:
     volumes:
       # 模型权重缓存在卷里，重启不重复下载
       - embedding-data:/data
+      # 也可把预下载好的权重放在 ./models 下（只读挂载）
+      - ./models:/models:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/health || exit 1"]
       interval: 10s

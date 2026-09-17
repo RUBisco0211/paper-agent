@@ -27,6 +27,10 @@ node_modules/
 htmlcov/
 frontend/dist/
 
+# 本地预下载的模型权重（见 docker-compose.yml 的 embedding 服务）
+models/*
+!models/.gitkeep
+
 # Local object storage and runtime data
 .var/
 
