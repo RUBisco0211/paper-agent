@@ -123,8 +123,8 @@ export function PaperDetailSheet({
     onError: (error) => notifyError(error, "获取全文失败"),
   })
 
-  const resolveMetadata = useMutation({
-    mutationFn: () => api.library.resolveMetadata(paperId as string),
+  const fetchMetadata = useMutation({
+    mutationFn: () => api.library.fetchMetadata(paperId as string),
     onSuccess: (result) => {
       const applied = result.metadata.applied_fields
       notifySuccess(
@@ -135,9 +135,9 @@ export function PaperDetailSheet({
     onError: (error) => notifyError(error, "获取元数据失败"),
   })
 
-  const patchMetadata = useMutation({
+  const updateInfo = useMutation({
     mutationFn: () =>
-      api.library.patchMetadata(paperId as string, {
+      api.library.updateInfo(paperId as string, {
         title: form.title || undefined,
         doi: form.doi || undefined,
         arxiv_id: form.arxiv_id || undefined,
@@ -322,10 +322,10 @@ export function PaperDetailSheet({
                     <Button
                       size="sm"
                       variant="ghost"
-                      disabled={resolveMetadata.isPending}
-                      onClick={() => resolveMetadata.mutate()}
+                      disabled={fetchMetadata.isPending}
+                      onClick={() => fetchMetadata.mutate()}
                     >
-                      {resolveMetadata.isPending ? (
+                      {fetchMetadata.isPending ? (
                         <Spinner data-icon="inline-start" />
                       ) : (
                         <Sparkles data-icon="inline-start" />
@@ -353,7 +353,7 @@ export function PaperDetailSheet({
                     className="flex flex-col gap-3 rounded-md border p-3"
                     onSubmit={(event) => {
                       event.preventDefault()
-                      patchMetadata.mutate()
+                      updateInfo.mutate()
                     }}
                   >
                     <div className="flex flex-col gap-2">
@@ -389,7 +389,7 @@ export function PaperDetailSheet({
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button type="submit" size="sm" disabled={patchMetadata.isPending}>
+                      <Button type="submit" size="sm" disabled={updateInfo.isPending}>
                         保存修正
                       </Button>
                       <Button

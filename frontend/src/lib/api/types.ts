@@ -136,7 +136,7 @@ export interface UploadResponse {
   ingestion_job?: IngestionJob | null
 }
 
-export interface MetadataCorrectionInput {
+export interface PaperInfoInput {
   title?: string
   authors?: string[]
   abstract?: string
@@ -146,7 +146,7 @@ export interface MetadataCorrectionInput {
   venue?: string
 }
 
-export interface MetadataCompletion {
+export interface MetadataFetchResult {
   status: MetadataStatus
   source?: string | null
   error_code?: string | null
@@ -154,12 +154,12 @@ export interface MetadataCompletion {
 }
 
 export interface FetchPdfResponse extends UploadResponse {
-  metadata: MetadataCompletion
+  metadata: MetadataFetchResult
 }
 
-export interface ResolveMetadataResponse {
+export interface FetchMetadataResponse {
   paper: UserPaperDetail
-  metadata: MetadataCompletion
+  metadata: MetadataFetchResult
 }
 
 export interface PaperListParams {

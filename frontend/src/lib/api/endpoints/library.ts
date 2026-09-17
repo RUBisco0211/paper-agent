@@ -3,10 +3,10 @@ import { ApiError } from "../errors"
 import type {
   FetchPdfResponse,
   IngestionJob,
-  MetadataCorrectionInput,
+  FetchMetadataResponse,
   Page,
+  PaperInfoInput,
   PaperListParams,
-  ResolveMetadataResponse,
   UploadResponse,
   UserPaperDetail,
   UserPaperSummary,
@@ -63,15 +63,17 @@ export function libraryEndpoints(client: ApiClient) {
         method: "POST",
       }),
 
-    patchMetadata: (paperId: Uuid, input: MetadataCorrectionInput) =>
-      client.request<UserPaperDetail>(`${PAPERS}/${paperId}/metadata`, {
+    /** 编辑条目书目信息（界面「编辑信息」）。 */
+    updateInfo: (paperId: Uuid, input: PaperInfoInput) =>
+      client.request<UserPaperDetail>(`${PAPERS}/${paperId}/info`, {
         method: "PATCH",
         json: input,
       }),
 
-    resolveMetadata: (paperId: Uuid) =>
-      client.request<ResolveMetadataResponse>(
-        `${PAPERS}/${paperId}/resolve-metadata`,
+    /** 按条目标识符在线获取元数据（界面「获取元数据」）。 */
+    fetchMetadata: (paperId: Uuid) =>
+      client.request<FetchMetadataResponse>(
+        `${PAPERS}/${paperId}/fetch-metadata`,
         { method: "POST" },
       ),
 
