@@ -65,6 +65,11 @@ import { useAuth } from "@/lib/auth/provider"
 import { notifyError, notifySuccess } from "@/lib/errors"
 import { useSidebarWidth } from "@/lib/hooks/use-sidebar-width"
 
+/** 当前路径是否属于该导航项（含子路径，例如 /projects/:id）。 */
+function isItemActive(pathname: string, to: string): boolean {
+  return pathname === to || pathname.startsWith(`${to}/`)
+}
+
 const NAV_ITEMS = [
   { to: "/library", label: "文献库", icon: BookOpen },
   { to: "/projects", label: "项目", icon: FolderOpen },
@@ -186,7 +191,11 @@ export function AppShell() {
               <SidebarMenu>
                 {NAV_ITEMS.map((item) => (
                   <SidebarMenuItem key={item.to}>
-                    <SidebarMenuButton asChild tooltip={item.label}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.label}
+                      isActive={isItemActive(location.pathname, item.to)}
+                    >
                       <NavLink to={item.to}>
                         <item.icon />
                         <span>{item.label}</span>

@@ -42,12 +42,12 @@ function LocationProbe() {
   return <div data-testid="location">{location.pathname + location.search}</div>
 }
 
-function renderShell(fetchImpl: typeof fetch) {
+function renderShell(fetchImpl: typeof fetch, entries: string[] = ["/library"]) {
   render(
     <QueryClientProvider client={createQueryClient()}>
       <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl }}>
         <AuthProvider>
-          <MemoryRouter initialEntries={["/library"]}>
+          <MemoryRouter initialEntries={entries}>
             <Routes>
               <Route path="*" element={<AppShell />} />
             </Routes>
@@ -161,5 +161,39 @@ describe("AppShell sidebar", () => {
         screen.getByRole("button", { name: "阅读清单" }).getAttribute("aria-expanded"),
       ).toBe("true"),
     )
+  })
+})
+
+
+describe("AppShell active navigation", () => {
+  async function activeState(entries: string[]) {
+    renderShell(makeFetch() as unknown as typeof fetch, entries)
+    const library = (await screen.findByRole("link", { name: /文献库/ })).getAttribute(
+      "data-active",
+    )
+    const projects = (await screen.findByRole("link", { name: /^项目$/ })).getAttribute(
+      "data-active",
+    )
+    const settings = (await screen.findByRole("link", { name: /设置/ })).getAttribute(
+      "data-active",
+    )
+    return { library, projects, settings }
+  }
+
+  it("marks the current section and only that one", async () => {
+    // 激活项靠 data-active 生效（组件用 data-[active=true] 上背景色）
+    expect(await activeState(["/library"])).toEqual({
+      library: "true",
+      projects: "false",
+      settings: "false",
+    })
+  })
+
+  it("keeps a section active on its sub-pages", async () => {
+    expect(await activeState(["/projects/proj-1"])).toEqual({
+      library: "false",
+      projects: "true",
+      settings: "false",
+    })
   })
 })
