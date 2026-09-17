@@ -120,7 +120,7 @@ TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
 
    ```bash
    cd <仓库根>
-   ./scripts/fetch-embedding-model.sh        # 默认取 BAAI/bge-m3 的 dense 权重
+   ./scripts/fetch-embedding-model.sh        # 默认从 ModelScope 取 BAAI/bge-m3 的 dense 权重
    # 仓库根 .env
    EMBEDDING_MODEL=/models/bge-m3
    docker compose up -d embedding
@@ -129,13 +129,17 @@ TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
    该脚本只取 dense 推理需要的文件（不含 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`，
    省掉约 2GB），`./models` 以只读方式挂到容器 `/models`。
 
-   实测踩到的两个坑（脚本已规避）：
+  实测结论（脚本已按此实现）：
 
-   - `hf download` 的 `--include` 只接受单个模式，多写会被当作显式文件名并给出
-     "Ignoring `--include`" 警告；用脚本里的 curl 列表最直观。
-   - 宿主机若配置了 HTTP 代理，`curl`/`hf` 会默认走代理，而代理对 GB 级文件常常中途卡死
-     （表现为下载停在某个字节不再增长）。脚本对镜像源设了 `--noproxy '*'`，
-     直连镜像源可稳定跑到 3MB/s 以上。
+   - **ModelScope 支持 Range 分片**：10 连接并行约 4~5MB/s，是受限网络下的首选源
+     （`SOURCE=modelscope`，默认）。国内直连可达，无需代理。
+   - **hf-mirror 的大文件走 Xet 重建、不支持 Range**，单连接速率在 0.1~1.3MB/s 之间波动，
+     只能用单连接兜底（`SOURCE=hf-mirror`）。
+   - 宿主机若配置了 HTTP 代理，`curl`/`hf` 默认走代理，而代理在 GB 级传输上会中途卡死
+     （下载停在某个字节不再增长）。脚本对下载源设了 `--noproxy '*'`。
+   - `hf download` 的 `--include` 只接受单个模式，多写会被当成显式文件名
+     （给出 "Ignoring `--include`" 警告），所以脚本用 curl + 文件列表。
+   - 大文件按分片下载后逐片校验大小再拼接，避免服务端忽略 Range 造成错位。
 
 服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
 模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。
