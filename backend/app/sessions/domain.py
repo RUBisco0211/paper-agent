@@ -51,10 +51,18 @@ class Session:
     title: str | None
     created_at: datetime
     updated_at: datetime
+    #: Set when the session is about exactly one library entry. API value
+    #: ``paper``; the interface calls this scope "单篇文献".
+    user_paper_id: UUID | None = None
 
     @property
     def scope(self) -> str:
-        return "project" if self.project_id else "library"
+        """``project`` | ``paper`` | ``library`` (界面「全局」)."""
+        if self.project_id is not None:
+            return "project"
+        if self.user_paper_id is not None:
+            return "paper"
+        return "library"
 
 
 @dataclass(frozen=True, slots=True)

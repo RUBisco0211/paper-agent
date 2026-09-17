@@ -294,3 +294,91 @@ def test_deleting_a_project_purges_its_sessions(
         headers=auth_headers(token),
     )
     assert gone.status_code == 404
+
+
+def test_single_paper_session_scope(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+) -> None:
+    """单篇文献会话只覆盖那一篇，且不与项目混在一起。"""
+    token = register_user(email="reader@example.com")["access_token"]
+    uploaded = client.post(
+        f"{api_prefix}/papers",
+        headers=auth_headers(token),
+        files={"file": ("paper.pdf", make_pdf(), "application/pdf")},
+    ).json()
+    paper_id = uploaded["paper"]["id"]
+
+    created = client.post(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        json={"paper_id": paper_id, "title": "这篇文献"},
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["scope"] == "paper"
+    assert body["paper_id"] == paper_id
+    assert body["project_id"] is None
+
+    # 全局会话列表不含单篇文献会话
+    library_list = client.get(
+        f"{api_prefix}/sessions", headers=auth_headers(token)
+    ).json()
+    assert library_list["total"] == 0
+
+    paper_list = client.get(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        params={"scope": "paper"},
+    ).json()
+    assert paper_list["total"] == 1
+    assert paper_list["items"][0]["paper_id"] == paper_id
+
+    filtered = client.get(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        params={"scope": "paper", "paper_id": paper_id},
+    ).json()
+    assert filtered["total"] == 1
+
+
+def test_single_paper_session_validates_input(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+) -> None:
+    owner = register_user(email="owner@example.com")
+    stranger = register_user(email="stranger@example.com")
+    token = owner["access_token"]
+    uploaded = client.post(
+        f"{api_prefix}/papers",
+        headers=auth_headers(token),
+        files={"file": ("paper.pdf", make_pdf(), "application/pdf")},
+    ).json()
+    paper_id = uploaded["paper"]["id"]
+
+    both = client.post(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        json={"paper_id": paper_id, "project_id": str(UUID(int=0))},
+    )
+    assert both.status_code == 422
+    assert both.json()["code"] == "validation_error"
+
+    unknown = client.post(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(token),
+        json={"paper_id": str(UUID(int=0))},
+    )
+    assert unknown.status_code == 404
+    assert unknown.json()["code"] == "paper_not_found"
+
+    foreign = client.post(
+        f"{api_prefix}/sessions",
+        headers=auth_headers(stranger["access_token"]),
+        json={"paper_id": paper_id},
+    )
+    assert foreign.status_code == 404

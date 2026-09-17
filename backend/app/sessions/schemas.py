@@ -17,6 +17,10 @@ from .domain import (
 class SessionCreateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     project_id: UUID | None = None
+    paper_id: UUID | None = Field(
+        default=None,
+        description="单篇文献会话的条目 ID；与 project_id 互斥",
+    )
 
 
 class SessionUpdateRequest(BaseModel):
@@ -39,8 +43,10 @@ class PendingMessageRead(BaseModel):
 class SessionRead(BaseModel):
     id: UUID
     title: str | None = None
+    #: library = 全局；project = 项目；paper = 单篇文献
     scope: str
     project_id: UUID | None = None
+    paper_id: UUID | None = None
     pending: PendingCountsRead
     created_at: datetime
     updated_at: datetime
@@ -72,6 +78,7 @@ def to_session_read(session: Session, counts: dict[str, int]) -> SessionRead:
         title=session.title,
         scope=session.scope,
         project_id=session.project_id,
+        paper_id=session.user_paper_id,
         pending=PendingCountsRead(
             steering=counts.get("steering", 0),
             follow_up=counts.get("follow_up", 0),

@@ -47,6 +47,7 @@ def create_session(
         user_id=user.id,
         title=payload.title,
         project_id=payload.project_id,
+        paper_id=payload.paper_id,
     )
     return to_session_read(session, {})
 
@@ -60,8 +61,9 @@ def list_sessions(
     user: CurrentUser,
     params: PageParamsDep,
     service: SessionServiceDep,
-    scope: Annotated[Literal["library", "project"], Query()] = "library",
+    scope: Annotated[Literal["library", "project", "paper"], Query()] = "library",
     project_id: Annotated[UUID | None, Query()] = None,
+    paper_id: Annotated[UUID | None, Query()] = None,
 ) -> Page[SessionRead]:
     sessions, total = service.list_sessions(
         user_id=user.id,
@@ -69,6 +71,8 @@ def list_sessions(
         offset=params.offset,
         project_id=project_id,
         library_only=scope == "library",
+        paper_id=paper_id,
+        paper_only=scope == "paper",
     )
     return Page.create(
         [to_session_read(session, counts) for session, counts in sessions],

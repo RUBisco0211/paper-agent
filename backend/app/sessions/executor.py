@@ -135,6 +135,9 @@ class SessionExecutor:
             scope={
                 "kind": session.scope,
                 "project_id": str(session.project_id) if session.project_id else None,
+                "paper_id": str(session.user_paper_id)
+                if session.user_paper_id
+                else None,
             },
             messages=project_messages(entries),
             llm_config=llm_config,

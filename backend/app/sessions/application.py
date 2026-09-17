@@ -68,14 +68,23 @@ class SessionService:
         user_id: UUID,
         title: str | None = None,
         project_id: UUID | None = None,
+        paper_id: UUID | None = None,
     ) -> Session:
+        """Create a session in exactly one scope: 全局 (default)、项目 or 单篇文献。"""
+        if project_id is not None and paper_id is not None:
+            raise ValidationError("项目会话与单篇文献会话不能同时指定")
         if project_id is not None:
             project = self._projects.get_project(project_id)
             if project is None or project.user_id != user_id:
                 raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
+        if paper_id is not None:
+            entry = self._library.get_entry(user_id=user_id, user_paper_id=paper_id)
+            if entry is None:
+                raise NotFoundError("文献不存在", code=ErrorCode.PAPER_NOT_FOUND)
         session = self._repository.add_session(
             user_id=user_id,
             project_id=project_id,
+            user_paper_id=paper_id,
             title=normalize_title(title) if title else None,
         )
         self._repository.commit()
@@ -94,6 +103,8 @@ class SessionService:
         offset: int,
         project_id: UUID | None = None,
         library_only: bool = False,
+        paper_id: UUID | None = None,
+        paper_only: bool = False,
     ) -> tuple[list[tuple[Session, dict[str, int]]], int]:
         sessions, total = self._repository.list_sessions(
             user_id=user_id,
@@ -101,6 +112,8 @@ class SessionService:
             offset=offset,
             project_id=project_id,
             library_only=library_only,
+            paper_id=paper_id,
+            paper_only=paper_only,
         )
         counts = self._repository.pending_counts([session.id for session in sessions])
         return [(session, counts.get(session.id, {})) for session in sessions], total
@@ -296,6 +309,12 @@ class SessionService:
     # Scope -----------------------------------------------------------------
     def scope_entries(self, session: Session) -> list[LibraryEntry]:
         """Papers the agent of this session is allowed to read."""
+        if session.user_paper_id is not None:
+            entry = self._library.get_entry(
+                user_id=session.user_id,
+                user_paper_id=session.user_paper_id,
+            )
+            return [entry] if entry is not None else []
         if session.project_id is None:
             return self._library.list_entries(
                 user_id=session.user_id,

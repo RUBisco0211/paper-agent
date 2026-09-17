@@ -42,6 +42,12 @@ class SessionRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=True,
         index=True,
     )
+    user_paper_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("user_papers.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -113,10 +119,12 @@ class SessionRepository:
         user_id: UUID,
         project_id: UUID | None,
         title: str | None,
+        user_paper_id: UUID | None = None,
     ) -> SessionEntity:
         record = SessionRecord(
             user_id=user_id,
             project_id=project_id,
+            user_paper_id=user_paper_id,
             title=title,
         )
         self._session.add(record)
@@ -135,12 +143,22 @@ class SessionRepository:
         offset: int,
         project_id: UUID | None = None,
         library_only: bool = False,
+        paper_id: UUID | None = None,
+        paper_only: bool = False,
     ) -> tuple[list[SessionEntity], int]:
         statement = select(SessionRecord).where(SessionRecord.user_id == user_id)
         if library_only:
-            statement = statement.where(SessionRecord.project_id.is_(None))
+            statement = statement.where(
+                SessionRecord.project_id.is_(None),
+                SessionRecord.user_paper_id.is_(None),
+            )
         elif project_id is not None:
             statement = statement.where(SessionRecord.project_id == project_id)
+        if paper_only:
+            # 单篇文献会话：全局按条目分组，所以这里也要能列出全部
+            statement = statement.where(SessionRecord.user_paper_id.isnot(None))
+        elif paper_id is not None:
+            statement = statement.where(SessionRecord.user_paper_id == paper_id)
         count_statement = statement.with_only_columns(func.count(SessionRecord.id))
         records = self._session.scalars(
             statement.order_by(
@@ -333,6 +351,7 @@ def _to_session(record: SessionRecord) -> SessionEntity:
         title=record.title,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        user_paper_id=record.user_paper_id,
     )
 
 
