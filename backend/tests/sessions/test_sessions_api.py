@@ -1,10 +1,9 @@
-from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, inspect
 
-from app.platform.storage import LocalObjectStorage
+from app.platform.storage import ObjectStorage
 from app.sessions.domain import EntryType, MessageRole
 from app.sessions.entries import EntryStore
 from tests.conftest import auth_headers
@@ -153,7 +152,7 @@ def test_entry_history_is_append_only_and_pageable(
     client: TestClient,
     api_prefix: str,
     register_user,
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     session_payload = register_user(email="reader@example.com")
     token = session_payload["access_token"]
@@ -166,7 +165,7 @@ def test_entry_history_is_append_only_and_pageable(
     session = _create_session(client, api_prefix, token)
     session_id = UUID(session["id"])
 
-    store = EntryStore(LocalObjectStorage(storage_root))
+    store = EntryStore(storage)
     first = store.append_message(
         user_id=user_id,
         session_id=session_id,
@@ -208,7 +207,7 @@ def test_entry_history_is_append_only_and_pageable(
     )
     assert [item["sequence"] for item in tail.json()["items"]] == [2]
 
-    assert LocalObjectStorage(storage_root).exists(
+    assert storage.exists(
         f"sessions/{user_id}/{session['id']}.jsonl",
     )
 
@@ -217,7 +216,7 @@ def test_deleting_a_session_removes_its_entry_log(
     client: TestClient,
     api_prefix: str,
     register_user,
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     user_id = UUID(
@@ -228,7 +227,7 @@ def test_deleting_a_session_removes_its_entry_log(
     )
     session = _create_session(client, api_prefix, token)
     session_id = UUID(session["id"])
-    storage = LocalObjectStorage(storage_root)
+    storage = storage
     store = EntryStore(storage)
     store.append_message(
         user_id=user_id,
@@ -252,7 +251,7 @@ def test_deleting_a_project_purges_its_sessions(
     client: TestClient,
     api_prefix: str,
     register_user,
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     user_id = UUID(
@@ -273,7 +272,7 @@ def test_deleting_a_project_purges_its_sessions(
         project_id=project["id"],
     )
     session_id = UUID(session["id"])
-    storage = LocalObjectStorage(storage_root)
+    storage = storage
     EntryStore(storage).append_message(
         user_id=user_id,
         session_id=session_id,
@@ -351,7 +350,7 @@ def test_single_paper_session_keeps_scope_in_the_entry_log(
     register_user,
     make_pdf,
     engine: Engine,
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     """范围通过会话上下文注入，不在数据库里建立会话与文献的关联。"""
     from app.sessions.domain import EntryType
@@ -374,7 +373,7 @@ def test_single_paper_session_keeps_scope_in_the_entry_log(
         client.get(f"{api_prefix}/auth/me", headers=auth_headers(token)).json()["id"],
     )
 
-    store = EntryStore(LocalObjectStorage(storage_root))
+    store = EntryStore(storage)
     entries = store.list_entries(user_id=user_id, session_id=UUID(created["id"]))
     assert entries[0].type is EntryType.SESSION_CONTEXT
     assert entries[0].payload["kind"] == "paper"

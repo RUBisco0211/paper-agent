@@ -66,6 +66,45 @@ services:
       retries: 12
       start_period: 120s
 
+  # 对象存储（RustFS，S3 兼容，Apache-2.0）。默认**不随 `docker compose up -d` 启动**：
+  #   docker compose --profile storage up -d storage
+  # 后端改用它的方式（backend/.env）：
+  #   STORAGE_BACKEND=s3
+  #   S3_ENDPOINT_URL=http://127.0.0.1:9000
+  #   S3_ACCESS_KEY=... / S3_SECRET_KEY=... / S3_BUCKET=paper-agent
+  # 提醒：RustFS 官方标注「rapid development，请勿用于生产环境」。单机 MVP 用本地
+  # 文件系统（STORAGE_BACKEND=local + 卷）即可；等需要多实例共享或异地备份再启用。
+  # 服务器上若要换 MinIO 的继任者/云对象存储，只需改这几项配置。
+  storage:
+    image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
+    container_name: paper-agent-storage
+    profiles: ["storage"]
+    restart: unless-stopped
+    # 数据目录由位置参数给出；容器以 uid 10001 运行（命名卷无需手工 chown）
+    command: ["/data"]
+    environment:
+      # 官方明确要求不要使用默认的 rustfsadmin
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-paper-agent}
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-change-me-storage}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: ${RUSTFS_LOG_LEVEL:-warn}
+    ports:
+      # 只绑本机：对象存储自身鉴权较弱，服务器上让后端走内网访问
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # 控制台（用上面的 Access/Secret 登录）
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      # 镜像内没有 curl/wget，用镜像自带的 rustfs 二进制做 liveness 探测
+      test: ["CMD", "rustfs", "--version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 volumes:
   postgres-data:
   embedding-data:
+  storage-data:

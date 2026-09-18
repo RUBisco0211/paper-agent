@@ -7,7 +7,8 @@ capability. Only blocking stages stop the job; metadata is best effort.
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -187,7 +188,8 @@ class IngestionPipeline:
 
     def _metadata_stage(self, papers: PaperRepository, paper) -> dict:
         """Lightweight local recognition followed by an exact online lookup."""
-        identifiers = detect_identifiers(self._pdf_path(paper.file_hash))
+        with self._pdf_file(paper.file_hash) as pdf_path:
+            identifiers = detect_identifiers(pdf_path)
         if not identifiers:
             papers.set_paper_metadata(
                 paper.id,
@@ -277,7 +279,8 @@ class IngestionPipeline:
         paper_id: UUID,
         file_hash: str,
     ) -> dict:
-        artifact = self._mineru.parse(pdf_path=self._pdf_path(file_hash))
+        with self._pdf_file(file_hash) as pdf_path:
+            artifact = self._mineru.parse(pdf_path=pdf_path)
         self._storage.put_bytes(
             mineru_artifact_key(file_hash, CONTENT_LIST_OBJECT),
             json.dumps(artifact.content_list, ensure_ascii=False).encode("utf-8"),
@@ -357,8 +360,11 @@ class IngestionPipeline:
         papers.set_paper_capabilities(paper_id, has_embedding=True)
         return {"embedded": indexed, "model": self._embeddings.model}
 
-    def _pdf_path(self, file_hash: str) -> Path:
-        return self._storage.local_path(paper_pdf_key(file_hash))
+    @contextmanager
+    def _pdf_file(self, file_hash: str) -> Iterator[Path]:
+        """PDF 在本地实现下是零拷贝；S3 实现会下载到临时文件。"""
+        with self._storage.materialize(paper_pdf_key(file_hash)) as path:
+            yield path
 
 
 def _preferred_identifier(identifiers: Sequence[Identifier]) -> Identifier:

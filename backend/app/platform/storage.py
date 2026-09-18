@@ -1,12 +1,20 @@
 """Object storage boundary for PDFs, MinerU artifacts and session entry logs.
 
-The MVP runs on a single machine, so the default implementation writes to a
-local directory. Keys are always produced by helpers in this module; a future
-S3/MinIO implementation only has to satisfy :class:`ObjectStorage`.
+Two interchangeable implementations satisfy :class:`ObjectStorage`:
+
+- :class:`LocalObjectStorage` (default) writes to ``STORAGE_ROOT``; suited to a
+  single-machine deployment with a mounted volume.
+- :class:`S3ObjectStorage` talks to any S3-compatible service (RustFS, Garage,
+  Aliyun OSS, Cloudflare R2 ...); needed once several instances share data.
+
+Keys are always produced by the helpers in this module, so switching backends is
+a configuration change. Anything that needs a real file on disk (the MinerU
+adapter uploads a file) goes through :meth:`ObjectStorage.materialize`.
 """
 
 import os
 from collections.abc import Iterable, Iterator
+from contextlib import AbstractContextManager, contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, BinaryIO, Protocol
@@ -52,7 +60,7 @@ class ObjectStorage(Protocol):
 
     def delete_prefix(self, prefix: str) -> int: ...
 
-    def local_path(self, key: str) -> Path: ...
+    def materialize(self, key: str) -> AbstractContextManager[Path]: ...
 
 
 class LocalObjectStorage:
@@ -117,8 +125,13 @@ class LocalObjectStorage:
         directory.rmdir()
         return removed
 
-    def local_path(self, key: str) -> Path:
-        return self._resolve(key)
+    @contextmanager
+    def materialize(self, key: str) -> Iterator[Path]:
+        """本地实现零拷贝：直接给出存储内的真实路径（不会复制，也不会删除）。"""
+        path = self._resolve(key)
+        if not path.is_file():
+            raise FileNotFoundError(key)
+        yield path
 
     def files(self, prefix: str) -> Iterator[str]:
         directory = self._resolve(prefix)
@@ -148,6 +161,18 @@ class LocalObjectStorage:
 
 @lru_cache
 def get_object_storage() -> ObjectStorage:
+    if settings.storage_backend == "s3":
+        # 延迟导入：不用 S3 时不需要装 boto3 的调用路径
+        from .s3_storage import S3ObjectStorage
+
+        return S3ObjectStorage(
+            bucket=settings.s3_bucket,
+            endpoint_url=settings.s3_endpoint_url,
+            access_key=settings.s3_access_key,
+            secret_key=settings.s3_secret_key,
+            region=settings.s3_region,
+            addressing_style=settings.s3_addressing_style,
+        )
     return LocalObjectStorage(settings.storage_root)
 
 

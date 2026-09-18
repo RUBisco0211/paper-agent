@@ -79,7 +79,7 @@ MVP 后最优先考虑联网论文搜索，但首版只稳定 Tool、Entry/Event
 | 数据库 | PostgreSQL 16 + pgvector | 业务数据、英文全文检索、向量检索 |
 | 队列 | Celery + Redis | 论文解析、Embedding、清理等后台任务 |
 | Redis | Redis + AOF | Celery Broker、锁、热 Entry、pending 队列、短期 SSE 事件 |
-| 对象存储 | MinIO | PDF、MinerU 原始产物、Session JSONL |
+| 对象存储 | S3 兼容服务（自建 RustFS / 云对象存储） | PDF、MinerU 原始产物、Session JSONL |
 | 元数据 | GROBID | 提取标题、作者、摘要、期刊、DOI 等 |
 | 全文解析 | MinerU API | 生成 `content_list.json`、Markdown 和图片 |
 | Embedding | 实例级远程 API | 固定模型生成 Chunk 向量 |
@@ -542,7 +542,12 @@ HTTP 状态码表示错误大类，响应使用最小统一结构：
 
 ## 11. 文件与 Redis Key 规范
 
-### 11.1 MinIO
+### 11.1 对象存储
+
+> 选型更新（2026-09）：MinIO 社区版已归档（只保留源码、不再维护），故不再选用。
+> 当前实现是 `ObjectStorage` 抽象 + 两种实现：`local`（默认，单机挂卷）与 `s3`
+> （任何 S3 兼容服务；本地开发/试用用 RustFS，部署可换 Garage 或云对象存储）。
+> 下面的 Key 布局与实现一致，换后端只改配置。
 
 ```text
 papers/{h0h1}/{h2h3}/{file_hash}.pdf

@@ -252,11 +252,30 @@ SCRIPT
 
 - AgentScope 执行器：会话、pending 队列、SSE 与引用都已实现，但执行器仍返回 `agent_unavailable`，不会伪造回答；
 - MinerU / Embedding：未配置时对应阶段失败并记录 `provider_not_configured`，已完成的阶段能力继续可用；
-- Redis / Celery / MinIO：后台任务在进程内执行，Entry 日志写本地对象存储，适合单机单进程。
+- Redis / Celery：后台任务在进程内执行，适合单机单进程。
+- MinIO：社区版已停止维护；对象存储改用 RustFS（本地开发/试用）或云对象存储，接口层不变。
 
 ## 日志
 
 日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。
+
+## 对象存储
+
+PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的 `ObjectStorage`
+接口读写，两种实现按 `STORAGE_BACKEND` 选择：
+
+| 后端 | 适用 | 配置 |
+|---|---|---|
+| `local`（默认） | 单机部署，挂一个卷即可；`local_path` 零拷贝 | `STORAGE_ROOT`（默认 `.var/storage`） |
+| `s3` | 多实例共享、异地备份；自建或云对象存储 | `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` |
+
+- 自建对象存储用 **RustFS**（Apache-2.0，S3 兼容）：`docker compose --profile storage up -d storage`，
+  控制台在 `http://127.0.0.1:9001`。RustFS 官方标注处于快速开发阶段，**不要用于生产**；
+  生产可换 Garage、云对象存储，或回到 `local` + 卷。
+- 换后端是配置变更：Key 布局（`papers/…`、`mineru/…`、`sessions/…`）不变，业务代码不感知。
+- 唯一差异由 `materialize()` 抹平：MinerU 上传需要真实文件路径，`s3` 实现会下载到临时文件并在退出时删除。
+- 一致性由 `tests/platform/test_object_storage.py` 保证：同一组用例跑在 local、模拟 S3 与
+  （`PAPER_AGENT_LIVE_STORAGE=1` 时的）真实服务上。
 
 ## Agent 执行
 

@@ -17,7 +17,7 @@ from app.library.dependencies import (
     get_paper_library_service,
 )
 from app.library.persistence import PaperRecord, PaperRepository, UserPaperRecord
-from app.platform.storage import LocalObjectStorage
+from app.platform.storage import ObjectStorage
 from app.scholar.metadata import MetadataResolver
 from tests.conftest import auth_headers
 
@@ -179,7 +179,7 @@ def test_upload_enforces_size_and_page_limits(
     register_user,
     make_pdf,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -195,7 +195,7 @@ def test_upload_enforces_size_and_page_limits(
                 yield PaperLibraryService(
                     papers,
                     IngestionService(IngestionRepository(session), papers),
-                    LocalObjectStorage(storage_root),
+                    storage,
                     MetadataResolver([]),
                     _NoopPdfFetcher(),  # type: ignore[arg-type]
                     max_pdf_bytes=max_pdf_bytes,

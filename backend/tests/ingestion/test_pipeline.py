@@ -15,7 +15,7 @@ from app.ingestion.pipeline import IngestionPipeline
 from app.library.dependencies import get_ingestion_starter
 from app.library.persistence import PaperRepository
 from app.platform.config import settings
-from app.platform.storage import LocalObjectStorage
+from app.platform.storage import ObjectStorage
 from app.platform.tasks import InlineTaskScheduler
 from app.retrieval.dependencies import get_embedding_adapter
 from app.scholar.metadata import MetadataResolver, ProviderMetadata
@@ -102,12 +102,12 @@ def _override_services(
     client: TestClient,
     *,
     session_factory: Callable[[], Session],
-    storage_root: Path,
+    storage: ObjectStorage,
     mineru: MineruParser,
     embeddings: FakeEmbeddingAdapter,
     resolver: MetadataResolver,
 ) -> None:
-    storage = LocalObjectStorage(storage_root)
+    storage = storage
 
     def build_ingestion() -> Iterator[IngestionService]:
         session = session_factory()
@@ -149,7 +149,7 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     mineru = FakeMineruParser()
     embeddings = FakeEmbeddingAdapter()
@@ -166,7 +166,7 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     _override_services(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         mineru=mineru,
         embeddings=embeddings,
         resolver=MetadataResolver([provider]),
@@ -207,7 +207,7 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
 
     # Only paper text and block indexes were sent to the recognizer; the
     # original PDF and MinerU artifacts stay in object storage.
-    stored = {path.name for path in storage_root.rglob("*") if path.is_file()}
+    stored = {key.rsplit("/", 1)[-1] for key in storage.files("mineru/")}
     assert "content_list.json" in stored
     assert "full.md" in stored
     assert "figure-1.png" in stored
@@ -239,12 +239,12 @@ def test_fulltext_survives_an_unavailable_embedding_provider(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     _override_services(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(configured=False),
         resolver=MetadataResolver([]),
@@ -288,7 +288,7 @@ def test_metadata_failure_does_not_block_fulltext(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     from app.platform.errors import AppError, ErrorCode
 
@@ -302,7 +302,7 @@ def test_metadata_failure_does_not_block_fulltext(
     _override_services(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
@@ -333,7 +333,7 @@ def test_retry_after_a_successful_run_is_rejected(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(
@@ -346,7 +346,7 @@ def test_retry_after_a_successful_run_is_rejected(
     _override_services(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
@@ -375,13 +375,13 @@ def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
 ) -> None:
     embeddings = FakeEmbeddingAdapter(configured=False)
     _override_services(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         mineru=FakeMineruParser(),
         embeddings=embeddings,
         resolver=MetadataResolver([]),

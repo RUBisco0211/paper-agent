@@ -21,7 +21,11 @@ from alembic import command
 from app.main import create_app
 from app.platform.config import settings
 from app.platform.database import get_session, get_session_factory
-from app.platform.storage import LocalObjectStorage, get_object_storage
+from app.platform.storage import (
+    LocalObjectStorage,
+    ObjectStorage,
+    get_object_storage,
+)
 from app.platform.tasks import InlineTaskScheduler, get_task_scheduler
 from app.sessions.dependencies import (
     get_event_broker,
@@ -146,13 +150,40 @@ def storage_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def storage(storage_root: Path) -> Iterator[ObjectStorage]:
+    """应用使用的存储。
+
+    默认是临时目录；设 ``PAPER_AGENT_LIVE_STORAGE=1`` 时改用 ``backend/.env``
+    里配置的真实 S3 兼容服务（如本地 RustFS），用后清理，便于整套 API 级用例
+    直接跑在对象存储上。
+    """
+    if os.environ.get("PAPER_AGENT_LIVE_STORAGE") != "1":
+        yield LocalObjectStorage(storage_root)
+        return
+    from app.platform.s3_storage import S3ObjectStorage
+
+    live = S3ObjectStorage(
+        bucket=f"{settings.s3_bucket}-live-test",
+        endpoint_url=settings.s3_endpoint_url,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        region=settings.s3_region,
+        addressing_style=settings.s3_addressing_style,
+    )
+    try:
+        yield live
+    finally:
+        for prefix in ("papers/", "mineru/", "sessions/"):
+            live.delete_prefix(prefix)
+
+
+@pytest.fixture
 def client(
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
     clean_tables: None,
 ) -> Iterator[TestClient]:
     app = create_app()
-    storage = LocalObjectStorage(storage_root)
 
     def override_session() -> Iterator[Session]:
         with session_factory() as session:
@@ -247,7 +278,7 @@ def install_agent_runner(
     client: TestClient,
     *,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
     runner,
 ) -> SessionExecutor:
     """Replace the executor so a test controls the agent turn."""
@@ -256,7 +287,7 @@ def install_agent_runner(
 
     broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
     executor = SessionExecutor(
-        entries=_EntryStore(LocalObjectStorage(storage_root)),
+        entries=_EntryStore(storage),
         events=broker,
         session_factory=session_factory,
         scheduler=InlineTaskScheduler(),
@@ -271,7 +302,7 @@ def install_async_agent_runner(
     client: TestClient,
     *,
     session_factory: sessionmaker[Session],
-    storage_root: Path,
+    storage: ObjectStorage,
     runner,
     scheduler,
 ) -> SessionExecutor:
@@ -281,7 +312,7 @@ def install_async_agent_runner(
 
     broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
     executor = SessionExecutor(
-        entries=_EntryStore(LocalObjectStorage(storage_root)),
+        entries=_EntryStore(storage),
         events=broker,
         session_factory=session_factory,
         scheduler=scheduler,

@@ -41,6 +41,15 @@ class Settings(BaseSettings):
 
     # Object storage (PDF, MinerU artifacts, session entry logs)
     storage_root: Path = Path(".var/storage")
+    #: local | s3；s3 指任何 S3 兼容服务（RustFS / Garage / 云对象存储）
+    storage_backend: str = "local"
+    s3_endpoint_url: str = ""
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "paper-agent"
+    s3_region: str = "us-east-1"
+    #: 自建服务通常只支持 path-style（bucket 放在路径里）
+    s3_addressing_style: str = "path"
 
     # Upload limits
     max_pdf_bytes: int = 50 * 1024 * 1024

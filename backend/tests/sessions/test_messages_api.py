@@ -84,13 +84,13 @@ def test_tool_calls_and_citations_are_recorded_as_entries(
     api_prefix: str,
     register_user,
     session_factory,
-    storage_root,
+    storage,
 ) -> None:
     """工具结果立即落 Entry，回答携带的引用写入 Assistant Entry（供前端点击核对）。"""
     install_agent_runner(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         runner=ToolCallingRunner(),
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -154,13 +154,13 @@ def test_message_starts_a_generation_and_writes_entries(
     api_prefix: str,
     register_user,
     session_factory,
-    storage_root,
+    storage,
 ) -> None:
     runner = CompletingRunner()
     install_agent_runner(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         runner=runner,
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -209,12 +209,12 @@ def test_failed_generation_is_recorded_and_not_reported_as_success(
     api_prefix: str,
     register_user,
     session_factory,
-    storage_root,
+    storage,
 ) -> None:
     install_agent_runner(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         runner=FailingRunner(),
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -311,7 +311,7 @@ def test_resume_delivers_the_next_queued_message(
     register_user,
     db_session,
     session_factory,
-    storage_root,
+    storage,
 ) -> None:
     from uuid import UUID
 
@@ -322,7 +322,7 @@ def test_resume_delivers_the_next_queued_message(
     install_agent_runner(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         runner=runner,
     )
     token = register_user(email="reader@example.com")["access_token"]
@@ -403,12 +403,12 @@ def test_event_stream_replays_buffered_events_with_cursors(
     api_prefix: str,
     register_user,
     session_factory,
-    storage_root,
+    storage,
 ) -> None:
     install_agent_runner(
         client,
         session_factory=session_factory,
-        storage_root=storage_root,
+        storage=storage,
         runner=CompletingRunner(),
     )
     token = register_user(email="reader@example.com")["access_token"]

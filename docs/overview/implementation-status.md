@@ -21,7 +21,7 @@
 - SQLAlchemy 2.0（同步）+ Alembic 迁移（`20260917_0001`–`20260917_0006`）；
 - PostgreSQL 16 + pgvector：`tsvector` 生成列 + GIN 索引、`vector(1536)` 余弦距离；
 - structlog + 标准库 logging、`X-Request-ID` 关联、统一错误契约（稳定错误码 + request_id）；
-- 对象存储抽象与本地实现（PDF、MinerU 产物、会话 Entry JSONL）；
+- 对象存储抽象与两种实现（PDF、MinerU 产物、会话 Entry JSONL）；
 - 向量适配层（`EmbeddingAdapter` + 模型档案）：换模型/换服务是配置变更，非 OpenAI 兼容服务只需新增一个适配器；
 - 进程内任务调度器（`AsyncioTaskScheduler`），测试使用 `InlineTaskScheduler`。
 
@@ -32,7 +32,8 @@
 | Agent 回合执行 | 已接入 AgentScope（`app/sessions/agent_scope.py`）：瞬时 `llm_config`（provider/model/api_key）建模型，三个只读工具由会话范围注入，工具调用落 `tool_result` Entry，回答携带的 citation_id 写入 Assistant Entry | **尚未用真实 LLM Key 跑通端到端**；未配置时 `validate_llm_config` 会拒绝，执行器失败会写成 `stop_reason=failed` + 稳定错误码（`llm_not_configured` / `provider_rate_limited` / `agent_timeout` / `agent_max_iters`） |
 | MinerU 正文解析 | 已用真实凭据与真实英文论文验证：133 blocks / 14 图片 → 17 chunks，关键词检索可命中并带页码。未配置时 fulltext 阶段失败并记录 `provider_not_configured` | 适配器已处理"配置带端点需归一化"与"预签名上传不能带 Content-Type"两个实际行为 |
 | Embedding | 适配层已就绪（`EmbeddingAdapter` + 模型档案）；当前配置指向云服务 DashScope `text-embedding-v3`（1024 维，待填 Key）。未配置/未启动时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索；**向量通道尚未用真实服务验证**，留到部署时验收 |
-| Redis / Celery / MinIO | 未引入；后台任务在 FastAPI 进程内、Entry 日志写本地对象存储 | 单机单进程语义；重启后活动生成中断（pending 仍保留） |
+| Redis / Celery | 未引入；后台任务在 FastAPI 进程内执行 | 单机单进程语义；重启后活动生成中断（pending 仍保留） |
+| 对象存储 | `ObjectStorage` 抽象，`local`（默认）与 `s3`（S3 兼容，如 RustFS）两种实现 | MinIO 社区版已归档故不选；单机用 `local` + 卷，多实例共享再切 `s3` |
 | 前端页面 | 已实现登录/注册、论文库、项目、会话工作区与模型设置 | 见第 3 节；`/v1/search` 暂无独立页面（按规格不做搜索页） |
 
 ## 3. 前端页面（已实现）

@@ -9,6 +9,8 @@
 #   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库）
 #   ./start.sh --with-embeddings 同时启动自建 Embedding 服务（TEI + bge-m3）
 #                               注意：bge-m3 常驻约 2.5~3GB 内存，内存吃紧时改用云 Embedding
+#   ./start.sh --with-storage   同时启动对象存储（RustFS，S3 兼容）
+#                               backend/.env 里 STORAGE_BACKEND=s3 时会自动启动
 #
 # 环境变量：BACKEND_PORT（默认 8000）、FRONTEND_PORT（默认 5173）、
 #          BACKEND_HOST / FRONTEND_HOST（默认 127.0.0.1）
@@ -31,6 +33,7 @@ START_DB=1
 START_BACKEND=1
 START_FRONTEND=1
 START_EMBEDDINGS=0
+START_STORAGE=0
 DO_INSTALL=1
 
 BACKEND_PID=""
@@ -65,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --no-install)    DO_INSTALL=0 ;;
     --skip-db)       START_DB=0 ;;
     --with-embeddings) START_EMBEDDINGS=1 ;;
+    --with-storage)   START_STORAGE=1 ;;
     -h|--help)       usage; exit 0 ;;
     *) die "未知参数：$1（使用 --help 查看用法）" ;;
   esac
@@ -180,6 +184,24 @@ if [[ "$START_EMBEDDINGS" -eq 1 ]]; then
     ok "Embedding 已就绪（http://127.0.0.1:8080/v1）"
   else
     warn "Embedding 未在预期时间内就绪，可稍后再看：docker compose logs embedding"
+  fi
+  echo
+fi
+
+# --- 对象存储（可选）--------------------------------------------------------
+# STORAGE_BACKEND=s3 时后端需要 S3 兼容服务；本地默认是 RustFS 容器。
+if [[ "$START_BACKEND" -eq 1 && -f "$BACKEND_DIR/.env" ]] \
+   && grep -qE '^STORAGE_BACKEND=s3' "$BACKEND_DIR/.env"; then
+  START_STORAGE=1
+fi
+
+if [[ "$START_STORAGE" -eq 1 ]]; then
+  step "启动对象存储（RustFS）"
+  (cd "$ROOT_DIR" && docker compose --profile storage up -d storage) >/dev/null
+  if wait_for_http "http://127.0.0.1:9000/health" "storage" 60; then
+    ok "对象存储已就绪（http://127.0.0.1:9000，控制台 http://127.0.0.1:9001）"
+  else
+    warn "对象存储未在预期时间内就绪，可稍后再看：docker compose logs storage"
   fi
   echo
 fi
