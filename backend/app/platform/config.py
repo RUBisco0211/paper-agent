@@ -3,6 +3,20 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: 已知的占位符/示例密钥：出现在生产配置里意味着令牌可被伪造
+PLACEHOLDER_JWT_SECRET = "replace-with-openssl-rand-hex-32"
+KNOWN_WEAK_JWT_SECRETS = frozenset(
+    {
+        PLACEHOLDER_JWT_SECRET,
+        "change-me",
+        "change-me-please-set-a-real-secret",
+        "secret",
+        "jwt-secret",
+    },
+)
+#: HS256 的密钥长度下限（32 字节 = 256 bit）
+MIN_JWT_SECRET_CHARS = 32
+
 
 class Settings(BaseSettings):
     """Instance-level configuration.
@@ -24,7 +38,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = (
-        "postgresql+psycopg://paper_agent:change-me@127.0.0.1:5432/paper_agent"
+        "postgresql+psycopg://paper_agent:paper_agent_dev@127.0.0.1:5432/paper_agent"
     )
     test_database_url: str | None = None
     database_echo: bool = False
@@ -56,7 +70,9 @@ class Settings(BaseSettings):
     max_pdf_pages: int = 300
 
     # Authentication
-    jwt_secret_key: str = "change-me-please-set-a-real-secret"
+    #: 必须在部署环境里换成随机值，例如 `openssl rand -hex 32`。
+    #: 占位符与弱值会让令牌可被伪造，启动时会检查（见 app/main.py）。
+    jwt_secret_key: str = PLACEHOLDER_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 7
@@ -116,6 +132,18 @@ class Settings(BaseSettings):
     # An idle SSE subscription is closed after this long; clients reconnect
     # with their cursor, which keeps reconnects cheap and stateless.
     sse_idle_timeout_seconds: float = 60.0
+
+    @property
+    def jwt_secret_problem(self) -> str | None:
+        """返回密钥的问题码；None 表示可用。"""
+        secret = self.jwt_secret_key or ""
+        if not secret or secret in KNOWN_WEAK_JWT_SECRETS:
+            return "placeholder"
+        if len(secret) < MIN_JWT_SECRET_CHARS:
+            return "too_short"
+        if len(set(secret)) < 8:
+            return "low_entropy"
+        return None
 
     @property
     def resolved_test_database_url(self) -> str:

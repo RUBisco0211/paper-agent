@@ -50,6 +50,22 @@ def check_embedding_dimensions() -> None:
         )
 
 
+def check_jwt_secret() -> None:
+    """弱密钥等于允许伪造登录令牌；生产环境直接拒绝启动。"""
+    problem = settings.jwt_secret_problem
+    if problem is None:
+        return
+    logger.error(
+        "configuration.weak_jwt_secret",
+        problem=problem,
+        hint="生成随机密钥：openssl rand -hex 32，只写进 backend/.env",
+    )
+    if settings.environment != "development":
+        raise RuntimeError(
+            f"JWT_SECRET_KEY 不可用（{problem}）：部署前请设置随机密钥",
+        )
+
+
 def check_storage() -> None:
     """启动时确认对象存储可用（会顺带创建缺失的 bucket）。"""
     backend = settings.storage_backend
@@ -74,6 +90,7 @@ def check_storage() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    check_jwt_secret()
     check_embedding_dimensions()
     check_storage()
     scheduler = AsyncioTaskScheduler()

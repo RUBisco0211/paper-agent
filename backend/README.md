@@ -259,6 +259,20 @@ SCRIPT
 
 日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。
 
+## 凭据与端口
+
+- **不入库的凭据**：仓库根 `.env`（compose 用：`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY/SECRET_KEY`）
+  与 `backend/.env`（后端用：`DATABASE_URL`、`JWT_SECRET_KEY`、`MINERU_API_KEY`、`EMBEDDING_API_KEY`、
+  `S3_ACCESS_KEY/SECRET_KEY`）都在 `.gitignore` 里；提交进仓库的只有占位符。
+- **两处密码必须一致**：compose 的 `POSTGRES_PASSWORD` 与 `backend/.env` 里 `DATABASE_URL` 的密码。
+  改密码时注意 `POSTGRES_PASSWORD` **只在数据卷首次初始化时生效**，已有数据卷上要用
+  `docker exec -it paper-agent-postgres psql -U paper_agent -d postgres -c "ALTER USER paper_agent WITH PASSWORD '新密码';"`
+  （`docker compose down -v` 会重建数据卷，数据全部丢失）。
+- **`JWT_SECRET_KEY` 必须是随机值**：`openssl rand -hex 32`，只写进 `backend/.env`。
+  占位符、短于 32 字符或低熵的密钥会在启动时报 `configuration.weak_jwt_secret`，
+  且 `ENVIRONMENT` 非 `development` 时直接拒绝启动。
+- **端口只绑本机**：Postgres 5432、TEI 8080、RustFS 9000/9001 都是 `127.0.0.1:`；对外只暴露后端与前端。
+
 ## 对象存储
 
 PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的 `ObjectStorage`
