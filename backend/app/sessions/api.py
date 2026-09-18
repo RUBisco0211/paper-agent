@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from ..auth.dependencies import CurrentUser
+from ..platform.config import settings
 from ..platform.pagination import Page, PageParamsDep
 from .agent import validate_llm_config
 from .dependencies import CitationServiceDep, SessionServiceDep, SseIdleTimeoutDep
@@ -30,6 +31,7 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+settings_router = APIRouter(tags=["agent"])
 
 
 @router.post(
@@ -296,3 +298,11 @@ def read_citation(
         citation_id=citation_id,
     )
     return to_citation_read(citation)
+
+
+@settings_router.get(
+    "/llm-providers",
+    summary="列出允许使用的 LLM Provider（不含 Base URL 与任何凭据）",
+)
+def list_llm_providers() -> dict[str, list[str]]:
+    return {"providers": sorted(settings.llm_providers)}

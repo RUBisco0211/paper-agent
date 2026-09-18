@@ -1,6 +1,8 @@
+import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 
 import { PageHeader } from "@/app/app-shell"
+import { queryKeys } from "@/app/query"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
@@ -14,12 +16,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { useApi } from "@/lib/api/provider"
 import { notifySuccess } from "@/lib/errors"
-import { ALLOWED_PROVIDERS, useLlmConfig } from "@/lib/settings/llm-config-hooks"
+import { useLlmConfig } from "@/lib/settings/llm-config-hooks"
 
 export function SettingsPage() {
+  const { api } = useApi()
   const { config, save, clear } = useLlmConfig()
-  const [provider, setProvider] = useState(config?.provider ?? "openai")
+  const [provider, setProvider] = useState(config?.provider ?? "")
+  // Provider 名单由部署配置决定，前端不再硬编码
+  const providers = useQuery({
+    queryKey: queryKeys.search({ providers: true }),
+    queryFn: () => api.sessions.llmProviders(),
+  })
+  const options = providers.data?.providers ?? []
   const [model, setModel] = useState(config?.model ?? "")
   const [apiKey, setApiKey] = useState(config?.api_key ?? "")
   const [saving, setSaving] = useState(false)
@@ -47,11 +57,11 @@ export function SettingsPage() {
                   <FieldLabel htmlFor="provider">Provider</FieldLabel>
                   <Select value={provider} onValueChange={setProvider}>
                     <SelectTrigger id="provider" className="w-full">
-                      <SelectValue />
+                      <SelectValue placeholder="选择 Provider" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {ALLOWED_PROVIDERS.map((item) => (
+                        {options.map((item) => (
                           <SelectItem key={item} value={item}>
                             {item}
                           </SelectItem>

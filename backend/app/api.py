@@ -15,6 +15,7 @@ from .platform.config import settings
 from .projects.api import router as projects_router
 from .retrieval.api import router as retrieval_router
 from .sessions.api import router as sessions_router
+from .sessions.api import settings_router as agent_settings_router
 
 
 def build_api_router() -> APIRouter:
@@ -27,4 +28,5 @@ def build_api_router() -> APIRouter:
     router.include_router(projects_router)
     router.include_router(retrieval_router)
     router.include_router(sessions_router)
+    router.include_router(agent_settings_router)
     return router

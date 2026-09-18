@@ -7,9 +7,6 @@ import {
   type StoredLlmConfig,
 } from "@/lib/settings/llm-config"
 
-/** Providers allowed by the backend allow-list (base URL is server-side). */
-export const ALLOWED_PROVIDERS = ["openai", "deepseek"] as const
-
 export function useLlmConfig() {
   const [config, setConfig] = useState<StoredLlmConfig | null>(() => loadLlmConfig())
 

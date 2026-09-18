@@ -493,3 +493,20 @@ def _parse_events(lines: list[str]) -> list[dict[str, str]]:
     if current.get("event"):
         events.append(current)
     return events
+
+
+def test_llm_providers_endpoint_exposes_only_names(
+    client: TestClient,
+    api_prefix: str,
+) -> None:
+    """前端靠这个列表填 Provider 下拉；不能泄露 Base URL 或凭据。"""
+    response = client.get(f"{api_prefix}/llm-providers")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["providers"] == sorted(body["providers"])
+    assert "openai" in body["providers"]
+    assert all(isinstance(name, str) for name in body["providers"])
+    # 只有名称，没有 URL 或 key
+    assert "http" not in response.text
+    assert "api_key" not in response.text

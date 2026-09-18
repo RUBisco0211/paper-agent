@@ -25,6 +25,10 @@ export interface SessionListParams {
 
 export function sessionEndpoints(client: ApiClient) {
   return {
+    /** 部署允许的 LLM Provider 名单（不含 Base URL 与凭据）。 */
+    llmProviders: () =>
+      client.request<{ providers: string[] }>("/v1/llm-providers"),
+
     /** 范围三选一：全局（都不传）、项目、单篇文献。 */
     create: (
       input: { title?: string; project_id?: Uuid; paper_id?: Uuid } = {},
