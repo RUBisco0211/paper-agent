@@ -50,9 +50,32 @@ def check_embedding_dimensions() -> None:
         )
 
 
+def check_storage() -> None:
+    """启动时确认对象存储可用（会顺带创建缺失的 bucket）。"""
+    backend = settings.storage_backend
+    try:
+        storage = get_object_storage()
+        probe = "system/startup-probe"
+        storage.put_bytes(probe, b"ok")
+        storage.delete(probe)
+    except Exception as exc:
+        logger.error(
+            "configuration.storage_unavailable",
+            backend=backend,
+            error=type(exc).__name__,
+        )
+        return
+    logger.info(
+        "configuration.storage_ready",
+        backend=backend,
+        bucket=settings.s3_bucket if backend == "s3" else str(settings.storage_root),
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     check_embedding_dimensions()
+    check_storage()
     scheduler = AsyncioTaskScheduler()
     scheduler.bind_loop(asyncio.get_running_loop())
     broker = EventBroker(buffer_size=settings.session_event_buffer_size)
