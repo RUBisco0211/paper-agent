@@ -27,6 +27,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.2.0",
     "ruff>=0.14.0",
 ]
 
@@ -42,3 +43,5 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# Agent 执行链路本身是异步的，测试直接用 async def
+asyncio_mode = "auto"

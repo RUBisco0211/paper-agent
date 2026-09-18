@@ -258,6 +258,22 @@ SCRIPT
 
 日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。
 
+## Agent 执行
+
+Agent 回合由 `app/sessions/agent_scope.py` 执行：用请求里的瞬时 `llm_config` 建
+AgentScope 模型（Base URL 来自部署配置的 Provider 允许列表），并挂载三个只读工具：
+
+| 工具 | 作用 | 范围 |
+|---|---|---|
+| `list_papers` | 列出会话范围内的文献与可用能力 | 会话范围（全局/项目/单篇文献） |
+| `search_papers` | 混合检索并登记 Citation，返回可引用的证据 | 同上 |
+| `get_paper_excerpt` | 按 citation_id 展开原文片段与页码 | 同上，解析时再校验会话归属 |
+
+- 范围来自会话上下文，**不由模型参数决定**；模型只能用 `search_papers` 登记过的 citation_id 引用原文
+- 工具调用写 `tool_result` Entry，回答携带的 citation_id 写进 Assistant Entry，前端据此渲染可点击引用
+- `AGENT_MAX_ITERS`（默认 8）限制工具轮次，`AGENT_TURN_TIMEOUT_SECONDS`（默认 240s）限制单回合
+- LLM Key 只在执行器内存中，不落库、不进日志
+
 ## 数据流向
 
 为了产出可用回答，系统会把数据发给外部服务：

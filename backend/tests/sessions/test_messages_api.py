@@ -53,6 +53,73 @@ def _create_session(client: TestClient, api_prefix: str, token: str) -> str:
     return response.json()["id"]
 
 
+class ToolCallingRunner(AgentRunner):
+    """模拟一次「检索工具 + 引用」的回答。"""
+
+    name = "tool-calling"
+
+    async def stream(self, request) -> AsyncIterator[AgentEvent]:
+        yield AgentEvent(
+            AgentEventType.TOOL_STARTED,
+            {"tool": "search_papers", "tool_call_id": "t1"},
+        )
+        yield AgentEvent(
+            AgentEventType.TOOL_COMPLETED,
+            {
+                "tool": "search_papers",
+                "tool_call_id": "t1",
+                "state": "success",
+                "content": '{"evidence": [{"citation_id": "cit_0000"}]}',
+            },
+        )
+        yield AgentEvent(AgentEventType.DELTA, {"text": "注意力机制是关键 [cit_0000]"})
+        yield AgentEvent(
+            AgentEventType.COMPLETED,
+            {"usage": {"input_tokens": 10}, "citations": ["cit_0000"]},
+        )
+
+
+def test_tool_calls_and_citations_are_recorded_as_entries(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    session_factory,
+    storage_root,
+) -> None:
+    """工具结果立即落 Entry，回答携带的引用写入 Assistant Entry（供前端点击核对）。"""
+    install_agent_runner(
+        client,
+        session_factory=session_factory,
+        storage_root=storage_root,
+        runner=ToolCallingRunner(),
+    )
+    token = register_user(email="reader@example.com")["access_token"]
+    session_id = _create_session(client, api_prefix, token)
+
+    client.post(
+        f"{api_prefix}/sessions/{session_id}/messages",
+        headers=auth_headers(token),
+        json={"content": "这篇论文的核心贡献？", "llm_config": VALID_LLM_CONFIG},
+    )
+
+    items = client.get(
+        f"{api_prefix}/sessions/{session_id}/entries",
+        headers=auth_headers(token),
+    ).json()["items"]
+
+    assert [item["type"] for item in items] == ["message", "tool_result", "message"]
+    tool_entry = items[1]["payload"]
+    assert tool_entry["tool"] == "search_papers"
+    assert tool_entry["state"] == "success"
+    assert "cit_0000" in tool_entry["content"]
+
+    assistant = items[2]["payload"]
+    assert assistant["stop_reason"] == "completed"
+    assert assistant["citations"] == ["cit_0000"]
+    # usage 里不该混入引用
+    assert "citations" not in assistant.get("usage", {})
+
+
 def test_message_requires_a_transient_llm_config_when_idle(
     client: TestClient,
     api_prefix: str,

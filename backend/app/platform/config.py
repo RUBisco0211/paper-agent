@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     chunk_token_num: int = 512
     chunk_max_chars: int = 4000
 
+    # Agent 回合
+    agent_max_iters: int = 8
+    agent_turn_timeout_seconds: float = 240.0
+
     # Sessions
     session_idle_flush_seconds: int = 300
     session_event_buffer_size: int = 500

@@ -120,6 +120,11 @@ class SessionTools:
         self._context = context
         self._services = services
 
+    @property
+    def collected_citations(self) -> list[str]:
+        """本次回合登记过的 citation_id（供执行器写入 Assistant Entry）。"""
+        return list(self._services.collected_citations)
+
     # list_papers ----------------------------------------------------------
     def list_papers(self, limit: int = DEFAULT_PAPER_LIMIT, offset: int = 0) -> dict:
         """列出本次会话授权范围内的文献。

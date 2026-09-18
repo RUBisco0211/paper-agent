@@ -68,6 +68,9 @@ class ErrorCode(StrEnum):
     CITATION_NOT_FOUND = "citation_not_found"
     PENDING_MESSAGE_NOT_FOUND = "pending_message_not_found"
     AGENT_UNAVAILABLE = "agent_unavailable"
+    AGENT_TIMEOUT = "agent_timeout"
+    AGENT_MAX_ITERS = "agent_max_iters"
+    LLM_NOT_CONFIGURED = "llm_not_configured"
 
     # Retrieval
     RETRIEVAL_UNAVAILABLE = "retrieval_unavailable"

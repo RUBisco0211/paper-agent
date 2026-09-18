@@ -56,6 +56,8 @@ class SessionExecutor:
         scheduler: TaskScheduler,
         runner: AgentRunner | None = None,
     ) -> None:
+        #: 未显式传入时用显式的「未接入」桩，避免误以为已经在跑 LLM
+
         self._entries = entries
         self._events = events
         self._session_factory = session_factory
@@ -153,6 +155,7 @@ class SessionExecutor:
         stop_reason = StopReason.COMPLETED
         error_code: str | None = None
         usage: dict = {}
+        citations: list[str] = []
         try:
             async for event in self._runner.stream(request):
                 if turn.stop_requested:
@@ -164,7 +167,12 @@ class SessionExecutor:
                 if event.type is AgentEventType.STARTED:
                     continue
                 if event.type is AgentEventType.COMPLETED:
-                    usage = event.data or {}
+                    usage = {
+                        key: value
+                        for key, value in (event.data or {}).items()
+                        if key != "citations"
+                    }
+                    citations = _citation_ids(event.data)
                     stop_reason = StopReason.COMPLETED
                     continue
                 if event.type is AgentEventType.FAILED:
@@ -172,9 +180,23 @@ class SessionExecutor:
                     error_code = str(
                         event.data.get("code") or ErrorCode.AGENT_UNAVAILABLE,
                     )
+                    citations = _citation_ids(event.data)
                     continue
                 if event.type is AgentEventType.DELTA:
                     text_parts.append(str(event.data.get("text", "")))
+                elif event.type is AgentEventType.TOOL_COMPLETED:
+                    # 工具结果立即落 Entry：中止或失败时也能看到做了什么
+                    self._entries.append(
+                        user_id=user_id,
+                        session_id=session_id,
+                        entry_type=EntryType.TOOL_RESULT,
+                        payload={
+                            "tool": str(event.data.get("tool") or "tool"),
+                            "tool_call_id": str(event.data.get("tool_call_id") or ""),
+                            "state": str(event.data.get("state") or ""),
+                            "content": str(event.data.get("content") or ""),
+                        },
+                    )
                 self._events.publish(
                     session_id=session_id,
                     type=event.type.value,
@@ -199,6 +221,7 @@ class SessionExecutor:
             stop_reason=stop_reason,
             error_code=error_code,
             usage=usage,
+            citations=citations,
         )
         if stop_reason is not StopReason.COMPLETED:
             # Stopped or failed generations leave the queue for the user to
@@ -224,6 +247,7 @@ class SessionExecutor:
         stop_reason: StopReason,
         error_code: str | None,
         usage: dict | None = None,
+        citations: list[str] | None = None,
     ) -> None:
         payload: dict = {
             "role": MessageRole.ASSISTANT.value,
@@ -234,6 +258,8 @@ class SessionExecutor:
         }
         if error_code:
             payload["error_code"] = error_code
+        if citations:
+            payload["citations"] = citations
         entry = self._entries.append(
             user_id=session.user_id,
             session_id=session.id,
@@ -308,3 +334,16 @@ class SessionExecutor:
             session.rollback()
         finally:
             session.close()
+
+
+def _citation_ids(data: dict | None) -> list[str]:
+    """从终态事件里取出工具登记过的 citation_id（去重且保序）。"""
+    values = (data or {}).get("citations") or []
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for value in values:
+        text = str(value)
+        if text and text not in seen:
+            seen.add(text)
+            ordered.append(text)
+    return ordered
