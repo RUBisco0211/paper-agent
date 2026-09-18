@@ -1,79 +1,118 @@
-# 实施状态（本轮）
+# 实施状态
 
-日期：2026-09-17。对应功能规格：[minimal-mvp.md](minimal-mvp.md)。本文只记录**当前代码实际提供的能力**与**明确后置的部分**，不修改功能契约。
+日期：2026-09-18。对应功能规格：[minimal-mvp.md](minimal-mvp.md)。本文只记录**当前代码实际提供的能力**与**明确后置的部分**，不修改功能契约。
 
-## 1. 后端已落地
+## 1. 功能清单（对照规格编号）
 
 | 功能 | 状态 | 对应接口 |
 |---|---|---|
-| F01 账号与登录态 | 已实现 | `POST /v1/auth/register\|login\|refresh\|logout`、`GET /v1/auth/me` |
-| F02 上传与个人论文库 | 已实现 | `POST/GET /v1/papers`、`GET /v1/papers/{id}`、`GET /v1/papers/{id}/pdf` |
-| F03 解析、元数据与重试 | 已实现（解析器依赖实例配置） | `GET /v1/ingestion-jobs/{id}`、`POST .../retry`、`POST /v1/papers/{id}/resolve-metadata` |
-| F04 项目与问答范围 | 已实现 | `/v1/projects`、`/v1/projects/{id}/papers` |
-| F05 检索与 Agent 论文工具 | 检索已实现；Agent 工具未接入 | `POST /v1/search` |
-| F06 会话与流式回答 | 会话机制已实现；LLM 执行未接入 | `/v1/sessions/*`（含 `events`、`messages`、`stop`、`resume`） |
-| F07 阅读原文与验证引用 | 已实现 | `GET /v1/sessions/{id}/citations/{citation_id}` |
-| F08 DOI/arXiv 导入 | 已实现（依赖来源可用性） | `POST /v1/imports`、`GET /v1/imports/{id}` |
-| F09 仅元数据条目 | 已实现 | 条目先有身份，拿到 PDF 后绑定共享 Paper |
+| F01 账号与登录态 | 已实现：注册、登录、刷新轮换、登出、当前用户；Argon2id、JWT（`jti` + 重放撤销 token family）、Origin 校验 | `POST /v1/auth/register\|login\|refresh\|logout`、`GET /v1/auth/me` |
+| F02 上传与个人论文库 | 已实现：magic/大小/页数校验、SHA-256 全局去重、列表/详情/PDF 流 | `POST/GET /v1/papers`、`GET /v1/papers/{id}`、`GET /v1/papers/{id}/pdf` |
+| F03 解析、元数据与重试 | 已实现：四阶段状态机（metadata/fulltext/chunking/embedding）、阶段级重试、补传 PDF、抓取全文、补全/修正元数据 | `GET /v1/ingestion-jobs/{id}`、`POST .../retry`、`POST /v1/papers/{id}/fetch-metadata`、`POST /v1/papers/{id}/fetch-pdf`、`PATCH /v1/papers/{id}/info` |
+| F04 项目与问答范围 | 已实现：项目 CRUD、项目论文只增不减、删除项目级联清理其会话 | `/v1/projects`、`/v1/projects/{id}/papers` |
+| F05 检索与 Agent 论文工具 | 已实现：关键词 + 向量双通道召回、RRF 融合、每篇配额；**三个只读工具已接入 Agent** | `POST /v1/search` |
+| F06 会话与流式回答 | 已实现：会话 CRUD、JSONL Entry 日志、消息/pending 双队列、停止/继续、SSE（`Last-Event-ID` 重放）、范围注入、**AgentScope 真实执行** | `/v1/sessions/*`（`entries`、`events`、`messages`、`stop`、`resume`） |
+| F07 阅读原文与验证引用 | 已实现：引用展开原文片段与页码，落库校验会话归属 | `GET /v1/sessions/{id}/citations/{citation_id}` |
+| F08 DOI/arXiv 导入 | 已实现：先元数据后尝试全文，两种终态（`ready` / `pdf_unavailable`） | `POST /v1/imports`、`GET /v1/imports/{id}` |
+| F09 仅元数据条目 | 已实现：条目先有身份，拿到 PDF 后绑定共享 Paper | 与 F03 同 |
 
-已落地的基础设施：
+## 2. Agent 回合执行（已接入）
 
-- SQLAlchemy 2.0（同步）+ Alembic 迁移（`20260917_0001`–`20260917_0006`）；
-- PostgreSQL 16 + pgvector：`tsvector` 生成列 + GIN 索引、`vector(1536)` 余弦距离；
-- structlog + 标准库 logging、`X-Request-ID` 关联、统一错误契约（稳定错误码 + request_id）；
-- 对象存储抽象与两种实现（PDF、MinerU 产物、会话 Entry JSONL）；
-- 向量适配层（`EmbeddingAdapter` + 模型档案）：换模型/换服务是配置变更，非 OpenAI 兼容服务只需新增一个适配器；
-- 进程内任务调度器（`AsyncioTaskScheduler`），测试使用 `InlineTaskScheduler`。
+`app/sessions/agent_scope.py` 用请求里的瞬时 `llm_config`（provider / model / api_key）建 AgentScope 模型，
+Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-providers` 向前端暴露名单，不含凭据）。
 
-## 2. 明确未接入（不是“已完成”）
+三个只读工具（`app/sessions/tools.py`），**范围由会话上下文注入，模型无法通过参数越权**：
 
-| 项目 | 当前行为 | 影响 |
-|---|---|---|
-| Agent 回合执行 | 已接入 AgentScope（`app/sessions/agent_scope.py`）：瞬时 `llm_config`（provider/model/api_key）建模型，三个只读工具由会话范围注入，工具调用落 `tool_result` Entry，回答携带的 citation_id 写入 Assistant Entry | **尚未用真实 LLM Key 跑通端到端**；未配置时 `validate_llm_config` 会拒绝，执行器失败会写成 `stop_reason=failed` + 稳定错误码（`llm_not_configured` / `provider_rate_limited` / `agent_timeout` / `agent_max_iters`） |
-| MinerU 正文解析 | 已用真实凭据与真实英文论文验证：133 blocks / 14 图片 → 17 chunks，关键词检索可命中并带页码。未配置时 fulltext 阶段失败并记录 `provider_not_configured` | 适配器已处理"配置带端点需归一化"与"预签名上传不能带 Content-Type"两个实际行为 |
-| Embedding | 适配层已就绪（`EmbeddingAdapter` + 模型档案）；当前配置指向云服务 DashScope `text-embedding-v3`（1024 维，待填 Key）。未配置/未启动时 embedding 阶段失败，`has_keyword_index=true`、`has_embedding=false` | 检索为 degraded（仅关键词通道），不会伪装成混合检索；**向量通道尚未用真实服务验证**，留到部署时验收 |
-| Redis / Celery | 未引入；后台任务在 FastAPI 进程内执行 | 单机单进程语义；重启后活动生成中断（pending 仍保留） |
-| 对象存储 | `ObjectStorage` 抽象，`local`（默认）与 `s3`（S3 兼容，如 RustFS）两种实现 | MinIO 社区版已归档故不选；单机用 `local` + 卷，多实例共享再切 `s3` |
-| 前端页面 | 已实现登录/注册、论文库、项目、会话工作区与模型设置 | 见第 3 节；`/v1/search` 暂无独立页面（按规格不做搜索页） |
+| 工具 | 作用 |
+|---|---|
+| `list_papers` | 列出会话范围内的文献与可用能力 |
+| `search_papers` | 混合检索、登记 Citation、返回可引用证据 |
+| `get_paper_excerpt` | 按 `citation_id` 展开原文片段与页码（再校验会话归属） |
 
-## 3. 前端页面（已实现）
+回合语义：
+
+- 模型输出映射为稳定事件（文本增量、工具开始/结束、用量、终态），工具输出摘要先落 `tool_result` Entry，
+  中止或失败也能看到做了什么；回答携带的 citation_id 写入 Assistant Entry，前端据此渲染可点击引用；
+- 失败一律折成稳定错误码：`llm_not_configured`（401/403）、`provider_rate_limited`（429）、
+  `agent_timeout`、`agent_max_iters`（默认 8 轮）、`agent_unavailable`；`AGENT_TURN_TIMEOUT_SECONDS` 默认 240s；
+- LLM Key 只驻留执行器内存，不落库、不进日志、不进对象存储；
+- 事件映射与落库均有离线用例（假 Agent / 假仓储）；**真实 LLM 的浏览器闭环尚未验收**（见第 7 节）。
+
+## 3. 检索与 Embedding
+
+- 适配层 `EmbeddingAdapter` + 模型档案：换模型/换服务是配置变更（13 个档案覆盖 bge 系、e5、nomic、
+  embeddinggemma、qwen3、OpenAI 与 DashScope 的 text-embedding-*）；
+- 当前指向 DashScope `text-embedding-v3`（1024 维）。**已用真实服务验证**：单条与批量调用均返回 1024 维；
+- **混合检索已用真实数据验证**：同一查询下关键词 1 条 + 向量 20 条候选，RRF 融合后给出 3 条带页码证据；
+- 未配置或调用失败时检索退化为仅关键词，并在响应里标明，不伪装成混合检索；
+- `chunks.embedding = vector(1024)`，启动时自检配置维度与列维度是否一致（`configuration.embedding_dimension_mismatch`）。
+
+## 4. 对象存储
+
+`app/platform/storage.py` 的 `ObjectStorage` 接口 + 两种实现，Key 布局一致，换后端是配置变更：
+
+| 后端 | 说明 |
+|---|---|
+| `local`（默认） | 写 `STORAGE_ROOT`（默认 `.var/storage`），单机挂卷即可；`materialize()` 零拷贝给出真实路径 |
+| `s3` | 任何 S3 兼容服务（本地 RustFS / Garage / 云对象存储）；大文件分片上传，`materialize()` 下载到临时文件并清理 |
+
+- 保存内容：PDF 原文、MinerU 原始产物（`content_list.json` / `full.md` / 图片）、会话 Entry JSONL；
+- 一致性由共享协议用例保证：同一组用例跑在 local、模拟 S3 与真实 RustFS 上；整套后端用例也可整体跑在
+  `PAPER_AGENT_LIVE_STORAGE=1` 指向的真实对象存储上；
+- 启动自检 `configuration.storage_ready`（顺带创建缺失的 bucket）。
+
+## 5. 前端页面
 
 | 路由 | 对应功能 | 主要交互 |
 |---|---|---|
 | `/login`、`/register` | F01 | 登录/注册、字段级校验、登录后回到原目标页 |
 | `/library` | F02/F03/F08 | 上传 PDF、DOI/arXiv 导入、按标题过滤、分页、能力与处理状态分列、处理中自动轮询 |
 | `/library`（详情抽屉） | F03/F07 | 阶段表与失败重试、补传 PDF、重新获取全文、补全/修正元数据、内嵌 PDF 阅读、加入项目、就用这篇提问 |
-| `/projects`、`/projects/:id` | F04 | 创建/改名/删除项目、从个人库多选添加、按标识符导入到项目、项目会话列表 |
-| `/sessions`、`/sessions/:id` | F06/F07 | 范围筛选、新建/改名/删除会话、流式回答、steering/follow-up 入队、停止、继续处理队列、引用展开证据 |
-| `/settings` | LLM 配置 | Provider 允许列表、模型与 API Key 存浏览器本地，并说明数据流向 |
+| `/projects`、`/projects/:id` | F04 | 创建/重命名/删除项目、从个人库多选添加、按标识符导入到项目、项目会话列表 |
+| `/sessions/:id` | F06/F07 | 流式回答、steering/follow-up 入队、停止、继续处理队列、引用展开证据（会话列表与新建入口在侧边栏按范围分组，没有独立的会话列表页） |
+| `/settings` | LLM 配置 | Provider 名单来自后端接口，模型与 API Key 存浏览器本地 |
 
-前端校验现状：`pnpm run test` 20 个用例（API 客户端、SSE 解析、聊天组件语义、应用启动），`pnpm run typecheck` 与 `pnpm run build` 通过。
+界面规范见 [ui-spec.md](../frontend/ui-spec.md)：统一 `PageHeader`、侧边栏范围分组与折叠、状态配色、
+动效约定、shadcn 官方组件。前端 `pnpm run test` 34 个用例、`pnpm run typecheck` 与 `pnpm run build` 通过。
 
-## 4. 端到端可验证路径
+## 6. 基础设施
+
+- SQLAlchemy 2.0（同步）+ Alembic（`20260917_0001`–`20260917_0007`）；
+- PostgreSQL 16 + pgvector：`tsvector` 生成列 + GIN 索引、`vector(1024)` 余弦距离；
+- structlog + 标准库 logging、`X-Request-ID` 关联、统一错误契约（稳定错误码 + request_id）；
+- 进程内任务调度器（`AsyncioTaskScheduler`），测试用 `InlineTaskScheduler`；
+- 部署配置自检：弱 JWT 密钥、Embedding 维度不匹配、对象存储不可用都会在启动时以稳定事件名报出；
+- `docker-compose.yml` 提供 Postgres、可选 TEI（`profile: embeddings`）、可选 RustFS（`profile: storage`）；
+  `./start.sh` 按 `backend/.env` 与实际配置自动拉起所需容器。
+
+## 7. 尚未验收 / 明确后置
+
+| 项目 | 现状 |
+|---|---|
+| 真实 LLM 的端到端问答 | 执行器、工具、事件映射与落库均有离线用例；**尚未用真实 LLM Key 跑通「提问 → 工具 → 带引用的回答」的浏览器闭环**（需要临时填一次 Provider Key） |
+| 多实例部署 | 后台任务在进程内执行，重启会中断正在进行的生成（pending 仍保留）；会话与文献不做数据库关联，范围写在 Entry 日志里 |
+| 自建 Embedding | 自建 TEI 的 bge-m3 权重已下载并校验（`./models/bge-m3`），因本机内存不足未加载；本机先用云 Embedding |
+| 历史处理失败 | 早期缺少 Provider 配置时留下的失败任务需要逐个重试（文献详情抽屉里可重试）；旧任务不会自动补跑 |
+| 并发上传同一 PDF | 依赖唯一约束与幂等写入，未做跨进程锁 |
+| 浏览器端到端用例 | Playwright 与 Yaak 集合尚未建立 |
+| 未提供的入口 | 按规格不提供「从项目移除文献」「删除文献」；`/v1/search` 无独立页面 |
+
+## 8. 本地跑起来与自检
 
 ```bash
-docker compose up -d postgres
-cd backend && uv sync && cp .env.example .env && uv run alembic upgrade head
-uv run pytest -q          # 95 个用例：契约、隔离、并发与故障语义
-uv run uvicorn app.main:app --port 8000
+docker compose up -d postgres          # 需要 S3 存储时追加：--profile storage up -d storage
+./start.sh                             # 数据库 + 后端 + 前端（Ctrl-C 全部停止）
 
-cd ../frontend && pnpm install && pnpm run test && pnpm run typecheck && pnpm dev
-# 浏览器打开 http://127.0.0.1:5173（/v1 由 Vite 代理转发到后端）
+cd backend && uv run pytest -q         # 166 passed, 1 skipped（需 Postgres）
+PAPER_AGENT_LIVE_STORAGE=1 uv run pytest -q   # 整套跑在 backend/.env 指向的真实对象存储上
+
+cd ../frontend && pnpm run test && pnpm run typecheck && pnpm run build
 ```
 
-手写联调可参考 `uv run python main.py` 后的 `/docs`（OpenAPI），关键场景：
+浏览器打开 `http://127.0.0.1:5173`（`/v1` 由 Vite 代理到后端）。关键联调场景：
 
-1. 注册 → 上传 PDF → `GET /v1/papers/{id}` 看到能力与阶段；
-2. 上传 `arXiv:1706.03762` 文本的 PDF → metadata 阶段识别并补全（需要在线来源可用）；
+1. 注册 → 上传 PDF → `GET /v1/papers/{id}` 看到能力与阶段，详情抽屉里可重试失败阶段；
+2. 上传含 `arXiv:1706.03762` 文本的 PDF → metadata 阶段识别并在线补全；
 3. `POST /v1/imports` 导入 DOI/arXiv，观察 `ready` 与 `pdf_unavailable` 两种终态；
-4. 用两个账号互相访问对方的论文 / PDF / 项目 / 会话 / 引用，均应返回 404。
-
-## 5. 未覆盖的验收点
-
-- 真实 LLM 问答与工具摘要的浏览器闭环：页面已具备，但执行器仍返回 `agent_unavailable`，因此只验证到“失败可解释”；
-- 引用展开页面已实现，但没有真实回答产生引用（依赖 Agent 接入后写入证据）；
-- Agent 端到端：执行器、工具与事件映射都有离线用例覆盖（假 Agent / 假仓储），但尚未用真实 LLM 跑通"提问 → 工具 → 带引用的回答"；
-- Embedding 真实链路：适配层与供应商档案已完成（含 DashScope 的 ≤10 条/请求与整批 token 上限、bge 系前缀规则），但尚未用真实云服务跑通端到端；
-- 自建 TEI 的权重已下载并 sha256 校验（`./models/bge-m3`，被 .gitignore 忽略），因本机内存不足（swap 已用 18.8GB）未在本机加载；
-- 多用户并发上传同一 PDF 的全局锁竞争（当前依赖唯一约束与幂等写入，未做 Redis 锁）；
-- 浏览器端到端用例（Playwright）与 Yaak 集合。
+4. 在 `/settings` 填一次 Provider Key → 新建会话提问，观察工具调用、流式回答与可点击引用；
+5. 用两个账号互相访问对方的论文 / PDF / 项目 / 会话 / 引用，均应返回 404。
