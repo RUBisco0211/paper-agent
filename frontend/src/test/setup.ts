@@ -22,11 +22,12 @@ globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserv
 globalThis.matchMedia = matchMediaStub as unknown as typeof window.matchMedia
 
 // Radix 的浮层组件在 jsdom 下需要这些 pointer/scroll API
-if (!Element.prototype.hasPointerCapture) {
+// （node 环境的用例没有 Element，需先判断）
+if (typeof Element !== "undefined" && !Element.prototype.hasPointerCapture) {
   Element.prototype.hasPointerCapture = () => false
   Element.prototype.setPointerCapture = () => {}
   Element.prototype.releasePointerCapture = () => {}
 }
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
