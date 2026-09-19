@@ -55,20 +55,19 @@ pnpm dev                       # http://127.0.0.1:5173
 
 ```bash
 # 后端：契约、鉴权隔离、处理流水线、检索与队列语义
-cd backend && uv run pytest -q          # 95 passed
+cd backend && uv run pytest -q          # 168 passed, 1 skipped
 
 # 前端：类型检查、组件与启动路径
-cd frontend && pnpm run typecheck && pnpm run test   # 20 passed
+cd frontend && pnpm run typecheck && pnpm run test && pnpm run build   # 42 passed
 ```
 
 接口文档在服务启动后访问 <http://127.0.0.1:8000/docs>（OpenAPI）。浏览器端已实现登录/注册、论文库（上传、DOI/arXiv 导入、
-详情与内嵌 PDF）、项目、会话工作区（流式回答、排队输入、停止/继续、引用展开）与模型设置。
+详情与内嵌 PDF）、项目、模型设置和会话工作区（流式回答、工具状态、排队输入、停止/继续与引用展开）。
 
 当前实现范围与明确未接入的部分见
-[docs/overview/implementation-status.md](docs/overview/implementation-status.md)：会话与流式机制、pending 队列、
-引用校验都已落地，但真正执行 LLM 的 Agent 回合仍是一个显式返回 `agent_unavailable` 的桩，因此浏览器里能看到
-“失败可解释”而不是伪造回答。
+[docs/overview/implementation-status.md](docs/overview/implementation-status.md)。AgentScope 执行器、三个只读文献工具、
+流式事件、pending 队列和引用校验均已接入；真实 Provider 的端到端联调需要在设置页选择模型并填写 API Key。
 
 ## 数据流向
 
-为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的论文证据发往用户自己配置的 LLM Provider。LLM API Key 只驻留执行器内存，不写入数据库、日志、对象存储或任务队列。
+为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的论文证据发往用户选择的 LLM Provider。LLM API Key 保存在当前浏览器并随 Agent 启动请求提交，后端不把它写入数据库、日志、对象存储或任务队列。

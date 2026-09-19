@@ -261,11 +261,9 @@ erDiagram
 
 ### 5.2 Provider 配置
 
-- MinerU 与 Embedding URL、Key、模型均为实例级环境变量，由部署者固定。
-- LLM 配置由用户在前端 localStorage 维护，启动或恢复 Agent 时通过请求体传入：`provider`、`model`、`api_key`。
-- LLM Key 只驻留当前 Agent executor 内存，不进入 PostgreSQL、Redis、MinIO、日志、Entry 或幂等响应缓存。
-- 公共 API 不接受任意 `base_url`。后端维护 Provider 允许列表并固定 Base URL；管理员通过部署配置扩展 Provider，避免 SSRF。
-- Agent 已运行时追加 steering/follow-up 不要求重复提交 LLM 配置。
+- MinerU 与 Embedding 的 URL、Key、模型为实例级环境变量，由部署者固定。
+- LLM Provider 与模型从 AgentScope Model Card 目录选择，用户只填写 API Key；公共 API 不接受任意 `base_url`。
+- LLM Key 不进入 PostgreSQL、Redis、MinIO、日志、Entry 或幂等响应缓存。
 - README 明确说明数据流向：PDF 发往 MinerU、Chunk 文本发往 Embedding 服务、用户问题与检索证据发往 LLM。首版不提供用户级出站开关或额外披露 UI。
 
 ---
@@ -434,7 +432,7 @@ Redis 为每个 Session 保存两个 FIFO pending 队列：
 - 后续上下文仍包含该 Entry；
 - 已完成工具结果立即持久化，未完成工具调用必须补一个 aborted/error Tool Result，避免孤儿 Tool Call。
 
-LLM Key 只存在 Executor 内存。进程重启后活动生成不能续跑，写为 aborted；pending 仍保留，客户端重新提供 LLM 配置后继续消费。
+进程重启后活动生成不能续跑，写为 aborted；pending 仍保留，客户端用已保存的模型选择与 Key 触发恢复。
 
 ### 9.4 Entry 存储
 
@@ -490,7 +488,7 @@ POST   /v1/sessions/{session_id}/stop
 GET    /v1/sessions/{session_id}/export
 ```
 
-`POST .../messages` 接收 `delivery = steering | follow_up`；Session 空闲时消息立即成为下一条输入。启动或恢复 Executor 时请求还需携带瞬时 `llm_config`。
+`POST .../messages` 接收 `delivery = steering | follow_up`；Session 空闲时消息立即成为下一条输入。启动或恢复 Executor 时使用部署端模型配置。
 
 ### 10.2 SSE
 
@@ -512,7 +510,7 @@ SSE 绑定 Session。Redis 短期 Event Stream 保存递增事件 ID，客户端
 }
 ```
 
-事件类型至少包括 `generation.started`、`message.delta`、`tool.started`、`tool.completed`、`queue.updated`、`generation.completed`、`generation.aborted` 和 `generation.failed`。
+事件类型至少包括 `generation.started`、`message.delta`、`thinking.delta`、`trace.message`、`tool.started`、`tool.completed`、`queue.updated`、`generation.completed`、`generation.aborted` 和 `generation.failed`。`trace.message` 表示工具调用前已经形成的一条 Assistant 中间消息；它作为结构化 Trace Entry 保存，不归类为 Thinking 或最终回答。
 
 ### 10.3 错误
 
@@ -603,7 +601,7 @@ Celery workers
   └─ temporary-object cleanup
 ```
 
-- Agent 生成留在 FastAPI 进程，不经过 Celery，避免把用户 LLM Key 写入 Broker。
+- Agent 生成留在 FastAPI 进程，不经过 Celery；模型配置由部署端注入。
 - Celery 只处理使用实例级凭据、可幂等重试的后台工作。
 - 领域模块沿用仓库现有的 domain/application/api/persistence 垂直切片，platform 只放数据库、日志、对象存储、队列等横切设施。
 
@@ -654,7 +652,7 @@ Celery workers
 | `MINERU_API_URL` / `MINERU_API_KEY` | 实例级 MinerU 配置 |
 | `EMBEDDING_API_URL` / `EMBEDDING_API_KEY` | 实例级 Embedding 配置 |
 | `EMBEDDING_MODEL` / `EMBEDDING_DIMENSIONS` | 固定索引模型与维度 |
-| `LLM_PROVIDERS` | 允许的 Provider 及固定 Base URL |
+| `LLM_PROVIDERS` | 对用户开放的 AgentScope 原生 Provider 目录 |
 | `JWT_SECRET_KEY` | Access token 签名密钥 |
 | `ACCESS_TOKEN_TTL_MINUTES` | 默认 15 |
 | `REFRESH_TOKEN_TTL_DAYS` | 默认 7 |
@@ -679,7 +677,7 @@ Celery workers
 4. 用户创建无 Project 的 Session；Agent 可以查询个人全库。
 5. Agent 回答包含可验证 Citation，证据不足时明确拒绝硬答。
 6. 关键词与向量通道各自召回，RRF 生成稳定混合排序。
-7. SSE 断线后从最近事件继续；后端进程重启则活动回答标记 aborted，pending 可在重新提供 LLM 配置后继续。
+7. SSE 断线后从最近事件继续；后端进程重启则活动回答标记 aborted，pending 可由用户触发继续。
 8. steering 与 follow-up 按各自 FIFO 和 pi 风格安全边界消费。
 9. 删除活动 Session 或 Project 时，生成、pending、Redis 与 MinIO 数据均按约定清理。
 
@@ -700,6 +698,6 @@ Celery workers
 - rerank 后置；评测证明 RRF 不足时再选择远程 API 或本地模型服务。
 - 论文/项目论文移除后置；届时重新设计历史 Citation、孤儿对象和用户行为保留语义。
 - Agent 生成只支持单机进程级连续性，后端重启不能恢复活动 LLM 调用。
-- 用户选择把 LLM Key 保存在前端 localStorage；这是明确接受的 XSS 暴露面，后端仍禁止持久化或记录该 Key。
+- LLM Key 保存在用户浏览器，只随 Agent 启动或恢复请求进入后端执行器，不写入业务存储。
 - 未实现专门的文档提示注入防护，不适合作为拥有外部副作用工具的开放 Agent 平台。
 - MVP 后优先扩展联网论文搜索；网络工具必须另行设计出站策略、权限和审计。

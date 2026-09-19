@@ -1,6 +1,6 @@
 # 实施状态
 
-日期：2026-09-18。对应功能规格：[minimal-mvp.md](minimal-mvp.md)。本文只记录**当前代码实际提供的能力**与**明确后置的部分**，不修改功能契约。
+日期：2026-09-19。对应功能规格：[minimal-mvp.md](minimal-mvp.md)。本文只记录**当前代码实际提供的能力**与**明确后置的部分**，不修改功能契约。
 
 ## 1. 功能清单（对照规格编号）
 
@@ -18,8 +18,8 @@
 
 ## 2. Agent 回合执行（已接入）
 
-`app/sessions/agent_scope.py` 用请求里的瞬时 `llm_config`（provider / model / api_key）建 AgentScope 模型，
-Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-providers` 向前端暴露名单，不含凭据）。
+`GET /v1/llm-catalog` 从 AgentScope Model Card 返回 Provider、active 模型及其思考强度档位。设置页只允许选择目录项并填写 API Key；
+后端再次校验组合后创建对应的 AgentScope 原生模型，客户端不能提交 Base URL。
 
 三个只读工具（`app/sessions/tools.py`），**范围由会话上下文注入，模型无法通过参数越权**：
 
@@ -35,7 +35,7 @@ Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-provid
   中止或失败也能看到做了什么；回答携带的 citation_id 写入 Assistant Entry，前端据此渲染可点击引用；
 - 失败一律折成稳定错误码：`llm_not_configured`（401/403）、`provider_rate_limited`（429）、
   `agent_timeout`、`agent_max_iters`（默认 8 轮）、`agent_unavailable`；`AGENT_TURN_TIMEOUT_SECONDS` 默认 240s；
-- LLM Key 只驻留执行器内存，不落库、不进日志、不进对象存储；
+- LLM Key 只随启动或恢复请求进入当前执行器，不落库、不进日志、不进对象存储；
 - 事件映射与落库均有离线用例（假 Agent / 假仓储）；**真实 LLM 的浏览器闭环尚未验收**（见第 7 节）。
 
 ## 3. 检索与 Embedding
@@ -69,11 +69,13 @@ Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-provid
 | `/library` | F02/F03/F08 | 上传 PDF、DOI/arXiv 导入、按标题过滤、分页、能力与处理状态分列、处理中自动轮询 |
 | `/library`（详情抽屉） | F03/F07 | 阶段表与失败重试、补传 PDF、重新获取全文、补全/修正元数据、内嵌 PDF 阅读、加入项目、就用这篇提问 |
 | `/projects`、`/projects/:id` | F04 | 创建/重命名/删除项目、从个人库多选添加、按标识符导入到项目、项目会话列表 |
-| `/sessions/:id` | F06/F07 | 流式回答、steering/follow-up 入队、停止、继续处理队列、引用展开证据（会话列表与新建入口在侧边栏按范围分组，没有独立的会话列表页） |
-| `/settings` | LLM 配置 | Provider 名单来自后端接口，模型与 API Key 存浏览器本地 |
+| `/sessions/:id` | F06/F07 | 用户消息气泡、支持 GFM/公式与流式未闭合语法的 Agent 正文、可折叠 Thinking、紧凑工具调用状态、PDF 上传、模型与思考强度切换、steering/follow-up 入队、停止、继续处理队列与引用展开（会话列表和新建入口在侧边栏按范围分组） |
+| `/settings` | LLM 配置 | 从 AgentScope 目录选择 Provider/模型，只输入 API Key |
 
 界面规范见 [ui-spec.md](../frontend/ui-spec.md)：统一 `PageHeader`、侧边栏范围分组与折叠、状态配色、
-动效约定、shadcn 官方组件。前端 `pnpm run test` 34 个用例、`pnpm run typecheck` 与 `pnpm run build` 通过。
+动效约定、shadcn 官方组件。
+
+当前校验：前端 44 个用例、类型检查与生产构建通过；后端 170 个用例通过、1 个跳过。
 
 ## 6. 基础设施
 
@@ -89,7 +91,7 @@ Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-provid
 
 | 项目 | 现状 |
 |---|---|
-| 真实 LLM 的端到端问答 | 执行器、工具、事件映射与落库均有离线用例；**尚未用真实 LLM Key 跑通「提问 → 工具 → 带引用的回答」的浏览器闭环**（需要临时填一次 Provider Key） |
+| 真实 LLM 的端到端问答 | 执行器、工具、事件映射与落库均有离线用例；**尚未用真实 LLM Key 跑通「提问 → 工具 → 带引用的回答」的浏览器闭环** |
 | 多实例部署 | 后台任务在进程内执行，重启会中断正在进行的生成（pending 仍保留）；会话与文献不做数据库关联，范围写在 Entry 日志里 |
 | 自建 Embedding | 自建 TEI 的 bge-m3 权重已下载并校验（`./models/bge-m3`），因本机内存不足未加载；本机先用云 Embedding |
 | 历史处理失败 | 早期缺少 Provider 配置时留下的失败任务需要逐个重试（文献详情抽屉里可重试）；旧任务不会自动补跑 |
@@ -103,7 +105,7 @@ Base URL 只能来自部署配置的 Provider 允许列表（`GET /v1/llm-provid
 docker compose up -d postgres          # 需要 S3 存储时追加：--profile storage up -d storage
 ./start.sh                             # 数据库 + 后端 + 前端（Ctrl-C 全部停止）
 
-cd backend && uv run pytest -q         # 166 passed, 1 skipped（需 Postgres）
+cd backend && uv run pytest -q         # 170 passed, 1 skipped（需 Postgres）
 PAPER_AGENT_LIVE_STORAGE=1 uv run pytest -q   # 整套跑在 backend/.env 指向的真实对象存储上
 
 cd ../frontend && pnpm run test && pnpm run typecheck && pnpm run build
@@ -114,5 +116,5 @@ cd ../frontend && pnpm run test && pnpm run typecheck && pnpm run build
 1. 注册 → 上传 PDF → `GET /v1/papers/{id}` 看到能力与阶段，详情抽屉里可重试失败阶段；
 2. 上传含 `arXiv:1706.03762` 文本的 PDF → metadata 阶段识别并在线补全；
 3. `POST /v1/imports` 导入 DOI/arXiv，观察 `ready` 与 `pdf_unavailable` 两种终态；
-4. 在 `/settings` 填一次 Provider Key → 新建会话提问，观察工具调用、流式回答与可点击引用；
+4. 在 `/settings` 选择 Provider/模型并填写 API Key → 新建会话提问，观察工具调用、流式回答与可点击引用；
 5. 用两个账号互相访问对方的论文 / PDF / 项目 / 会话 / 引用，均应返回 404。

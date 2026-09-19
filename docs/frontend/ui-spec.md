@@ -7,7 +7,7 @@
 界面文案只有三种合法用途：
 
 1. **当前状态**：正在做什么、结果是什么（"上传中…"、"处理完成"、"已停止"）。
-2. **下一步动作**：按钮、链接、空状态的引导（"上传 PDF"、"去模型设置"）。
+2. **下一步动作**：按钮、链接、空状态的引导（如“上传 PDF”“新建项目”）。
 3. **后果确认**：用户做不可逆操作前需要判断的信息（"删除项目会同时删除项目会话，论文库不受影响"）。
 
 以下内容**一律不出现在界面**（包括 header、图标下方、卡片、Sheet/Dialog 描述、Alert、Toast）：
@@ -55,7 +55,7 @@
 
 参考 ChatGPT 的侧边栏结构：
 
-- **上半部分**：通用导航（论文库、项目、模型设置），顶部只放产品名，不放副标题。
+- **上半部分**：通用导航（文献库、项目、设置），顶部只放产品名，不放副标题。
 - **下半部分**：会话列表，**按项目分组**（"未分组"或个人全库在最前），每组可折叠，组内按创建时间倒序；提供"新建会话"入口。会话项的删除/改名放在该项的行内菜单或悬浮操作里。
 - 折叠态由 `SidebarProvider` 管理，不在页面里手写开关状态。
 - 主内容区使用 `SidebarInset`，页头只放标题与操作按钮，**不放描述文字**。
@@ -68,8 +68,12 @@
 - **图标**：只用 `lucide-react`；`Button`/`DropdownMenuItem`/`SidebarMenuButton` 等组件内的图标加 `data-icon="inline-start|inline-end"`，**不加 `size-4`**；图标以组件对象传入（`icon={CheckIcon}`），不用字符串查表。
 - **空状态**用 `Empty`；**提示条**用 `Alert`；**加载占位**用 `Skeleton`；**状态标记**用 `Badge`；**分隔**用 `Separator`；**按钮的等待态**用 `Spinner`（`Button` 没有 `isLoading`）；**破坏性确认**用 `AlertDialog`。
 - **表单**用 `FieldGroup` + `Field`（+ `FieldLabel`/`FieldDescription`/`FieldError`），校验用 `data-invalid` + `aria-invalid`；2–7 个选项用 `ToggleGroup`；带按钮的输入用 `InputGroup`。
+- 对话输入区底部提供 PDF、模型和思考强度入口。模型只展示当前 Provider 的目录项；思考强度只展示对应 Model Card 支持的档位。
+- PDF 上传后用 `Attachment` 展示上传与解析状态。全局会话加入文献库，项目会话同时加入项目；单篇论文会话不允许扩大范围。
 - **菜单/下拉的条目必须在 Group 内**：`SelectItem` → `SelectGroup`，`DropdownMenuItem` → `DropdownMenuGroup`。
 - **聊天**用 `MessageScroller*` / `Message*` / `Bubble*` / `Marker*`，不要手写气泡 `div` 与滚动容器；流式跟随、锚定、跳到最新由组件负责。生成中的"正在生成…"用 `shimmer` 工具类，不写自定义动画。
+- Agent 正文用 `Streamdown` 渲染 CommonMark/GFM 与数学公式；兼容 `$…$`、`$$…$$`、`\(…\)`、`\[…\]`，生成时使用 streaming 模式修复未闭合 Markdown，历史消息使用 static 模式。登记过的 `[cit_…]` 在正文中显示为编号引用链接，用户消息保持原文。
+- Thinking 与最终正文分开显示：生成中默认展开并流式更新，历史消息默认折叠。连续工具调用使用紧凑间距，避免每一步都占用完整消息间隔。
 - **状态配色**：处理/阶段状态统一用语义 variant——**完成或成功 = `success`（绿）**、**失败 = `destructive`（红）**、**未完成/进行中 = `warning`（黄）**，未开始用 `outline`。不要用裸色值；不要在界面显示内部计数（如阶段尝试次数）或内部 ID（如 citation id）。
 - **样式**：只用语义色（`bg-background`、`text-muted-foreground`、`text-success`、`text-warning`、`text-destructive`）；`className` 只用于排版布局；用 `gap-*` 而不是 `space-y-*`；等宽高用 `size-*`；省略用 `truncate`；条件类名用 `cn()`；不要在浮层组件上写 `z-index`。
 - **可访问性**：`Dialog`/`Sheet`/`Drawer` 必须有 `DialogTitle`/`SheetTitle`（必要时 `sr-only`）；`Avatar` 必须有 `AvatarFallback`；`TabsTrigger` 必须在 `TabsList` 内。

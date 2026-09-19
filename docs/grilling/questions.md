@@ -134,12 +134,10 @@
 
 ➡️ 推荐答案：A。呼应"用户自备 Key"的产品承诺，同时不把秘密塞进 JSONB 偏好。
 
-✅ 决定：**用户自定义。**
-- **MinerU Key 与 Embedding Key 均为实例级环境变量。**
-- **LLM 配置（模型 + Key）由用户自行维护，存前端 localStorage**（JSON，参考 pi-agent 的 model.json 格式），随请求带给后端，后端不持久化。
-- 影响：不需要后端 credential 表/加密存储；后端每次 LLM 调用使用请求携带的 Key；密钥出现在请求中，靠传输层 TLS 保护（简历项目可接受）。
-- LLM 配置在启动 Agent 或恢复中断队列的请求体中以完整 `llm_config` 对象传入（provider/model/api_key）；只驻留当前 executor 内存。日志、entry、Redis、幂等记录均排除 `api_key`。Agent 已运行时追加 steering/follow-up 不要求重复携带配置。
-- 安全修正：公共 API 不接受任意 `base_url`。后端维护 Provider 允许列表并固定各 Provider 的 Base URL；用户只提交允许的 provider、API Key 和模型名称，管理员可通过部署配置扩展 Provider 列表，从源头避免任意 URL 导致的 SSRF。
+✅ 最新决定（2026-09-19）：**目录选择 + 用户 API Key。**
+- MinerU 与 Embedding 仍为实例级配置。
+- LLM Provider 与模型只能从 AgentScope Model Card 目录选择，用户只输入 API Key；不允许自由输入 Provider、模型或 Base URL。
+- LLM Key 保存在浏览器，随 Agent 启动/恢复请求传入，不进入数据库、日志、Entry、对象存储或任务队列。
 
 ❓ **Q3 - 供应商配置作用域**：同一配置项（如 LLM 模型、Embedding Key）在实例、用户、run 三级怎么覆盖？
 
@@ -149,10 +147,8 @@
 
 ➡️ 推荐答案：A。三级覆盖清晰且可测，项目级留到未来。
 
-✅ 决定：**用户自定义，比推荐更简单。**
-- **Embedding 模型与 Key 由开发者固定**（实例级，无用户覆盖）。
-- **LLM 模型由用户在前端 localStorage 自行维护**。
-- 实质配置模型 = "Embedding 实例级固定 + LLM 用户级（前端持有）"，不需要"实例 < 用户 < run"三级覆盖层级。
+✅ 最新决定（2026-09-19）：**Embedding 实例级，LLM 用户从目录选择。**
+- 用户不能定义模型名称，只能选择后端发布的 Provider/模型组合并填写自己的 API Key。
 
 ❓ **Q4 - 跨用户论文可见性**：原型是全局唯一 `papers`（按 file_hash 去重）。多账号下，A 上传的论文 B 能看到吗？解析/向量产物怎么复用？
 
@@ -532,7 +528,7 @@
 - 短时间重复发送相同 prompt 不进入 pending 队列：网络重试由 `Idempotency-Key` 去重，异常高频提交由用户/session 级速率控制拒绝。
 - Web 后端不照搬 pi 的纯内存 pending：Redis 分别维护 `pending:steering` 与 `pending:followup` 两个 FIFO 队列，并由 AOF 保护；默认均采用 `one-at-a-time`。
 - 每个 session 通过带租约的 executor lock 保证只有一个 Agent loop。steering 在当前 assistant turn 及工具批次结束后的安全边界取出；follow-up 仅在 Agent 原本准备停止时取出。
-- pending 消息排队时不是 session entry；实际投递给 Agent 时才原子地从 pending 队列转成正式 user entry。当前 executor 崩溃时，本次生成标记 `aborted`，pending 仍保留；客户端重新提供 LLM 配置后继续消费。
+- pending 消息排队时不是 session entry；实际投递给 Agent 时才原子地从 pending 队列转成正式 user entry。当前 executor 崩溃时，本次生成标记 `aborted`，pending 仍保留；客户端用已保存的模型选择与 Key 触发恢复。
 - 用户主动停止或执行中断时，保留已经生成的 assistant message，写入 `stopReason: "aborted"`；上下文重建时仍包含该 entry，沿用 pi agent 语义。
 
 ❓ **Q5 - 工具可见性**：前端/客户端需要看到工具调用的参数、进度和结果到什么程度？
@@ -645,7 +641,7 @@
 
 ✅ 决定：**接受推荐 A，并按 Entry 模型修正。** API 统一使用 `/v1` 前缀；论文、项目、会话等采用 `/papers`、`/projects`、`/sessions` 等稳定资源路径，创建关系时可适度嵌套。Agent 对话不提供长期 `/runs` 资源。
 
-❓ **Q2 - 问答流形态与恢复边界**：用户提问后，回答怎么给到前端？本地 AgentScope 2.0.6 已有“创建执行 + SSE 订阅 + Redis 短期事件 replay”的 App 层实现，但 run 结束后会清理事件，且没有独立的持久化 RunRecord。另一个约束是 LLM Key 只随请求进入后端、不能长期持久化。
+❓ **Q2 - 问答流形态与恢复边界**：用户提问后，回答怎么给到前端？本地 AgentScope 2.0.6 已有“创建执行 + SSE 订阅 + Redis 短期事件 replay”的 App 层实现，但 run 结束后会清理事件，且没有独立的持久化 RunRecord。
 
 - A：沿用 AgentScope 两步式：POST 创建执行 → 返回执行 ID → SSE 订阅；执行任务和 LLM Key 只驻留进程内存，Redis 仅保存短期事件用于客户端断线重连；后端进程重启时 active run 失败，不承诺跨进程恢复
 - B：直接 POST 返回流式响应；Key 仅活在请求期间，实现最简单，但客户端断线即失去本次流
@@ -653,7 +649,7 @@
 
 ➡️ 推荐答案：A。它复用框架已有能力，支持客户端短暂断线续流，同时诚实限定为单机进程级恢复；不为简历项目引入可恢复 secret 托管。
 
-✅ 决定：**按 Session + Entry 模型采用进程内临时生成。** 用户向 session 追加消息后启动 Agent；SSE 按 session 订阅增量事件，Redis 仅保存短期事件供客户端断线重连。Agent 生成状态与 LLM Key 只驻留进程内存，不形成长期 run。后端进程重启时本次生成中断，由用户重试，不承诺跨进程恢复。
+✅ 决定：**按 Session + Entry 模型采用进程内临时生成。** 用户向 session 追加消息后启动 Agent；SSE 按 session 订阅增量事件，Redis 仅保存短期事件供客户端断线重连。Agent 生成状态不形成长期 run。后端进程重启时本次生成中断，由用户重试，不承诺跨进程恢复。
 
 ❓ **Q3 - 事件 schema**：解析进度、agent 回答、工具调用这些事件，要不要统一信封？AgentScope 已有细粒度 `AgentEvent` 联合类型，但它是框架内部事件，不等于 Paper Agent 的稳定公共 API。
 
@@ -683,7 +679,7 @@
 
 ➡️ 推荐答案：A。异步边界按"是否可后台化"切分。
 
-✅ 决定：**接受推荐 A。** 上传确认后的解析/embedding/清理进 Celery；鉴权、资源变更、轻量检索留请求路径。Agent 生成留在 FastAPI 进程内，不再套 Celery，避免把用户 LLM Key 写入 broker。
+✅ 决定：**接受推荐 A。** 上传确认后的解析/embedding/清理进 Celery；鉴权、资源变更、轻量检索留请求路径。Agent 生成留在 FastAPI 进程内，不再套 Celery。
 
 ❓ **Q6 - 幂等与并发**：上传、创建执行、重试、删除哪些需要幂等键或版本检查？
 
@@ -723,7 +719,7 @@
 
 ✅ 决定：**接受推荐 A。** 上传大小/页数/超时/内存/并发上限；文件名与 MIME 不作信任依据；解析器输出路径按不可信处理。
 
-❓ **Q3 - 密钥与数据保护**：需要哪些数据保护措施？（LLM Key 在前端 localStorage，后端不落盘）
+❓ **Q3 - 密钥与数据保护**：需要哪些数据保护措施？
 
 - A：全链路 TLS；数据库/对象存储不公开；密码哈希（如 argon2/bcrypt）；JWT 密钥环境变量；LLM Key 后端仅转用不持久化
 - B：只保证登录可用
@@ -731,7 +727,7 @@
 
 ➡️ 推荐答案：A。务实覆盖，不引入企业级基础设施。
 
-✅ 决定：**接受推荐 A。** 全链路 TLS；数据库/对象存储不公开；密码哈希；JWT 密钥环境变量；LLM Key 后端仅转用不持久化。
+✅ 决定：**接受推荐 A。** 全链路 TLS；数据库/对象存储不公开；密码哈希；JWT 与 LLM 密钥由部署环境提供，不持久化到业务数据。
 
 ❓ **Q4 - 可观测性**：首版需要哪些日志/指标才能定位用户问题？
 
