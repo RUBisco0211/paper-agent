@@ -159,13 +159,16 @@ describe("MessageThread", () => {
     expect(screen.getByRole("heading", { name: "结论", level: 2 })).toBeTruthy()
     expect(screen.getByText("准确率").getAttribute("data-streamdown")).toBe("strong")
     expect(screen.getByRole("table")).toBeTruthy()
-    expect(document.querySelectorAll(".katex")).toHaveLength(5)
+    expect(document.querySelectorAll("mjx-container")).toHaveLength(5)
     expect(document.querySelectorAll(".agent-markdown")).toHaveLength(1)
-    expect(document.querySelectorAll(".katex-display")).toHaveLength(2)
-    expect(document.querySelectorAll(".katex-error")).toHaveLength(0)
-    expect(document.querySelector(".katex-display")?.textContent).toContain("21")
+    expect(document.querySelectorAll('mjx-container[display="true"]')).toHaveLength(2)
+    expect(
+      [...document.querySelectorAll("mjx-container")].every((formula) =>
+        formula.querySelector("svg"),
+      ),
+    ).toBe(true)
     expect(screen.getByText("\\(代码示例\\)")).toBeTruthy()
-    expect(document.querySelector("p .katex")?.closest(".katex-display")).toBeNull()
+    expect(document.querySelector('p mjx-container[display="true"]')).toBeNull()
   })
 
   it("keeps incomplete Markdown formatted while text is streaming", () => {
@@ -174,14 +177,12 @@ describe("MessageThread", () => {
     expect(screen.getByText("正在生成").getAttribute("data-streamdown")).toBe("strong")
   })
 
-  it("defers KaTeX until streamed math is persisted as a static answer", () => {
-    const formula = "$$V^{h,\\mu}(x) = \\max\\{h(x), V^{h,\\mu}(f(x))\\}$$"
+  it("keeps MathJax formulas intact when a streamed answer is persisted", () => {
+    const formula =
+      "$$\\tilde{V}^{h^{(m)},\\mu}(o_i^0) = V_i^{h^{(m)},\\mu}(\\mathbf{x}^0) := \\max_{k \\geq 0} h^{(m)}(o_i^k)$$"
     const view = renderThread([], true, formula)
 
-    expect(document.querySelector(".katex")).toBeNull()
-    expect(document.querySelector(".agent-markdown")?.textContent).toContain(
-      "V^{h,\\mu}(x)",
-    )
+    expect(document.querySelector("mjx-container svg")).toBeTruthy()
 
     view.rerender(
       <MessageThread
@@ -192,8 +193,7 @@ describe("MessageThread", () => {
       />,
     )
 
-    expect(document.querySelector(".katex-display .katex")).toBeTruthy()
-    expect(document.querySelector(".katex-error")).toBeNull()
+    expect(document.querySelector('mjx-container[display="true"] svg')).toBeTruthy()
   })
 
   it("renders persisted thinking as a collapsible block", async () => {

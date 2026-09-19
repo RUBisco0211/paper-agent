@@ -1,11 +1,23 @@
-import { createMathPlugin } from "@streamdown/math"
-import "katex/dist/katex.min.css"
-import { useMemo, type AnchorHTMLAttributes } from "react"
-import { Streamdown, type Components } from "streamdown"
+import { useMemo, type AnchorHTMLAttributes, type ComponentProps } from "react"
+import rehypeMathjax from "rehype-mathjax/svg"
+import remarkMath from "remark-math"
+import {
+  defaultRehypePlugins,
+  defaultRemarkPlugins,
+  Streamdown,
+  type Components,
+} from "streamdown"
 
 import { cn } from "cn"
 
-const math = createMathPlugin({ singleDollarTextMath: true })
+const remarkPlugins: NonNullable<ComponentProps<typeof Streamdown>["remarkPlugins"]> = [
+  ...Object.values(defaultRemarkPlugins),
+  [remarkMath, { singleDollarTextMath: true }],
+]
+const rehypePlugins: NonNullable<ComponentProps<typeof Streamdown>["rehypePlugins"]> = [
+  ...Object.values(defaultRehypePlugins),
+  rehypeMathjax,
+]
 const CITATION_PREFIX = "#paper-citation-"
 
 export function MarkdownContent({
@@ -67,11 +79,11 @@ export function MarkdownContent({
 
   return (
     <Streamdown
-      key={streaming ? "streaming-without-math" : "static-with-math"}
       className={cn("agent-markdown min-w-0 text-[15px] leading-7", className)}
       mode={streaming ? "streaming" : "static"}
       parseIncompleteMarkdown={streaming}
-      plugins={streaming ? undefined : { math }}
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={rehypePlugins}
       components={components}
       controls={{ code: true, table: true }}
       lineNumbers={false}
