@@ -152,6 +152,7 @@ class SessionExecutor:
         )
 
         text_parts: list[str] = []
+        thinking_parts: list[str] = []
         stop_reason = StopReason.COMPLETED
         error_code: str | None = None
         usage: dict = {}
@@ -184,6 +185,19 @@ class SessionExecutor:
                     continue
                 if event.type is AgentEventType.DELTA:
                     text_parts.append(str(event.data.get("text", "")))
+                elif event.type is AgentEventType.THINKING_DELTA:
+                    thinking_parts.append(str(event.data.get("text", "")))
+                elif event.type is AgentEventType.TRACE_MESSAGE:
+                    trace_text = str(event.data.get("text", ""))
+                    text_parts.clear()
+                    if trace_text:
+                        self._entries.append_message(
+                            user_id=user_id,
+                            session_id=session_id,
+                            role=MessageRole.ASSISTANT,
+                            content=trace_text,
+                            trace=True,
+                        )
                 elif event.type is AgentEventType.TOOL_COMPLETED:
                     # 工具结果立即落 Entry：中止或失败时也能看到做了什么
                     self._entries.append(
@@ -218,6 +232,7 @@ class SessionExecutor:
             session=session,
             llm_config=llm_config,
             text="".join(text_parts),
+            thinking="".join(thinking_parts),
             stop_reason=stop_reason,
             error_code=error_code,
             usage=usage,
@@ -244,6 +259,7 @@ class SessionExecutor:
         session: Session,
         llm_config: LlmConfig,
         text: str,
+        thinking: str,
         stop_reason: StopReason,
         error_code: str | None,
         usage: dict | None = None,
@@ -258,6 +274,8 @@ class SessionExecutor:
         }
         if error_code:
             payload["error_code"] = error_code
+        if thinking:
+            payload["thinking"] = thinking
         if citations:
             payload["citations"] = citations
         entry = self._entries.append(

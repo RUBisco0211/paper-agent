@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .application import MessageSubmission, ResumeOutcome, SessionView
 from .domain import (
@@ -11,6 +11,7 @@ from .domain import (
     PendingMessage,
     SessionEntry,
 )
+from .model_catalog import ProviderOption
 
 
 class SessionCreateRequest(BaseModel):
@@ -110,15 +111,56 @@ def to_entry_read(entry: SessionEntry) -> SessionEntryRead:
     )
 
 
+class LlmModelRead(BaseModel):
+    id: str
+    label: str
+    context_size: int | None = None
+    reasoning_efforts: list[str] = []
+
+
+class LlmProviderRead(BaseModel):
+    id: str
+    label: str
+    models: list[LlmModelRead]
+
+
+class LlmCatalogResponse(BaseModel):
+    providers: list[LlmProviderRead]
+
+
+def to_llm_catalog(providers: tuple[ProviderOption, ...]) -> LlmCatalogResponse:
+    return LlmCatalogResponse(
+        providers=[
+            LlmProviderRead(
+                id=provider.id,
+                label=provider.label,
+                models=[
+                    LlmModelRead(
+                        id=model.id,
+                        label=model.label,
+                        context_size=model.context_size,
+                        reasoning_efforts=list(model.reasoning_efforts),
+                    )
+                    for model in provider.models
+                ],
+            )
+            for provider in providers
+        ],
+    )
+
+
 class LlmConfigRequest(BaseModel):
-    """Transient LLM configuration supplied by the browser per submission."""
+    model_config = ConfigDict(extra="forbid")
 
     provider: str = Field(min_length=1, max_length=64)
     model: str = Field(min_length=1, max_length=200)
     api_key: str = Field(min_length=1, max_length=512, repr=False)
+    reasoning_effort: str | None = Field(default=None, max_length=20)
 
 
 class MessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     content: str = Field(min_length=1, max_length=8000)
     delivery: Delivery | None = None
     llm_config: LlmConfigRequest | None = None
@@ -132,13 +174,15 @@ class MessageAcceptedResponse(BaseModel):
     generation_started: bool = False
 
 
-class ResumeRequest(BaseModel):
-    llm_config: LlmConfigRequest
-
-
 class ResumeResponse(BaseModel):
     delivered: SessionEntryRead
     pending: PendingCountsRead
+
+
+class ResumeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    llm_config: LlmConfigRequest
 
 
 def to_message_response(submission: MessageSubmission) -> MessageAcceptedResponse:

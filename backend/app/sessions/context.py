@@ -46,6 +46,8 @@ def project_messages(
         if entry.type is EntryType.SESSION_CONTEXT:
             continue
         if entry.type is EntryType.MESSAGE:
+            if entry.payload.get("trace") is True:
+                continue
             role = str(entry.payload.get("role", ""))
             content = str(entry.payload.get("content", "")).strip()
             if role not in {MessageRole.USER.value, MessageRole.ASSISTANT.value}:

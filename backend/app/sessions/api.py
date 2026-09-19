@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from ..auth.dependencies import CurrentUser
-from ..platform.config import settings
 from ..platform.pagination import Page, PageParamsDep
 from .agent import validate_llm_config
 from .dependencies import CitationServiceDep, SessionServiceDep, SseIdleTimeoutDep
 from .domain import Session
+from .model_catalog import model_catalog
 from .schemas import (
     CitationRead,
+    LlmCatalogResponse,
     MessageAcceptedResponse,
     MessageRequest,
     ResumeRequest,
@@ -24,6 +25,7 @@ from .schemas import (
     SessionUpdateRequest,
     to_citation_read,
     to_entry_read,
+    to_llm_catalog,
     to_message_response,
     to_pending_read,
     to_resume_response,
@@ -32,6 +34,15 @@ from .schemas import (
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 settings_router = APIRouter(tags=["agent"])
+
+
+@settings_router.get(
+    "/llm-catalog",
+    response_model=LlmCatalogResponse,
+    summary="读取可选择的 LLM Provider 与模型目录",
+)
+def read_llm_catalog(user: CurrentUser) -> LlmCatalogResponse:
+    return to_llm_catalog(model_catalog())
 
 
 @router.post(
@@ -190,6 +201,7 @@ def submit_message(
             provider=payload.llm_config.provider,
             model=payload.llm_config.model,
             api_key=payload.llm_config.api_key,
+            reasoning_effort=payload.llm_config.reasoning_effort,
         )
         if payload.llm_config
         else None
@@ -222,7 +234,7 @@ def stop_generation(
     "/{session_id}/resume",
     response_model=ResumeResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="重新提供 LLM 配置并继续消费排队消息",
+    summary="继续消费排队消息",
 )
 def resume_session(
     session_id: UUID,
@@ -234,6 +246,7 @@ def resume_session(
         provider=payload.llm_config.provider,
         model=payload.llm_config.model,
         api_key=payload.llm_config.api_key,
+        reasoning_effort=payload.llm_config.reasoning_effort,
     )
     outcome = service.resume(
         user_id=user.id,
@@ -298,11 +311,3 @@ def read_citation(
         citation_id=citation_id,
     )
     return to_citation_read(citation)
-
-
-@settings_router.get(
-    "/llm-providers",
-    summary="列出允许使用的 LLM Provider（不含 Base URL 与任何凭据）",
-)
-def list_llm_providers() -> dict[str, list[str]]:
-    return {"providers": sorted(settings.llm_providers)}

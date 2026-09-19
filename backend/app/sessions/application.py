@@ -269,7 +269,7 @@ class SessionService:
             return MessageSubmission(pending=pending)
 
         if llm_config is None:
-            raise ValidationError("空闲会话提交消息时需要在请求体中提供 llm_config")
+            raise ValidationError("问答模型未配置")
 
         entry = self._entries.append_message(
             user_id=user_id,

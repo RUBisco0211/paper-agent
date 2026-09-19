@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from agentscope import event as E
-from agentscope.message import Msg, TextBlock, Usage
+from agentscope.message import Msg, TextBlock, ThinkingBlock, Usage
 
 from app.retrieval.domain import (
     ChannelReport,
@@ -14,7 +14,7 @@ from app.retrieval.domain import (
     SearchStatus,
 )
 from app.sessions.agent import AgentEventType, AgentTurnRequest, LlmConfig
-from app.sessions.agent_scope import AgentScopeRunner
+from app.sessions.agent_scope import AgentScopeRunner, _build_model
 from app.sessions.domain import Citation
 from app.sessions.tools import SessionToolContext, SessionTools, ToolServices
 
@@ -172,14 +172,26 @@ async def _collect(runner, request) -> list:
 
 
 async def test_maps_text_tool_and_completion_events() -> None:
+    tool_output = (
+        '{"items":['
+        + ",".join(f'{{"index":{index}}}' for index in range(300))
+        + "]}"
+    )
+
     def script(context, tools):
         return [
+            E.ThinkingBlockDeltaEvent(
+                reply_id="r", block_id="thinking", delta="先检索相关段落。"
+            ),
             E.TextBlockDeltaEvent(reply_id="r", block_id="b", delta="这篇论文"),
             E.TextBlockDeltaEvent(
                 reply_id="r", block_id="b", delta="提出了注意力机制。"
             ),
             E.ToolCallStartEvent(
                 reply_id="r", tool_call_id="t1", tool_call_name="search_papers"
+            ),
+            E.ToolResultTextDeltaEvent(
+                reply_id="r", tool_call_id="t1", delta=tool_output
             ),
             E.ToolResultEndEvent(reply_id="r", tool_call_id="t1", state="success"),
             E.ModelCallEndEvent(reply_id="r", input_tokens=120, output_tokens=45),
@@ -191,8 +203,10 @@ async def test_maps_text_tool_and_completion_events() -> None:
 
     kinds = [event.type for event in events]
     assert kinds == [
+        AgentEventType.THINKING_DELTA,
         AgentEventType.DELTA,
         AgentEventType.DELTA,
+        AgentEventType.TRACE_MESSAGE,
         AgentEventType.TOOL_STARTED,
         AgentEventType.TOOL_COMPLETED,
         AgentEventType.COMPLETED,
@@ -203,8 +217,10 @@ async def test_maps_text_tool_and_completion_events() -> None:
         )
         == "这篇论文提出了注意力机制。"
     )
-    assert events[2].data["tool"] == "search_papers"
-    assert events[3].data["tool"] == "search_papers"
+    assert events[0].data["text"] == "先检索相关段落。"
+    assert events[4].data["tool"] == "search_papers"
+    assert events[5].data["tool"] == "search_papers"
+    assert events[5].data["content"] == tool_output
 
     completed = events[-1].data
     assert completed["usage"] == {"input_tokens": 120, "output_tokens": 45}
@@ -233,6 +249,59 @@ async def test_falls_back_to_the_final_message_when_no_deltas() -> None:
     ]
     assert events[0].data["text"] == "最终回答"
     assert events[1].data["usage"] == {"input_tokens": 10, "output_tokens": 5}
+
+
+async def test_falls_back_to_thinking_in_the_final_message() -> None:
+    def script(context, tools):
+        return [
+            Msg(
+                name="assistant",
+                role="assistant",
+                content=[
+                    ThinkingBlock(thinking="先核对原文。"),
+                    TextBlock(text="最终回答"),
+                ],
+            ),
+        ]
+
+    runner, _ = _runner(script)
+    events = await _collect(runner, _request())
+
+    assert [event.type for event in events] == [
+        AgentEventType.THINKING_DELTA,
+        AgentEventType.DELTA,
+        AgentEventType.COMPLETED,
+    ]
+    assert events[0].data["text"] == "先核对原文。"
+
+
+async def test_final_message_fallback_survives_a_promoted_tool_plan() -> None:
+    def script(context, tools):
+        return [
+            E.TextBlockDeltaEvent(reply_id="r", block_id="plan", delta="先检索。"),
+            E.ToolCallStartEvent(
+                reply_id="r",
+                tool_call_id="t1",
+                tool_call_name="search_papers",
+            ),
+            Msg(
+                name="assistant",
+                role="assistant",
+                content=[TextBlock(text="最终回答")],
+            ),
+        ]
+
+    runner, _ = _runner(script)
+    events = await _collect(runner, _request())
+
+    assert [event.type for event in events] == [
+        AgentEventType.DELTA,
+        AgentEventType.TRACE_MESSAGE,
+        AgentEventType.TOOL_STARTED,
+        AgentEventType.DELTA,
+        AgentEventType.COMPLETED,
+    ]
+    assert events[3].data["text"] == "最终回答"
 
 
 async def test_max_iters_is_reported_as_a_stable_failure() -> None:
@@ -312,3 +381,33 @@ async def test_history_is_observed_and_only_the_last_user_message_is_sent() -> N
     ]
     assert capture["inputs"][0].content[0].text == "第二问"
     assert [message.content[0].text for message in capture["inputs"]] == ["第二问"]
+
+
+def test_builds_agentscope_native_models_for_enabled_providers() -> None:
+    expected = {
+        "anthropic": "AnthropicChatModel",
+        "dashscope": "DashScopeChatModel",
+        "deepseek": "DeepSeekChatModel",
+        "moonshot": "MoonshotChatModel",
+        "openai": "OpenAIChatModel",
+        "xai": "XAIChatModel",
+    }
+
+    for provider, class_name in expected.items():
+        model = _build_model(
+            LlmConfig(provider=provider, model="test-model", api_key="test-key")
+        )
+        assert type(model).__name__ == class_name
+
+
+def test_passes_supported_reasoning_effort_to_model_parameters() -> None:
+    model = _build_model(
+        LlmConfig(
+            provider="openai",
+            model="gpt-5.6-luna",
+            api_key="test-key",
+            reasoning_effort="high",
+        )
+    )
+
+    assert model.parameters.reasoning_effort == "high"

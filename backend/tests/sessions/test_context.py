@@ -21,8 +21,13 @@ def test_projection_keeps_only_user_and_assistant_messages() -> None:
         _entry(EntryType.MESSAGE, {"role": "user", "content": "hi"}, 1),
         _entry(EntryType.MODEL_CHANGE, {"provider": "openai", "model": "m"}, 2),
         _entry(EntryType.MESSAGE, {"role": "assistant", "content": "hello"}, 3),
-        _entry(EntryType.MESSAGE, {"role": "system", "content": "ignored"}, 4),
-        _entry(EntryType.MESSAGE, {"role": "user", "content": "   "}, 5),
+        _entry(
+            EntryType.MESSAGE,
+            {"role": "assistant", "content": "tool plan", "trace": True},
+            4,
+        ),
+        _entry(EntryType.MESSAGE, {"role": "system", "content": "ignored"}, 5),
+        _entry(EntryType.MESSAGE, {"role": "user", "content": "   "}, 6),
     ]
 
     assert project_messages(entries) == [

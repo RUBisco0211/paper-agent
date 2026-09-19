@@ -22,7 +22,6 @@ class Settings(BaseSettings):
     """Instance-level configuration.
 
     Everything here is fixed by the deployer through environment variables.
-    Per-user configuration (LLM provider, model, API key) never lives here.
     """
 
     model_config = SettingsConfigDict(
@@ -103,13 +102,16 @@ class Settings(BaseSettings):
     zotero_recognizer_url: str | None = None
     outbound_timeout_seconds: float = 20.0
 
-    # Allowed LLM providers mapped to their fixed base URL. Users pick a
-    # provider and a model from this list; they can never supply a base URL.
-    llm_providers: dict[str, str] = {
-        "openai": "https://api.openai.com/v1",
-        "deepseek": "https://api.deepseek.com/v1",
-        "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    }
+    # Provider/model choices come from AgentScope model cards. Users may select
+    # from this allow-list and supply a key, but cannot enter arbitrary names or URLs.
+    llm_providers: list[str] = [
+        "openai",
+        "anthropic",
+        "dashscope",
+        "deepseek",
+        "moonshot",
+        "xai",
+    ]
 
     # Retrieval
     keyword_top_n: int = 20

@@ -9,7 +9,7 @@ from tests.conftest import auth_headers, install_agent_runner
 
 VALID_LLM_CONFIG = {
     "provider": "openai",
-    "model": "gpt-test",
+    "model": "gpt-4.1-mini",
     "api_key": "sk-test-not-a-real-key",
 }
 
@@ -59,6 +59,8 @@ class ToolCallingRunner(AgentRunner):
     name = "tool-calling"
 
     async def stream(self, request) -> AsyncIterator[AgentEvent]:
+        yield AgentEvent(AgentEventType.DELTA, {"text": "先查找相关原文。"})
+        yield AgentEvent(AgentEventType.TRACE_MESSAGE, {"text": "先查找相关原文。"})
         yield AgentEvent(
             AgentEventType.TOOL_STARTED,
             {"tool": "search_papers", "tool_call_id": "t1"},
@@ -107,20 +109,32 @@ def test_tool_calls_and_citations_are_recorded_as_entries(
         headers=auth_headers(token),
     ).json()["items"]
 
-    assert [item["type"] for item in items] == ["message", "tool_result", "message"]
-    tool_entry = items[1]["payload"]
+    assert [item["type"] for item in items] == [
+        "message",
+        "message",
+        "tool_result",
+        "message",
+    ]
+    trace_entry = items[1]["payload"]
+    assert trace_entry == {
+        "role": "assistant",
+        "content": "先查找相关原文。",
+        "trace": True,
+    }
+    tool_entry = items[2]["payload"]
     assert tool_entry["tool"] == "search_papers"
     assert tool_entry["state"] == "success"
     assert "cit_0000" in tool_entry["content"]
 
-    assistant = items[2]["payload"]
+    assistant = items[3]["payload"]
     assert assistant["stop_reason"] == "completed"
     assert assistant["citations"] == ["cit_0000"]
+    assert "thinking" not in assistant
     # usage 里不该混入引用
     assert "citations" not in assistant.get("usage", {})
 
 
-def test_message_requires_a_transient_llm_config_when_idle(
+def test_catalog_drives_provider_and_model_validation(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -128,25 +142,46 @@ def test_message_requires_a_transient_llm_config_when_idle(
     token = register_user(email="reader@example.com")["access_token"]
     session_id = _create_session(client, api_prefix, token)
 
-    missing = client.post(
-        f"{api_prefix}/sessions/{session_id}/messages",
+    catalog = client.get(
+        f"{api_prefix}/llm-catalog",
         headers=auth_headers(token),
-        json={"content": "What does the paper claim?"},
     )
-    assert missing.status_code == 422
-    assert missing.json()["code"] == "validation_error"
+    assert catalog.status_code == 200
+    openai = next(
+        item for item in catalog.json()["providers"] if item["id"] == "openai"
+    )
+    assert any(model["id"] == "gpt-4.1-mini" for model in openai["models"])
+    reasoning_model = next(
+        model for model in openai["models"] if model["id"] == "gpt-5.6-luna"
+    )
+    assert "high" in reasoning_model["reasoning_efforts"]
 
-    unknown_provider = client.post(
+    invalid_model = client.post(
         f"{api_prefix}/sessions/{session_id}/messages",
         headers=auth_headers(token),
         json={
             "content": "hello",
-            "llm_config": {**VALID_LLM_CONFIG, "provider": "not-a-provider"},
+            "llm_config": {"provider": "openai", "model": "m", "api_key": "k"},
         },
     )
-    assert unknown_provider.status_code == 422
-    assert unknown_provider.json()["code"] == "validation_error"
-    assert "allowed" in unknown_provider.json()["details"]
+    assert invalid_model.status_code == 422
+
+    unsupported_effort = client.post(
+        f"{api_prefix}/sessions/{session_id}/messages",
+        headers=auth_headers(token),
+        json={
+            "content": "hello",
+            "llm_config": {**VALID_LLM_CONFIG, "reasoning_effort": "high"},
+        },
+    )
+    assert unsupported_effort.status_code == 422
+
+    accepted = client.post(
+        f"{api_prefix}/sessions/{session_id}/messages",
+        headers=auth_headers(token),
+        json={"content": "What does the paper claim?", "llm_config": VALID_LLM_CONFIG},
+    )
+    assert accepted.status_code == 202
 
 
 def test_message_starts_a_generation_and_writes_entries(
@@ -193,7 +228,7 @@ def test_message_starts_a_generation_and_writes_entries(
     assistant = history["items"][1]["payload"]
     assert assistant["stop_reason"] == "completed"
     assert assistant["content"] == "Attention replaces recurrence. "
-    assert assistant["model"] == "gpt-test"
+    assert assistant["model"] == "gpt-4.1-mini"
     # The LLM key is never persisted into the entry log.
     assert "api_key" not in json.dumps(history)
 
@@ -348,13 +383,6 @@ def test_resume_delivers_the_next_queued_message(
     assert detail["pending"] == {"steering": 2, "follow_up": 0}
     assert [item["position"] for item in detail["pending_messages"]] == [1, 2]
 
-    no_config = client.post(
-        f"{api_prefix}/sessions/{session_id}/resume",
-        headers=auth_headers(token),
-        json={"llm_config": {**VALID_LLM_CONFIG, "api_key": ""}},
-    )
-    assert no_config.status_code == 422
-
     resumed = client.post(
         f"{api_prefix}/sessions/{session_id}/resume",
         headers=auth_headers(token),
@@ -495,18 +523,10 @@ def _parse_events(lines: list[str]) -> list[dict[str, str]]:
     return events
 
 
-def test_llm_providers_endpoint_exposes_only_names(
+def test_legacy_provider_only_endpoint_is_removed(
     client: TestClient,
     api_prefix: str,
 ) -> None:
-    """前端靠这个列表填 Provider 下拉；不能泄露 Base URL 或凭据。"""
+    """Provider 与模型必须通过带 Model Card 的完整目录读取。"""
     response = client.get(f"{api_prefix}/llm-providers")
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["providers"] == sorted(body["providers"])
-    assert "openai" in body["providers"]
-    assert all(isinstance(name, str) for name in body["providers"])
-    # 只有名称，没有 URL 或 key
-    assert "http" not in response.text
-    assert "api_key" not in response.text
+    assert response.status_code == 404

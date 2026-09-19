@@ -1,6 +1,6 @@
 """AgentScope 执行器：把框架事件映射成我们自己的 AgentEvent。
 
-- 模型与 Key 来自本次回合的瞬时 ``llm_config``（前端传入，只驻留内存）
+- Provider 与模型来自只读目录，用户只输入 Key；配置只驻留当前执行器内存
 - 工具范围由会话上下文注入；模型只能通过三个只读工具接触文献
 - 工具调用与使用的 Citation 会被记下来，交由执行器写入 Entry
 """
@@ -12,15 +12,14 @@ from uuid import UUID
 
 import structlog
 from agentscope.agent import Agent, ModelConfig, ReActConfig
-from agentscope.credential import OpenAICredential
-from agentscope.message import Msg, TextBlock
-from agentscope.model import OpenAIChatModel
+from agentscope.credential import CredentialFactory
+from agentscope.message import Msg, TextBlock, ThinkingBlock
 from agentscope.tool import FunctionTool, Toolkit
 
 from ..platform.config import settings
 from ..platform.database import SessionFactory
 from ..platform.errors import ErrorCode
-from .agent import AgentEvent, AgentEventType, AgentTurnRequest
+from .agent import AgentEvent, AgentEventType, AgentTurnRequest, LlmConfig
 from .domain import MessageRole
 from .tools import SessionToolContext, SessionTools, ToolServices
 
@@ -37,10 +36,10 @@ SYSTEM_PROMPT = """你是 Paper Agent，一个只依据用户文献库回答问�
 3. 证据不足时明确说明「文献中没有足够证据」，不要用推测补足。
 4. 检索状态为 degraded 或 unavailable 时，如实说明检索受限，
    不要解释成「论文里没有相关内容」。
-5. 用简体中文回答，论文术语与原文保持一致。"""
-
-#: 写进 Entry 的工具输出上限（只用于展示与追溯，不是证据本身）
-TOOL_OUTPUT_CHARS = 2000
+5. 用简体中文回答，论文术语与原文保持一致。
+6. 每轮需要调用工具时，先用一句简短文字说明当前要做什么；获得结果后如需继续调用，
+   先用一句简短文字说明刚得到的信息和下一步。不要在这些进度消息中编造尚未取得的结果。
+7. 数学表达式必须使用 LaTeX 分隔符：行内用 $...$；块级公式的 $$ 必须各自独占一行。"""
 
 TOOL_DESCRIPTIONS = {
     "list_papers": "列出本次会话授权范围内的文献（条目 ID、标题、是否有可检索全文）。",
@@ -84,7 +83,8 @@ class AgentScopeRunner:
         usage: dict[str, int] = {}
         tool_names: dict[str, str] = {}
         tool_outputs: dict[str, str] = {}
-        emitted_text = False
+        emitted_thinking = False
+        text_since_tool: list[str] = []
         failure: str | None = None
         failure_message: str | None = None
         tools: SessionTools | None = None
@@ -120,21 +120,41 @@ class AgentScopeRunner:
                 ):
                     if isinstance(item, Msg):
                         # 流式增量缺失时（例如供应商不支持）用最终消息兜底
+                        final_thinking = _thinking_of(item)
+                        if final_thinking and not emitted_thinking:
+                            emitted_thinking = True
+                            yield AgentEvent(
+                                AgentEventType.THINKING_DELTA,
+                                {"text": final_thinking},
+                            )
                         final_text = _text_of(item)
-                        if final_text and not emitted_text:
-                            emitted_text = True
+                        if final_text and not text_since_tool:
+                            text_since_tool.append(final_text)
                             yield AgentEvent(AgentEventType.DELTA, {"text": final_text})
                         usage = usage or _usage_of(item)
                         continue
 
                     event_name = type(item).__name__
                     if event_name == "TextBlockDeltaEvent":
-                        emitted_text = True
+                        delta = getattr(item, "delta", "") or ""
+                        text_since_tool.append(delta)
                         yield AgentEvent(
                             AgentEventType.DELTA,
+                            {"text": delta},
+                        )
+                    elif event_name == "ThinkingBlockDeltaEvent":
+                        emitted_thinking = True
+                        yield AgentEvent(
+                            AgentEventType.THINKING_DELTA,
                             {"text": getattr(item, "delta", "") or ""},
                         )
                     elif event_name == "ToolCallStartEvent":
+                        if text_since_tool:
+                            yield AgentEvent(
+                                AgentEventType.TRACE_MESSAGE,
+                                {"text": "".join(text_since_tool)},
+                            )
+                            text_since_tool.clear()
                         tool_call_id = str(getattr(item, "tool_call_id", ""))
                         tool_name = str(getattr(item, "tool_call_name", "") or "tool")
                         tool_names[tool_call_id] = tool_name
@@ -156,9 +176,7 @@ class AgentScopeRunner:
                                 "tool_call_id": tool_call_id,
                                 "tool": tool_names.get(tool_call_id, "tool"),
                                 "state": state,
-                                "content": tool_outputs.get(tool_call_id, "")[
-                                    :TOOL_OUTPUT_CHARS
-                                ],
+                                "content": tool_outputs.get(tool_call_id, ""),
                             },
                         )
                     elif event_name == "ModelCallEndEvent":
@@ -217,21 +235,34 @@ def _build_agent(
     toolkit: Toolkit,
     tools: SessionTools,
 ) -> Agent:
-    model = OpenAIChatModel(
-        credential=OpenAICredential(
-            api_key=request.llm_config.api_key,
-            base_url=request.llm_config.base_url,
-        ),
-        model=request.llm_config.model,
-        stream=True,
-    )
+    model = _build_model(request.llm_config)
     return Agent(
         name="paper-agent",
         system_prompt=SYSTEM_PROMPT,
         model=model,
         toolkit=toolkit,
-        model_config=ModelConfig(max_retries=1),
+        model_config=ModelConfig(max_retries=0),
         react_config=ReActConfig(max_iters=settings.agent_max_iters),
+    )
+
+
+def _build_model(config: LlmConfig):
+    """Build one of AgentScope's native provider clients from server config."""
+    credential_data: dict[str, str] = {
+        "type": f"{config.provider}_credential",
+    }
+    credential_data["api_key"] = config.api_key
+
+    credential = CredentialFactory.from_dict(credential_data)
+    model_class = credential.get_chat_model_class()
+    parameters = None
+    if config.reasoning_effort is not None:
+        parameters = model_class.Parameters(reasoning_effort=config.reasoning_effort)
+    return model_class(
+        credential=credential,
+        model=config.model,
+        parameters=parameters,
+        stream=True,
     )
 
 
@@ -300,6 +331,14 @@ def _text_of(message: Msg) -> str:
     for block in getattr(message, "content", []) or []:
         if getattr(block, "type", None) == "text":
             parts.append(str(getattr(block, "text", "")))
+    return "".join(parts)
+
+
+def _thinking_of(message: Msg) -> str:
+    parts: list[str] = []
+    for block in getattr(message, "content", []) or []:
+        if isinstance(block, ThinkingBlock):
+            parts.append(block.thinking)
     return "".join(parts)
 
 

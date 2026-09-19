@@ -293,8 +293,9 @@ PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的
 
 ## Agent 执行
 
-Agent 回合由 `app/sessions/agent_scope.py` 执行：用请求里的瞬时 `llm_config` 建
-AgentScope 模型（Base URL 来自部署配置的 Provider 允许列表），并挂载三个只读工具：
+Agent 回合由 `app/sessions/agent_scope.py` 执行。`GET /v1/llm-catalog` 从 AgentScope
+Model Card 返回 Provider 与 active 模型；用户从目录选择并只填写 API Key。后端校验选择后创建
+AgentScope 原生模型，并挂载三个只读工具。
 
 | 工具 | 作用 | 范围 |
 |---|---|---|
@@ -305,7 +306,7 @@ AgentScope 模型（Base URL 来自部署配置的 Provider 允许列表），�
 - 范围来自会话上下文，**不由模型参数决定**；模型只能用 `search_papers` 登记过的 citation_id 引用原文
 - 工具调用写 `tool_result` Entry，回答携带的 citation_id 写进 Assistant Entry，前端据此渲染可点击引用
 - `AGENT_MAX_ITERS`（默认 8）限制工具轮次，`AGENT_TURN_TIMEOUT_SECONDS`（默认 240s）限制单回合
-- LLM Key 只在执行器内存中，不落库、不进日志
+- Provider 和模型不能自由输入，Base URL 不开放；LLM Key 不落库、不进日志
 
 ## 数据流向
 
@@ -313,6 +314,6 @@ AgentScope 模型（Base URL 来自部署配置的 Provider 允许列表），�
 
 - PDF 发往 MinerU 解析正文；
 - Chunk 文本发往 Embedding 服务生成向量；
-- 用户问题与检索到的论文证据发往用户自己配置的 LLM Provider。
+- 用户问题与检索到的论文证据发往用户选择的 LLM Provider。
 
-LLM API Key 只驻留当前执行器内存，不写入数据库、日志、对象存储或队列。MinerU 与 Embedding 为实例级配置，由部署者通过环境变量固定。
+LLM API Key 保存在当前浏览器并随启动/恢复请求传入，不写入数据库、日志、对象存储或队列。MinerU 与 Embedding 仍由部署者通过环境变量固定。
