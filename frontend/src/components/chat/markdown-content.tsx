@@ -1,4 +1,5 @@
 import { createMathPlugin } from "@streamdown/math"
+import "katex/dist/katex.min.css"
 import { useMemo, type AnchorHTMLAttributes } from "react"
 import { Streamdown, type Components } from "streamdown"
 
@@ -66,10 +67,11 @@ export function MarkdownContent({
 
   return (
     <Streamdown
+      key={streaming ? "streaming-without-math" : "static-with-math"}
       className={cn("agent-markdown min-w-0 text-[15px] leading-7", className)}
       mode={streaming ? "streaming" : "static"}
       parseIncompleteMarkdown={streaming}
-      plugins={{ math }}
+      plugins={streaming ? undefined : { math }}
       components={components}
       controls={{ code: true, table: true }}
       lineNumbers={false}

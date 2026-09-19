@@ -174,6 +174,28 @@ describe("MessageThread", () => {
     expect(screen.getByText("正在生成").getAttribute("data-streamdown")).toBe("strong")
   })
 
+  it("defers KaTeX until streamed math is persisted as a static answer", () => {
+    const formula = "$$V^{h,\\mu}(x) = \\max\\{h(x), V^{h,\\mu}(f(x))\\}$$"
+    const view = renderThread([], true, formula)
+
+    expect(document.querySelector(".katex")).toBeNull()
+    expect(document.querySelector(".agent-markdown")?.textContent).toContain(
+      "V^{h,\\mu}(x)",
+    )
+
+    view.rerender(
+      <MessageThread
+        entries={[entry({ role: "assistant", content: formula })]}
+        streamingText=""
+        generating={false}
+        onCitationClick={() => {}}
+      />,
+    )
+
+    expect(document.querySelector(".katex-display .katex")).toBeTruthy()
+    expect(document.querySelector(".katex-error")).toBeNull()
+  })
+
   it("renders persisted thinking as a collapsible block", async () => {
     const user = userEvent.setup()
     renderThread([
