@@ -1,5 +1,5 @@
 import { useMemo, type AnchorHTMLAttributes, type ComponentProps } from "react"
-import rehypeMathjax from "rehype-mathjax/svg"
+import rehypeMathjax from "rehype-mathjax/chtml"
 import remarkMath from "remark-math"
 import {
   defaultRehypePlugins,
@@ -16,7 +16,7 @@ const remarkPlugins: NonNullable<ComponentProps<typeof Streamdown>["remarkPlugin
 ]
 const rehypePlugins: NonNullable<ComponentProps<typeof Streamdown>["rehypePlugins"]> = [
   ...Object.values(defaultRehypePlugins),
-  rehypeMathjax,
+  [rehypeMathjax, { chtml: { fontURL: "/fonts/mathjax" } }],
 ]
 const CITATION_PREFIX = "#paper-citation-"
 

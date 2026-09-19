@@ -164,9 +164,10 @@ describe("MessageThread", () => {
     expect(document.querySelectorAll('mjx-container[display="true"]')).toHaveLength(2)
     expect(
       [...document.querySelectorAll("mjx-container")].every((formula) =>
-        formula.querySelector("svg"),
+        formula.matches('[jax="CHTML"]') && formula.querySelector("mjx-math"),
       ),
     ).toBe(true)
+    expect(document.querySelector("mjx-container svg")).toBeNull()
     expect(screen.getByText("\\(代码示例\\)")).toBeTruthy()
     expect(document.querySelector('p mjx-container[display="true"]')).toBeNull()
   })
@@ -182,7 +183,7 @@ describe("MessageThread", () => {
       "$$\\tilde{V}^{h^{(m)},\\mu}(o_i^0) = V_i^{h^{(m)},\\mu}(\\mathbf{x}^0) := \\max_{k \\geq 0} h^{(m)}(o_i^k)$$"
     const view = renderThread([], true, formula)
 
-    expect(document.querySelector("mjx-container svg")).toBeTruthy()
+    expect(document.querySelector('mjx-container[jax="CHTML"] mjx-math')).toBeTruthy()
 
     view.rerender(
       <MessageThread
@@ -193,7 +194,9 @@ describe("MessageThread", () => {
       />,
     )
 
-    expect(document.querySelector('mjx-container[display="true"] svg')).toBeTruthy()
+    expect(
+      document.querySelector('mjx-container[jax="CHTML"][display="true"] mjx-math'),
+    ).toBeTruthy()
   })
 
   it("renders persisted thinking as a collapsible block", async () => {
