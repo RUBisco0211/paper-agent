@@ -3,7 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
 import { ApiProvider } from "@/lib/api/provider"
@@ -16,11 +16,34 @@ function json(body: unknown): Response {
   })
 }
 
+const CATALOG = {
+  providers: [
+    {
+      id: "openai",
+      label: "OpenAI",
+      models: [{ id: "gpt-4.1-mini", label: "GPT-4.1 Mini", context_size: 1047576 }],
+    },
+    {
+      id: "deepseek",
+      label: "DeepSeek",
+      models: [{ id: "deepseek-chat", label: "DeepSeek Chat", context_size: 128000 }],
+    },
+  ],
+}
+
 describe("SettingsPage", () => {
-  it("offers the providers allowed by the deployment", async () => {
-    const fetchImpl = vi.fn(async () =>
-      json({ providers: ["dashscope", "deepseek", "openai"] }),
-    )
+  beforeEach(() => {
+    const values = new Map<string, string>()
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    })
+  })
+
+  it("uses catalog selections and only asks the user to type an API key", async () => {
+    const fetchImpl = vi.fn(async () => json(CATALOG))
     const user = userEvent.setup()
 
     render(
@@ -33,14 +56,26 @@ describe("SettingsPage", () => {
       </QueryClientProvider>,
     )
 
-    // 名单来自后端，不在前端硬编码
     expect(fetchImpl).toHaveBeenCalledWith(
-      "http://api.test/v1/llm-providers",
+      "http://api.test/v1/llm-catalog",
       expect.anything(),
     )
-    await user.click(screen.getByRole("combobox", { name: /Provider/ }))
-    expect(await screen.findByRole("option", { name: "dashscope" })).toBeTruthy()
-    expect(screen.getByRole("option", { name: "deepseek" })).toBeTruthy()
-    expect(screen.getByRole("option", { name: "openai" })).toBeTruthy()
+    const provider = await screen.findByRole("combobox", { name: "提供商" })
+    expect(screen.getAllByRole("combobox")).toHaveLength(2)
+    expect(screen.getByLabelText("API Key").getAttribute("type")).toBe("password")
+
+    await user.click(provider)
+    await user.click(screen.getByRole("option", { name: "DeepSeek" }))
+    expect(screen.getByRole("combobox", { name: "模型" }).textContent).toContain(
+      "DeepSeek Chat",
+    )
+    await user.type(screen.getByLabelText("API Key"), "test-key")
+    await user.click(screen.getByRole("button", { name: "保存" }))
+
+    expect(JSON.parse(localStorage.getItem("paper-agent.llm-config") ?? "{}")).toEqual({
+      provider: "deepseek",
+      model: "deepseek-chat",
+      api_key: "test-key",
+    })
   })
 })

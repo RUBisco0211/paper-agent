@@ -27,6 +27,7 @@ export function createQueryClient(): QueryClient {
 }
 
 export const queryKeys = {
+  llmCatalog: ["llm-catalog"] as const,
   papers: (params?: unknown) => ["papers", params ?? {}] as const,
   paper: (paperId: string) => ["paper", paperId] as const,
   ingestionJob: (jobId: string) => ["ingestion-job", jobId] as const,

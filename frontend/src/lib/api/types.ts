@@ -223,6 +223,7 @@ export type EntryType =
   | "tool_result"
   | "model_change"
   | "context_compaction"
+  | "session_context"
 
 export interface SessionEntry {
   id: Uuid
@@ -238,6 +239,24 @@ export interface LlmConfigInput {
   provider: string
   model: string
   api_key: string
+  reasoning_effort?: string
+}
+
+export interface LlmModelOption {
+  id: string
+  label: string
+  context_size?: number | null
+  reasoning_efforts: string[]
+}
+
+export interface LlmProviderOption {
+  id: string
+  label: string
+  models: LlmModelOption[]
+}
+
+export interface LlmCatalog {
+  providers: LlmProviderOption[]
 }
 
 export interface MessageInput {
@@ -270,6 +289,8 @@ export interface Citation {
 export type SessionEventType =
   | "generation.started"
   | "message.delta"
+  | "thinking.delta"
+  | "trace.message"
   | "tool.started"
   | "tool.completed"
   | "queue.updated"

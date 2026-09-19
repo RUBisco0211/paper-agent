@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 
 import { PageHeader } from "@/app/app-shell"
@@ -32,7 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { CitationSheet } from "@/components/chat/citation-sheet"
 import { Composer } from "@/components/chat/composer"
-import { MessageThread } from "@/components/chat/message-thread"
+import { MessageThread, type ActiveTool } from "@/components/chat/message-thread"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { useSessionEvents } from "@/lib/hooks/use-session-events"
@@ -50,10 +50,12 @@ export function SessionWorkspacePage() {
   const { api } = useApi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { config, isReady } = useLlmConfig()
-
+  const { config, save: saveLlmConfig, isReady } = useLlmConfig()
   const [streamingText, setStreamingText] = useState("")
+  const streamingTextRef = useRef("")
+  const [streamingThinking, setStreamingThinking] = useState("")
   const [generating, setGenerating] = useState(false)
+  const [activeTools, setActiveTools] = useState<ActiveTool[]>([])
   const [citationId, setCitationId] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
   const [title, setTitle] = useState("")
@@ -72,13 +74,20 @@ export function SessionWorkspacePage() {
     enabled: Boolean(sessionId),
   })
 
+  const llmCatalog = useQuery({
+    queryKey: queryKeys.llmCatalog,
+    queryFn: () => api.sessions.llmCatalog(),
+  })
+
   useEffect(() => {
     setGenerating(session.data?.is_generating ?? false)
   }, [session.data?.is_generating])
 
-  const refreshHistory = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.entries(sessionId) })
-    void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
+  const refreshHistory = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.entries(sessionId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) }),
+    ])
   }, [queryClient, sessionId])
 
   const handleEvent = useCallback(
@@ -86,23 +95,51 @@ export function SessionWorkspacePage() {
       switch (event.type) {
         case "generation.started":
           setGenerating(true)
+          streamingTextRef.current = ""
           setStreamingText("")
+          setStreamingThinking("")
+          setActiveTools([])
           break
         case "message.delta":
-          setStreamingText((prev) => prev + String(event.data.text ?? ""))
+          streamingTextRef.current += String(event.data.text ?? "")
+          setStreamingText(streamingTextRef.current)
+          break
+        case "thinking.delta":
+          setStreamingThinking((prev) => prev + String(event.data.text ?? ""))
+          break
+        case "trace.message":
+          streamingTextRef.current = ""
+          setStreamingText("")
+          void queryClient.invalidateQueries({ queryKey: queryKeys.entries(sessionId) })
           break
         case "queue.updated":
           void queryClient.invalidateQueries({ queryKey: queryKeys.session(sessionId) })
           break
-        case "tool.completed":
+        case "tool.started": {
+          const id = String(event.data.tool_call_id ?? "")
+          const name = String(event.data.tool ?? "tool")
+          setActiveTools((current) => [
+            ...current.filter((tool) => tool.id !== id),
+            { id, name },
+          ])
+          break
+        }
+        case "tool.completed": {
+          const id = String(event.data.tool_call_id ?? "")
+          setActiveTools((current) => current.filter((tool) => tool.id !== id))
           refreshHistory()
           break
+        }
         case "generation.completed":
         case "generation.aborted":
         case "generation.failed": {
           setGenerating(false)
-          setStreamingText("")
-          refreshHistory()
+          setActiveTools([])
+          void refreshHistory().then(() => {
+            streamingTextRef.current = ""
+            setStreamingText("")
+            setStreamingThinking("")
+          })
           if (event.type === "generation.failed") {
             const code = String(event.data.error_code ?? "internal_error")
             notifyError(new Error(code), "本次生成失败")
@@ -123,8 +160,6 @@ export function SessionWorkspacePage() {
       api.sessions.sendMessage(sessionId, {
         content: input.content,
         delivery: input.delivery,
-        // An idle session starts a generation and therefore needs the transient
-        // LLM configuration; a busy session just queues the text.
         llm_config: config && isReady ? config : undefined,
       }),
     onSuccess: (result) => {
@@ -148,7 +183,7 @@ export function SessionWorkspacePage() {
   const resume = useMutation({
     mutationFn: () => {
       if (!config || !isReady) {
-        throw new Error("需要先在模型设置中补全 LLM 配置")
+        throw new Error("需要先选择问答模型并填写 API Key")
       }
       return api.sessions.resume(sessionId, config)
     },
@@ -175,6 +210,23 @@ export function SessionWorkspacePage() {
     },
     onError: (error) => notifyError(error, "删除失败"),
   })
+
+  async function attachPaper(file: File) {
+    try {
+      const uploaded = await api.library.upload(file)
+      if (session.data?.scope === "project" && session.data.project_id) {
+        await api.projects.addPapers(session.data.project_id, [uploaded.paper.id])
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.projectPapers(session.data.project_id),
+        })
+      }
+      await queryClient.invalidateQueries({ queryKey: ["papers"] })
+      notifySuccess("PDF 已加入当前范围", "解析完成后即可检索")
+    } catch (error) {
+      notifyError(error, "PDF 上传失败")
+      throw error
+    }
+  }
 
   if (session.isError) {
     return (
@@ -235,7 +287,9 @@ export function SessionWorkspacePage() {
           <MessageThread
             entries={entries.data?.items ?? []}
             streamingText={streamingText}
+            streamingThinking={streamingThinking}
             generating={generating}
+            activeTools={activeTools}
             onCitationClick={setCitationId}
           />
         )}
@@ -245,7 +299,12 @@ export function SessionWorkspacePage() {
         generating={generating}
         pendingCount={pendingCount}
         llmReady={isReady}
+        config={config}
+        providers={llmCatalog.data?.providers}
+        scope={data?.scope}
         busy={send.isPending || stop.isPending || resume.isPending}
+        onConfigChange={saveLlmConfig}
+        onAttach={attachPaper}
         onSend={(content, delivery) => send.mutate({ content, delivery })}
         onStop={() => stop.mutate()}
         onResume={() => resume.mutate()}

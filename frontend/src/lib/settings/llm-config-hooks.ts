@@ -10,9 +10,7 @@ import {
 export function useLlmConfig() {
   const [config, setConfig] = useState<StoredLlmConfig | null>(() => loadLlmConfig())
 
-  useEffect(() => {
-    setConfig(loadLlmConfig())
-  }, [])
+  useEffect(() => setConfig(loadLlmConfig()), [])
 
   const save = useCallback((next: StoredLlmConfig) => {
     saveLlmConfig(next)
@@ -24,9 +22,5 @@ export function useLlmConfig() {
     setConfig(null)
   }, [])
 
-  const isReady = Boolean(
-    config?.provider?.trim() && config?.model?.trim() && config?.api_key?.trim(),
-  )
-
-  return { config, save, clear, isReady }
+  return { config, save, clear, isReady: Boolean(config) }
 }

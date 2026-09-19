@@ -1,6 +1,7 @@
 import type { ApiClient } from "../client"
 import type {
   Citation,
+  LlmCatalog,
   LlmConfigInput,
   MessageAccepted,
   MessageInput,
@@ -25,9 +26,7 @@ export interface SessionListParams {
 
 export function sessionEndpoints(client: ApiClient) {
   return {
-    /** 部署允许的 LLM Provider 名单（不含 Base URL 与凭据）。 */
-    llmProviders: () =>
-      client.request<{ providers: string[] }>("/v1/llm-providers"),
+    llmCatalog: () => client.request<LlmCatalog>("/v1/llm-catalog"),
 
     /** 范围三选一：全局（都不传）、项目、单篇文献。 */
     create: (
@@ -59,10 +58,7 @@ export function sessionEndpoints(client: ApiClient) {
         query: { ...params },
       }),
 
-    /**
-     * Submit input. An idle session needs `llm_config`; a busy session returns
-     * the queued message instead of starting another generation.
-     */
+    /** Submit input; a busy session queues it instead of starting another turn. */
     sendMessage: (sessionId: Uuid, input: MessageInput) =>
       client.request<MessageAccepted>(`${SESSIONS}/${sessionId}/messages`, {
         method: "POST",

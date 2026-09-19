@@ -12,8 +12,8 @@ import { LoginPage } from "@/pages/login"
 import { ProjectDetailPage } from "@/pages/project-detail"
 import { ProjectsPage } from "@/pages/projects"
 import { SessionWorkspacePage } from "@/pages/session-workspace"
-import { RegisterPage } from "@/pages/register"
 import { SettingsPage } from "@/pages/settings"
+import { RegisterPage } from "@/pages/register"
 
 export function createAppRoutes(): RouteObject[] {
   return [
