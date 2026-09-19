@@ -168,6 +168,8 @@ describe("MessageThread", () => {
       ),
     ).toBe(true)
     expect(document.querySelector("mjx-container svg")).toBeNull()
+    expect(document.querySelector("mjx-labels")).toBeNull()
+    expect(document.querySelector("[data-math-tag]")?.textContent).toBe("(21)")
     expect(screen.getByText("\\(代码示例\\)")).toBeTruthy()
     expect(document.querySelector('p mjx-container[display="true"]')).toBeNull()
   })
