@@ -145,7 +145,9 @@ describe("MessageThread", () => {
           "",
           "行内公式 $\\tilde{B}$、$E = mc^2$ 与 \\(a^2+b^2=c^2\\)。",
           "",
-          "$$V^{h,\\mu}(x) = \\max\\{h(x),\\; V^{h,\\mu}(f(x, \\mu(x)))\\} \\tag{21}$$",
+          "$$",
+          "V^{h,\\mu}(x) = \\max\\{h(x),\\; V^{h,\\mu}(f(x, \\mu(x)))\\} \\tag{21}",
+          "$$",
           "",
           "\\[",
           "\\sum_{i=1}^{n} i",
@@ -159,17 +161,12 @@ describe("MessageThread", () => {
     expect(screen.getByRole("heading", { name: "结论", level: 2 })).toBeTruthy()
     expect(screen.getByText("准确率").getAttribute("data-streamdown")).toBe("strong")
     expect(screen.getByRole("table")).toBeTruthy()
-    expect(document.querySelectorAll("mjx-container")).toHaveLength(5)
+    expect(document.querySelectorAll(".katex")).toHaveLength(5)
     expect(document.querySelectorAll(".agent-markdown")).toHaveLength(1)
-    expect(document.querySelectorAll('mjx-container[display="true"]')).toHaveLength(2)
-    expect(
-      [...document.querySelectorAll("mjx-container")].every((formula) =>
-        formula.matches('[jax="CHTML"]') && formula.querySelector("mjx-math"),
-      ),
-    ).toBe(true)
-    expect(document.querySelector("mjx-container svg")).toBeNull()
+    expect(document.querySelectorAll(".katex-display")).toHaveLength(2)
+    expect(document.querySelectorAll(".katex-error")).toHaveLength(0)
     expect(screen.getByText("\\(代码示例\\)")).toBeTruthy()
-    expect(document.querySelector('p mjx-container[display="true"]')).toBeNull()
+    expect(document.querySelector("p .katex")?.closest(".katex-display")).toBeNull()
   })
 
   it("keeps incomplete Markdown formatted while text is streaming", () => {
@@ -178,12 +175,12 @@ describe("MessageThread", () => {
     expect(screen.getByText("正在生成").getAttribute("data-streamdown")).toBe("strong")
   })
 
-  it("keeps MathJax formulas intact when a streamed answer is persisted", () => {
+  it("keeps Streamdown formulas intact when a streamed answer is persisted", () => {
     const formula =
-      "$$\\tilde{V}^{h^{(m)},\\mu}(o_i^0) = V_i^{h^{(m)},\\mu}(\\mathbf{x}^0) := \\max_{k \\geq 0} h^{(m)}(o_i^k)$$"
+      "$$\n\\tilde{V}^{h^{(m)},\\mu}(o_i^0) = V_i^{h^{(m)},\\mu}(\\mathbf{x}^0) := \\max_{k \\geq 0} h^{(m)}(o_i^k)\n$$"
     const view = renderThread([], true, formula)
 
-    expect(document.querySelector('mjx-container[jax="CHTML"] mjx-math')).toBeTruthy()
+    expect(document.querySelector(".katex-display .katex")).toBeTruthy()
 
     view.rerender(
       <MessageThread
@@ -194,9 +191,7 @@ describe("MessageThread", () => {
       />,
     )
 
-    expect(
-      document.querySelector('mjx-container[jax="CHTML"][display="true"] mjx-math'),
-    ).toBeTruthy()
+    expect(document.querySelector(".katex-display .katex")).toBeTruthy()
   })
 
   it("renders persisted thinking as a collapsible block", async () => {

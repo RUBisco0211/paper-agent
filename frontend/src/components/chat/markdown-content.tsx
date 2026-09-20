@@ -1,23 +1,11 @@
-import { useMemo, type AnchorHTMLAttributes, type ComponentProps } from "react"
-import rehypeMathjax from "rehype-mathjax/chtml"
-import remarkMath from "remark-math"
-import {
-  defaultRehypePlugins,
-  defaultRemarkPlugins,
-  Streamdown,
-  type Components,
-} from "streamdown"
+import { createMathPlugin } from "@streamdown/math"
+import "katex/dist/katex.min.css"
+import { useMemo, type AnchorHTMLAttributes } from "react"
+import { Streamdown, type Components } from "streamdown"
 
 import { cn } from "cn"
 
-const remarkPlugins: NonNullable<ComponentProps<typeof Streamdown>["remarkPlugins"]> = [
-  ...Object.values(defaultRemarkPlugins),
-  [remarkMath, { singleDollarTextMath: true }],
-]
-const rehypePlugins: NonNullable<ComponentProps<typeof Streamdown>["rehypePlugins"]> = [
-  ...Object.values(defaultRehypePlugins),
-  [rehypeMathjax, { chtml: { fontURL: "/fonts/mathjax" } }],
-]
+const math = createMathPlugin()
 const CITATION_PREFIX = "#paper-citation-"
 
 export function MarkdownContent({
@@ -82,8 +70,7 @@ export function MarkdownContent({
       className={cn("agent-markdown min-w-0 text-[15px] leading-7", className)}
       mode={streaming ? "streaming" : "static"}
       parseIncompleteMarkdown={streaming}
-      remarkPlugins={remarkPlugins}
-      rehypePlugins={rehypePlugins}
+      plugins={{ math }}
       components={components}
       controls={{ code: true, table: true }}
       lineNumbers={false}
@@ -136,8 +123,10 @@ function normalizeAgentMarkdown(content: string, citations: string[]): string {
         return line
       }
       if (fenced) return line
-      const displayMath = line.match(/^\s*\$\$(.+)\$\$\s*$/)
-      if (displayMath) return `$$\n${displayMath[1]}\n$$`
+      const bracketedDisplayMath = line.match(/^\s*\\\[([\s\S]*)\\\]\s*$/)
+      if (bracketedDisplayMath) return `$$\n${bracketedDisplayMath[1]}\n$$`
+      if (/^\s*\\\[\s*$/.test(line)) return "$$"
+      if (/^\s*\\\]\s*$/.test(line)) return "$$"
       return normalizeInline(line, citationNumbers)
     })
     .join("\n")
@@ -166,13 +155,13 @@ function normalizeInline(line: string, citations: Map<string, number>): string {
       }
       const delimiter = line.slice(index, index + 2)
       if (delimiter === "\\(" || delimiter === "\\)") {
-        result += "$"
+        result += "$$"
         index += 2
         continue
       }
-      if (delimiter === "\\[" || delimiter === "\\]") {
+      if (line[index] === "$" && line[index + 1] !== "$" && line[index - 1] !== "$") {
         result += "$$"
-        index += 2
+        index += 1
         continue
       }
     }
