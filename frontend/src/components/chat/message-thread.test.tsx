@@ -194,6 +194,27 @@ describe("MessageThread", () => {
     expect(document.querySelector(".katex-display .katex")).toBeTruthy()
   })
 
+  it("adapts conventional model math delimiters to Streamdown math", () => {
+    renderThread([
+      entry({
+        role: "assistant",
+        content: [
+          "在假设 $V^{h,\\mu}(x) \\leq 0$ 的前提下：",
+          "",
+          "$$V^{h,\\mu}(f(x,\\mu(x))) - V^{h,\\mu}(x) = 0 \\tag{22}$$",
+          "$$= V_i^{h^{(m)},\\mu}(\\mathbf{x}^+) - V_i^{h^{(m)},\\mu}(\\mathbf{x}) \\tag{79-80}$$",
+          "",
+          "**结论：V^{h,\\mu} 是一个 DCBF**",
+        ].join("\n"),
+      }),
+    ])
+
+    expect(document.querySelectorAll("p .katex")).toHaveLength(2)
+    expect(document.querySelectorAll(".katex-display")).toHaveLength(2)
+    expect(document.querySelector(".katex-display")?.textContent).toContain("(22)")
+    expect(document.querySelectorAll(".katex-error")).toHaveLength(0)
+  })
+
   it("renders persisted thinking as a collapsible block", async () => {
     const user = userEvent.setup()
     renderThread([

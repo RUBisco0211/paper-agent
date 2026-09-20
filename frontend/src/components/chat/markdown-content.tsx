@@ -114,6 +114,7 @@ export function inlineCitationIds(content: string, citations: string[]): Set<str
 function normalizeAgentMarkdown(content: string, citations: string[]): string {
   const citationNumbers = new Map(citations.map((id, index) => [id, index + 1]))
   let fenced = false
+  let displayMath = false
 
   return content
     .split("\n")
@@ -123,10 +124,23 @@ function normalizeAgentMarkdown(content: string, citations: string[]): string {
         return line
       }
       if (fenced) return line
+      if (/^\s*\$\$\s*$/.test(line)) {
+        displayMath = !displayMath
+        return "$$"
+      }
+      if (/^\s*\\\]\s*$/.test(line)) {
+        displayMath = false
+        return "$$"
+      }
+      if (displayMath) return line
+      const singleLineDisplayMath = line.match(/^\s*\$\$([\s\S]+)\$\$\s*$/)
+      if (singleLineDisplayMath) return `$$\n${singleLineDisplayMath[1]}\n$$`
       const bracketedDisplayMath = line.match(/^\s*\\\[([\s\S]*)\\\]\s*$/)
       if (bracketedDisplayMath) return `$$\n${bracketedDisplayMath[1]}\n$$`
-      if (/^\s*\\\[\s*$/.test(line)) return "$$"
-      if (/^\s*\\\]\s*$/.test(line)) return "$$"
+      if (/^\s*\\\[\s*$/.test(line)) {
+        displayMath = true
+        return "$$"
+      }
       return normalizeInline(line, citationNumbers)
     })
     .join("\n")
@@ -136,6 +150,7 @@ function normalizeInline(line: string, citations: Map<string, number>): string {
   let result = ""
   let index = 0
   let codeTicks = 0
+  let inlineMath = false
 
   while (index < line.length) {
     if (line[index] === "`") {
@@ -145,7 +160,7 @@ function normalizeInline(line: string, citations: Map<string, number>): string {
       index += run.length
       continue
     }
-    if (codeTicks === 0) {
+    if (codeTicks === 0 && !inlineMath) {
       const citation = line.slice(index).match(/^\[(cit_[A-Za-z0-9_-]+)]/)
       const number = citation ? citations.get(citation[1]) : undefined
       if (citation && number !== undefined) {
@@ -153,14 +168,26 @@ function normalizeInline(line: string, citations: Map<string, number>): string {
         index += citation[0].length
         continue
       }
+      const bareTexIdentifier = line
+        .slice(index)
+        .match(/^[A-Za-z](?:[_^]\{[^{}\n]+\})+/)
+      if (bareTexIdentifier) {
+        result += `$$${bareTexIdentifier[0]}$$`
+        index += bareTexIdentifier[0].length
+        continue
+      }
+    }
+    if (codeTicks === 0) {
       const delimiter = line.slice(index, index + 2)
       if (delimiter === "\\(" || delimiter === "\\)") {
         result += "$$"
+        inlineMath = delimiter === "\\("
         index += 2
         continue
       }
       if (line[index] === "$" && line[index + 1] !== "$" && line[index - 1] !== "$") {
         result += "$$"
+        inlineMath = !inlineMath
         index += 1
         continue
       }
