@@ -67,10 +67,11 @@ export function MarkdownContent({
 
   return (
     <Streamdown
+      key={streaming ? "streaming-markdown" : "static-markdown-with-math"}
       className={cn("agent-markdown min-w-0 text-[15px] leading-7", className)}
       mode={streaming ? "streaming" : "static"}
       parseIncompleteMarkdown={streaming}
-      plugins={{ math }}
+      plugins={streaming ? undefined : { math }}
       components={components}
       controls={{ code: true, table: true }}
       lineNumbers={false}

@@ -180,7 +180,10 @@ describe("MessageThread", () => {
       "$$\n\\tilde{V}^{h^{(m)},\\mu}(o_i^0) = V_i^{h^{(m)},\\mu}(\\mathbf{x}^0) := \\max_{k \\geq 0} h^{(m)}(o_i^k)\n$$"
     const view = renderThread([], true, formula)
 
-    expect(document.querySelector(".katex-display .katex")).toBeTruthy()
+    expect(document.querySelector(".katex")).toBeNull()
+    expect(document.querySelector(".agent-markdown")?.textContent).toContain(
+      "\\tilde{V}^{h^{(m)},\\mu}",
+    )
 
     view.rerender(
       <MessageThread
@@ -192,6 +195,7 @@ describe("MessageThread", () => {
     )
 
     expect(document.querySelector(".katex-display .katex")).toBeTruthy()
+    expect(document.querySelectorAll(".katex-error")).toHaveLength(0)
   })
 
   it("adapts conventional model math delimiters to Streamdown math", () => {
