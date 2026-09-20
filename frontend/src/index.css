@@ -226,26 +226,6 @@
   }
 }
 
-.agent-markdown [data-math-display] {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.75rem;
-  margin-block: 1rem;
-}
-
-.agent-markdown [data-math-display] mjx-container[display="true"] {
-  min-width: 0;
-  margin: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.agent-markdown [data-math-tag] {
-  justify-self: end;
-  font-variant-numeric: tabular-nums;
-}
-
 /* 尊重系统的“减少动态效果”设置 */
 @media (prefers-reduced-motion: reduce) {
   *,

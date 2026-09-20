@@ -16,64 +16,9 @@ const remarkPlugins: NonNullable<ComponentProps<typeof Streamdown>["remarkPlugin
 ]
 const rehypePlugins: NonNullable<ComponentProps<typeof Streamdown>["rehypePlugins"]> = [
   ...Object.values(defaultRehypePlugins),
-  extractDisplayMathTags,
   [rehypeMathjax, { chtml: { fontURL: "/fonts/mathjax" } }],
 ]
 const CITATION_PREFIX = "#paper-citation-"
-
-type MathNode = {
-  type?: string
-  tagName?: string
-  value?: string
-  properties?: Record<string, unknown>
-  children?: MathNode[]
-}
-
-function extractDisplayMathTags() {
-  return (tree: MathNode) => {
-    walkMathNodes(tree)
-  }
-}
-
-function walkMathNodes(node: MathNode) {
-  if (!node.children) return
-
-  for (let index = 0; index < node.children.length; index += 1) {
-    const child = node.children[index]
-    const code = child.tagName === "pre" ? child.children?.[0] : undefined
-    const classes = code?.properties?.className
-    const isDisplayMath =
-      code?.tagName === "code" &&
-      Array.isArray(classes) &&
-      classes.includes("language-math")
-    const text = isDisplayMath ? code.children?.[0] : undefined
-    const taggedFormula =
-      text?.type === "text" && typeof text.value === "string"
-        ? text.value.match(/([\s\S]*?)\\tag\{([^{}]+)\}\s*$/)
-        : null
-
-    if (taggedFormula && text) {
-      text.value = taggedFormula[1].trimEnd()
-      node.children[index] = {
-        type: "element",
-        tagName: "div",
-        properties: { dataMathDisplay: "" },
-        children: [
-          child,
-          {
-            type: "element",
-            tagName: "span",
-            properties: { dataMathTag: "", ariaHidden: "true" },
-            children: [{ type: "text", value: `(${taggedFormula[2]})` }],
-          },
-        ],
-      }
-      continue
-    }
-
-    walkMathNodes(child)
-  }
-}
 
 export function MarkdownContent({
   children,
