@@ -10,8 +10,3 @@ class ProjectSessionCleaner(Protocol):
     """
 
     def purge_project_sessions(self, *, user_id: UUID, project_id: UUID) -> int: ...
-
-
-class NoopProjectSessionCleaner:
-    def purge_project_sessions(self, *, user_id: UUID, project_id: UUID) -> int:
-        return 0

@@ -4,8 +4,8 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from ..ingestion.schemas import IngestionJobRead, ProcessingRead
-from .application import LibraryEntry
 from .domain import Capabilities, MetadataStatus, PaperSource
+from .service import LibraryEntry
 
 
 class CapabilitiesRead(BaseModel):

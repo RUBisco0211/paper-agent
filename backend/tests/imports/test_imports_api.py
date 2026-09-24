@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from app.library.dependencies import get_metadata_resolver, get_pdf_fetcher
-from app.library.persistence import PaperRepository
+from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+from app.library.repo import PaperRepository
 from app.platform.errors import AppError, ErrorCode
 from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers

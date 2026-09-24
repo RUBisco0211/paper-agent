@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from ..auth.dependencies import CurrentUser
-from .dependencies import ImportServiceDep
+from ..auth.depends import CurrentUser
+from .depends import ImportServiceDep
 from .schemas import ImportRead, ImportRequest
 
 router = APIRouter(prefix="/imports", tags=["imports"])

@@ -38,20 +38,30 @@ uv run pytest
 
 ```text
 app/
-├── platform/     # 横切设施：配置、数据库、日志、错误、存储、安全
-├── auth/         # 账号、登录态与刷新令牌轮换
-├── library/      # 个人论文库条目、PDF 上传与元数据
-├── projects/     # 项目与项目论文范围
-├── ingestion/    # 处理任务、阶段状态与解析适配器
-├── retrieval/    # Chunk、混合检索与 RRF
-├── sessions/     # 会话、Entry、pending 队列、SSE 与引用
-├── imports/      # DOI/arXiv 标识符导入
+├── auth/         # 账号与登录态
+├── imports/      # DOI/arXiv 导入
+├── ingestion/    # 处理任务与阶段状态
+├── library/      # 个人文献库与共享 PDF
+├── projects/     # 项目与文献成员
+├── retrieval/    # 授权检索与 Chunk 仓储
+├── sessions/     # 会话、pending 与引用
+├── processing/   # PDF 工具、MinerU、分块与处理流水线
+├── embedding/    # 向量服务适配器与模型档案
+├── agent/        # Agent 执行器、AgentScope 适配、目录与工具
+├── conversation/ # JSONL 历史、上下文投影与内存事件
+├── evidence/     # 排名融合与引用 ID 工具
+├── scholar/      # 标识符、元数据查询/合并与 PDF 下载
+├── platform/     # 配置、数据库、日志、错误、存储与调度
 └── main.py       # FastAPI 应用装配
 alembic/          # 版本化数据库迁移
-tests/            # 单元测试与 PostgreSQL 集成测试
+tests/            # 按职责分包的测试与架构约束
 ```
 
-每个领域模块沿用仓库既有的垂直切片：`domain.py`（领域规则）、`application.py`（用例编排）、`api.py`（HTTP 适配器）、`persistence.py`（SQLAlchemy 仓储），`platform/` 只放跨领域技术设施。
+有 Router 的七个业务包统一为 `api.py`、`schemas.py`、`depends.py`、`service.py`、
+`domain.py`、`repo.py`、`ports.py`，另有 `__init__.py`。`depends.py` 负责 HTTP 依赖装配，
+`service.py` 负责用例，`repo.py` 负责 ORM；复杂执行过程、外部适配器和纯工具放在同级支持包。
+
+当前目录职责、依赖规则和迁移对照见 [后端源码架构](../docs/overview/backend-architecture.md)。
 
 ## 接口一览
 
@@ -174,17 +184,17 @@ EMBEDDING_DIMENSIONS=1024
 
 ### 适配层
 
-向量差异都收敛在 `app/retrieval/embedding/`：
+向量差异都收敛在 `app/embedding/`：
 
 ```text
-base.py              EmbeddingAdapter 协议 + EmbeddingProfile（维度/截断/前缀）+ prepare()
+base.py              EmbeddingProfile（维度/截断/前缀）+ prepare()
 profiles.py          已知模型的默认行为（bge-m3、bge-*-en-v1.5、e5、nomic、embeddinggemma、
                      qwen3-embedding、text-embedding-3-*）；未知模型走默认档案
-openai_compatible.py 实现协议：组装 /embeddings 请求、解析响应、映射错误码
-__init__.py          build_embedding_adapter()：按配置装配（EMBEDDING_ADAPTER 分支）
+client.py            实现协议：组装 /embeddings 请求、解析响应、映射错误码
+__init__.py          build_embedding_adapter()：按配置装配当前兼容实现
 ```
 
-上层只调用 `embed_documents()`（chunk）与 `embed_query()`（查询），前缀与截断由档案决定，
+协议定义在 `app/retrieval/ports.py`。上层只调用 `embed_documents()`（chunk）与 `embed_query()`（查询），前缀与截断由档案决定，
 因此**换模型只需要改配置**；换成非 OpenAI 兼容的服务时，新增一个实现 `EmbeddingAdapter`
 的类并在 `build_embedding_adapter()` 里注册即可，检索与流水线代码不用动。
 
@@ -293,7 +303,7 @@ PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的
 
 ## Agent 执行
 
-Agent 回合由 `app/sessions/agent_scope.py` 执行。`GET /v1/llm-catalog` 从 AgentScope
+Agent 回合由 `app/agent/scope.py` 执行。`GET /v1/llm-catalog` 从 AgentScope
 Model Card 返回 Provider 与 active 模型；用户从目录选择并只填写 API Key。后端校验选择后创建
 AgentScope 原生模型，并挂载三个只读工具。
 

@@ -3,9 +3,9 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, inspect
 
+from app.conversation.service import EntryStore
 from app.platform.storage import ObjectStorage
 from app.sessions.domain import EntryType, MessageRole
-from app.sessions.entries import EntryStore
 from tests.conftest import auth_headers
 
 
@@ -353,8 +353,8 @@ def test_single_paper_session_keeps_scope_in_the_entry_log(
     storage: ObjectStorage,
 ) -> None:
     """范围通过会话上下文注入，不在数据库里建立会话与文献的关联。"""
+    from app.conversation.service import EntryStore
     from app.sessions.domain import EntryType
-    from app.sessions.entries import EntryStore
 
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = client.post(

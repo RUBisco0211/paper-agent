@@ -2,11 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response, status
 
-from ..auth.dependencies import CurrentUser
+from ..auth.depends import CurrentUser
 from ..library.schemas import UserPaperSummary, to_summary
 from ..platform.pagination import Page, PageParamsDep
-from .application import ProjectService
-from .dependencies import ProjectServiceDep
+from .depends import ProjectServiceDep
 from .domain import Project
 from .schemas import (
     ProjectCreateRequest,
@@ -15,6 +14,7 @@ from .schemas import (
     ProjectRead,
     ProjectUpdateRequest,
 )
+from .service import ProjectService
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 

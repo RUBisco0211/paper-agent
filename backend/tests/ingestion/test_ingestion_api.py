@@ -157,7 +157,7 @@ def test_retry_skips_verified_stages_and_reports_the_failed_one(
     make_pdf,
     db_session: Session,
 ) -> None:
-    from app.library.persistence import PaperRepository
+    from app.library.repo import PaperRepository
 
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(client, api_prefix, token, make_pdf())
@@ -212,8 +212,8 @@ def test_retry_conflicts_while_a_job_is_still_active(
     db_session: Session,
 ) -> None:
     from app.ingestion.domain import STAGE_ORDER
-    from app.ingestion.persistence import IngestionRepository
-    from app.library.persistence import PaperRepository
+    from app.ingestion.repo import IngestionRepository
+    from app.library.repo import PaperRepository
 
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(client, api_prefix, token, make_pdf())
@@ -242,8 +242,8 @@ def test_retry_conflicts_when_nothing_is_left_to_do(
     make_pdf,
     db_session: Session,
 ) -> None:
-    from app.ingestion.persistence import IngestionRepository
-    from app.library.persistence import PaperRepository
+    from app.ingestion.repo import IngestionRepository
+    from app.library.repo import PaperRepository
 
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(client, api_prefix, token, make_pdf())

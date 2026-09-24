@@ -7,7 +7,11 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .agent.scope import AgentScopeRunner
+from .agent.service import SessionExecutor
 from .api import build_api_router
+from .conversation.events import EventBroker
+from .conversation.service import EntryStore
 from .platform.config import settings
 from .platform.database import SessionLocal
 from .platform.errors import register_exception_handlers
@@ -15,10 +19,6 @@ from .platform.logging import configure_logging
 from .platform.request_logging import RequestLoggingMiddleware
 from .platform.storage import get_object_storage
 from .platform.tasks import AsyncioTaskScheduler
-from .sessions.agent_scope import AgentScopeRunner
-from .sessions.entries import EntryStore
-from .sessions.events import EventBroker
-from .sessions.executor import SessionExecutor
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -27,7 +27,7 @@ logger = structlog.get_logger(__name__)
 def check_embedding_dimensions() -> None:
     """配置的向量维度必须与迁移建的列一致，否则写入会在数据库层失败。"""
     from .platform.database import SessionLocal
-    from .retrieval.persistence import chunk_embedding_dimension
+    from .retrieval.repo import chunk_embedding_dimension
 
     try:
         with SessionLocal() as session:

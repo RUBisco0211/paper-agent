@@ -3,11 +3,11 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.library.persistence import PaperRepository
+from app.library.repo import PaperRepository
 from app.platform.config import settings
-from app.retrieval.dependencies import get_embedding_adapter
+from app.retrieval.depends import get_embedding_adapter
 from app.retrieval.domain import ChunkDraft
-from app.retrieval.persistence import ChunkRepository
+from app.retrieval.repo import ChunkRepository
 from tests.conftest import auth_headers
 
 

@@ -6,9 +6,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.library.dependencies import get_metadata_resolver, get_pdf_fetcher
+from app.library.depends import get_metadata_resolver, get_pdf_fetcher
 from app.library.domain import MetadataStatus, PaperSource
-from app.library.persistence import PaperRepository
+from app.library.repo import PaperRepository
 from app.scholar.identifiers import Identifier
 from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers

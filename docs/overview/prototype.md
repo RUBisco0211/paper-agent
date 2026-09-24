@@ -577,6 +577,8 @@ UUID 不构成授权。任何 Redis/MinIO Key 的构造都必须先通过 Postgr
 
 ## 12. 架构与任务边界
 
+> 本节保留目标方案；当前源码组织与运行约束见 [后端源码架构](backend-architecture.md)。
+
 ```text
 Browser / Yaak
        │ REST + SSE
@@ -603,7 +605,7 @@ Celery workers
 
 - Agent 生成留在 FastAPI 进程，不经过 Celery；模型配置由部署端注入。
 - Celery 只处理使用实例级凭据、可幂等重试的后台工作。
-- 领域模块沿用仓库现有的 domain/application/api/persistence 垂直切片，platform 只放数据库、日志、对象存储、队列等横切设施。
+- 领域模块沿用仓库现有的 domain/service/api/repo 垂直切片，platform 只放数据库、日志、对象存储、队列等横切设施。
 
 ---
 

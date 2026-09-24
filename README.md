@@ -16,6 +16,7 @@ docs/       产品契约、架构基线与技术选型调研
 |---|---|
 | [docs/overview/minimal-mvp.md](docs/overview/minimal-mvp.md) | 本轮 MVP 功能规格与验收标准（功能范围以此为准） |
 | [docs/overview/prototype.md](docs/overview/prototype.md) | 领域模型、数据模型与架构基线 |
+| [docs/overview/backend-architecture.md](docs/overview/backend-architecture.md) | 当前后端源码分包、分层与依赖规则 |
 | [docs/infrastructure/technical-stack-research.md](docs/infrastructure/technical-stack-research.md) | ORM、日志、中间件选型 |
 | [docs/infrastructure/sse-architecture-research.md](docs/infrastructure/sse-architecture-research.md) | SSE 传输与事件模型 |
 | [docs/infrastructure/logging-conventions.md](docs/infrastructure/logging-conventions.md) | 日志事件命名与字段约定 |

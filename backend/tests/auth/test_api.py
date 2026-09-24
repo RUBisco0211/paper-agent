@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.persistence import AuthSessionRecord, RefreshTokenRecord
+from app.auth.repo import AuthSessionRecord, RefreshTokenRecord
 from tests.conftest import auth_headers
 
 PASSWORD = "correct-horse-battery"

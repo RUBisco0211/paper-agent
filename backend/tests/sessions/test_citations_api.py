@@ -2,10 +2,10 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
+from app.evidence.citations import build_citation_id
 from app.retrieval.domain import Evidence
-from app.sessions.application import CitationService
-from app.sessions.citations import build_citation_id
-from app.sessions.persistence import SessionRepository
+from app.sessions.repo import SessionRepository
+from app.sessions.service import CitationService
 from tests.conftest import auth_headers
 
 
@@ -38,9 +38,9 @@ def test_citation_round_trip_and_ownership(
     paper_id = UUID(uploaded["paper"]["id"])
     session_id = _session(client, api_prefix, token)
 
-    from app.library.persistence import PaperRepository
+    from app.library.repo import PaperRepository
     from app.retrieval.domain import ChunkDraft
-    from app.retrieval.persistence import ChunkRepository
+    from app.retrieval.repo import ChunkRepository
 
     user_paper = PaperRepository(db_session).get_user_paper(paper_id)
     assert user_paper is not None and user_paper.paper_id is not None

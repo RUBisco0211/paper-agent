@@ -2,8 +2,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.library.persistence import UserPaperRecord
-from app.projects.persistence import ProjectPaperRecord
+from app.library.repo import UserPaperRecord
+from app.projects.repo import ProjectPaperRecord
 from tests.conftest import auth_headers
 
 

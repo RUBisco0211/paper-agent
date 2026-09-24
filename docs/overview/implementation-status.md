@@ -21,7 +21,7 @@
 `GET /v1/llm-catalog` 从 AgentScope Model Card 返回 Provider、active 模型及其思考强度档位。设置页只允许选择目录项并填写 API Key；
 后端再次校验组合后创建对应的 AgentScope 原生模型，客户端不能提交 Base URL。
 
-三个只读工具（`app/sessions/tools.py`），**范围由会话上下文注入，模型无法通过参数越权**：
+三个只读工具（`app/agent/tools.py`），**范围由会话上下文注入，模型无法通过参数越权**：
 
 | 工具 | 作用 |
 |---|---|

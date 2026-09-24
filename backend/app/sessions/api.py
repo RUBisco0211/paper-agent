@@ -5,12 +5,11 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from ..auth.dependencies import CurrentUser
+from ..agent.catalog import model_catalog, validate_llm_config
+from ..auth.depends import CurrentUser
 from ..platform.pagination import Page, PageParamsDep
-from .agent import validate_llm_config
-from .dependencies import CitationServiceDep, SessionServiceDep, SseIdleTimeoutDep
+from .depends import CitationServiceDep, SessionServiceDep, SseIdleTimeoutDep
 from .domain import Session
-from .model_catalog import model_catalog
 from .schemas import (
     CitationRead,
     LlmCatalogResponse,

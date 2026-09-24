@@ -4,13 +4,12 @@ from uuid import UUID
 from fastapi import APIRouter, File, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 
-from ..auth.dependencies import CurrentUser
+from ..auth.depends import CurrentUser
 from ..ingestion.domain import IngestionJob
 from ..ingestion.schemas import IngestionJobRead
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
-from .application import PaperInfoUpdate
-from .dependencies import PaperLibraryServiceDep
+from .depends import PaperLibraryServiceDep
 from .schemas import (
     FetchMetadataResponse,
     FetchPdfResponse,
@@ -22,6 +21,7 @@ from .schemas import (
     to_detail,
     to_summary,
 )
+from .service import PaperInfoUpdate
 
 router = APIRouter(prefix="/papers", tags=["library"])
 

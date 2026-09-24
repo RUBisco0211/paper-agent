@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     embedding_adapter: str = "openai_compatible"
     embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
-    # 留空则用模型档案里的默认值（见 retrieval/embedding/profiles.py）
+    # 留空则用模型档案里的默认值（见 embedding/profiles.py）
     embedding_max_input_chars: int | None = None
     embedding_max_batch_items: int | None = None
     embedding_max_batch_chars: int | None = None

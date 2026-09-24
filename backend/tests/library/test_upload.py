@@ -6,17 +6,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ingestion.application import IngestionService
-from app.ingestion.persistence import (
+from app.ingestion.repo import (
     IngestionJobRecord,
     IngestionRepository,
     IngestionStageRecordOrm,
 )
-from app.library.application import PaperLibraryService
-from app.library.dependencies import (
+from app.ingestion.service import IngestionService
+from app.library.depends import (
     get_paper_library_service,
 )
-from app.library.persistence import PaperRecord, PaperRepository, UserPaperRecord
+from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
+from app.library.service import PaperLibraryService
 from app.platform.storage import ObjectStorage
 from app.scholar.metadata import MetadataResolver
 from tests.conftest import auth_headers

@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .application import MessageSubmission, ResumeOutcome, SessionView
+from ..agent.catalog import ProviderOption
 from .domain import (
     Citation,
     Delivery,
@@ -11,7 +11,7 @@ from .domain import (
     PendingMessage,
     SessionEntry,
 )
-from .model_catalog import ProviderOption
+from .service import MessageSubmission, ResumeOutcome, SessionView
 
 
 class SessionCreateRequest(BaseModel):

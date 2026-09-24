@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from ..auth.dependencies import CurrentUser
-from .dependencies import SearchServiceDep
+from ..auth.depends import CurrentUser
+from .depends import SearchServiceDep
 from .domain import SearchOutcome
 from .schemas import ChannelRead, EvidenceRead, SearchRequest, SearchResponse
 

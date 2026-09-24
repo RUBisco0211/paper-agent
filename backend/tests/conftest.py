@@ -18,6 +18,9 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
+from app.agent.service import SessionExecutor
+from app.conversation.events import EventBroker
+from app.conversation.service import EntryStore
 from app.main import create_app
 from app.platform.config import settings
 from app.platform.database import get_session, get_session_factory
@@ -27,14 +30,11 @@ from app.platform.storage import (
     get_object_storage,
 )
 from app.platform.tasks import InlineTaskScheduler, get_task_scheduler
-from app.sessions.dependencies import (
+from app.sessions.depends import (
     get_event_broker,
     get_session_executor,
     get_sse_idle_timeout,
 )
-from app.sessions.entries import EntryStore
-from app.sessions.events import EventBroker
-from app.sessions.executor import SessionExecutor
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -282,8 +282,8 @@ def install_agent_runner(
     runner,
 ) -> SessionExecutor:
     """Replace the executor so a test controls the agent turn."""
-    from app.sessions.entries import EntryStore as _EntryStore
-    from app.sessions.events import EventBroker as _EventBroker
+    from app.conversation.events import EventBroker as _EventBroker
+    from app.conversation.service import EntryStore as _EntryStore
 
     broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
     executor = SessionExecutor(
@@ -307,8 +307,8 @@ def install_async_agent_runner(
     scheduler,
 ) -> SessionExecutor:
     """Executor bound to the app event loop, for concurrency tests."""
-    from app.sessions.entries import EntryStore as _EntryStore
-    from app.sessions.events import EventBroker as _EventBroker
+    from app.conversation.events import EventBroker as _EventBroker
+    from app.conversation.service import EntryStore as _EntryStore
 
     broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
     executor = SessionExecutor(

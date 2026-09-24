@@ -2,8 +2,7 @@ from fastapi import APIRouter, Depends, Request, Response, status
 
 from ..platform.config import settings
 from ..platform.errors import ErrorCode, ForbiddenError, UnauthorizedError
-from .application import IssuedSession
-from .dependencies import AuthServiceDep, CurrentUser
+from .depends import AuthServiceDep, CurrentUser
 from .schemas import (
     AccessTokenResponse,
     AuthSessionResponse,
@@ -11,6 +10,7 @@ from .schemas import (
     RegisterRequest,
     UserRead,
 )
+from .service import IssuedSession
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

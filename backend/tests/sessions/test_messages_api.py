@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi.testclient import TestClient
 
-from app.sessions.agent import AgentEvent, AgentEventType, AgentRunner
+from app.sessions.ports import AgentEvent, AgentEventType, AgentRunner
 from tests.conftest import auth_headers, install_agent_runner
 
 VALID_LLM_CONFIG = {
@@ -305,7 +305,7 @@ def test_session_detail_reports_an_active_generation(
     register_user,
 ) -> None:
     """The detail endpoint exposes runtime generation state, not just history."""
-    from app.sessions.dependencies import get_session_executor
+    from app.sessions.depends import get_session_executor
 
     class ActiveExecutor:
         def is_active(self, session_id: UUID) -> bool:
@@ -351,7 +351,7 @@ def test_resume_delivers_the_next_queued_message(
     from uuid import UUID
 
     from app.sessions.domain import Delivery
-    from app.sessions.persistence import SessionRepository
+    from app.sessions.repo import SessionRepository
 
     runner = CompletingRunner()
     install_agent_runner(

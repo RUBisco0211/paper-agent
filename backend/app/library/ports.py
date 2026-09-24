@@ -1,7 +1,7 @@
 """Ports the library module needs from other domains.
 
 Kept as a protocol so the library never imports the ingestion implementation at
-module scope; wiring happens in ``library.dependencies``.
+module scope; wiring happens in ``library.depends``.
 """
 
 from typing import Protocol
