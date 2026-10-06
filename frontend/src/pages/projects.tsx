@@ -68,6 +68,7 @@ export function ProjectsPage() {
       notifySuccess("已重命名", project.name)
       setRenaming(null)
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
+      void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] })
       void queryClient.invalidateQueries({ queryKey: queryKeys.project(project.id) })
     },
     onError: (error) => notifyError(error, "重命名失败"),
@@ -79,6 +80,7 @@ export function ProjectsPage() {
       notifySuccess("项目已删除")
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
+      void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] })
       void queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
     },
     onError: (error) => notifyError(error, "删除失败"),
@@ -92,7 +94,10 @@ export function ProjectsPage() {
         title="项目"
         actions={
           <CreateProjectDialog
-            onCreated={(projectId) => navigate(`/projects/${projectId}`)}
+            onCreated={(projectId) => {
+              void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] })
+              navigate(`/projects/${projectId}`)
+            }}
           />
         }
       />

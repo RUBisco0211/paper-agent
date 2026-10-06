@@ -88,7 +88,7 @@ export const sessionApi = {
 			agent_id: agentId,
 			...(params?.before != null && { before: params.before }),
 			...(params?.limit != null && { limit: String(params.limit) }),
-		}),
+		}, { silent: true }),
 
 	/**
 	 * Subscribe to a session's live event stream via SSE.
@@ -115,6 +115,7 @@ export const sessionApi = {
 			method: 'GET',
 			params: { agent_id: agentId },
 			signal,
+			silent: true,
 		});
 
 		const reader = res.body!.getReader();

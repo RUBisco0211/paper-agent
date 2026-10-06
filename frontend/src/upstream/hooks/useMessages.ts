@@ -15,6 +15,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 
 import { sessionApi, takeFreshlyCreated } from '@upstream/api';
 import { chatApi } from '@upstream/api';
+import { ApiError } from '@upstream/api/client';
 import { useAudioManager } from '@upstream/context/AudioContext';
 
 /**
@@ -74,6 +75,24 @@ export type ReplyPhase = 'idle' | 'streaming' | 'interrupting';
 
 /** Safety fallback: force phase back to idle if REPLY_END is not seen. */
 const INTERRUPT_TIMEOUT_MS = 10_000;
+const RECONNECT_DELAY_MS = 1000;
+
+function waitForReconnect(signal: AbortSignal): Promise<void> {
+	if (signal.aborted) return Promise.resolve();
+	return new Promise((resolve) => {
+		const finish = () => {
+			clearTimeout(timer);
+			signal.removeEventListener('abort', finish);
+			resolve();
+		};
+		const timer = setTimeout(finish, RECONNECT_DELAY_MS);
+		signal.addEventListener('abort', finish, { once: true });
+	});
+}
+
+function isTerminalSessionError(error: unknown): boolean {
+	return error instanceof ApiError && [400, 401, 403, 404, 422].includes(error.status);
+}
 
 /**
  * Manages messages for a single ``(agentId, sessionId)`` pair.
@@ -135,6 +154,8 @@ export function useMessages(
 	const [loadedKey, setLoadedKey] = useState<string | null>(null);
 	const [phase, setPhase] = useState<ReplyPhase>('idle');
 	const [error, setError] = useState<Error | null>(null);
+	const [reconnecting, setReconnecting] = useState(false);
+	const [historyInterrupted, setHistoryInterrupted] = useState(false);
 	// Pending subagent HITL cards projected onto this (leader) session.
 	const [subagentHitl, setSubagentHitl] = useState<SubagentHitlEntry[]>([]);
 
@@ -195,6 +216,7 @@ export function useMessages(
 				return;
 			}
 			if (event.type === EventType.REPLY_START) {
+				setHistoryInterrupted(false);
 				const e = event as ReplyStartEvent;
 				// A continuation (the run resuming after a confirmation or an
 				// external execution result) re-emits REPLY_START with the
@@ -260,6 +282,8 @@ export function useMessages(
 		currentReplyRef.current = null;
 		setMsgs([]);
 		setError(null);
+		setReconnecting(false);
+		setHistoryInterrupted(false);
 		clearInterruptTimer();
 		setPhase('idle');
 		setSubagentHitl([]);
@@ -289,6 +313,12 @@ export function useMessages(
 					// while parked leaves the UI stuck on ``idle`` with no
 					// way to abort.
 					const tail = messages[messages.length - 1];
+					setHistoryInterrupted(
+						!is_running && !!tail && (
+							tail.role === 'user' ||
+							(tail.role === 'assistant' && !tail.finished_at)
+						),
+					);
 					if (is_running || hasPendingToolCall(tail)) {
 						setPhase('streaming');
 						if (hasPendingToolCall(tail)) {
@@ -308,7 +338,6 @@ export function useMessages(
 					setMsgs([...msgsRef.current]);
 				} catch (e) {
 					if (!cancelled) setError(e as Error);
-					return;
 				} finally {
 					// Marks the load done whether it succeeded or threw —
 					// an error surfaces through `error`, and leaving
@@ -319,18 +348,47 @@ export function useMessages(
 			}
 
 			// 2. Open SSE long connection for live events
-			try {
-				for await (const event of sessionApi.streamEvents(
-					sessionId,
-					agentId,
-					controller.signal,
-				)) {
-					if (cancelled) break;
-					processEvent(event);
+			while (!cancelled && !controller.signal.aborted) {
+				try {
+					for await (const event of sessionApi.streamEvents(
+						sessionId,
+						agentId,
+						controller.signal,
+					)) {
+						if (cancelled) break;
+						processEvent(event);
+					}
+				} catch (e) {
+					if ((e as Error).name === 'AbortError' || cancelled) break;
+					if (isTerminalSessionError(e)) {
+						setError(e as Error);
+						break;
+					}
+					setReconnecting(true);
 				}
-			} catch (e) {
-				if ((e as Error).name !== 'AbortError' && !cancelled) {
-					setError(e as Error);
+				if (cancelled || controller.signal.aborted) break;
+				setReconnecting(true);
+				await waitForReconnect(controller.signal);
+				if (cancelled || controller.signal.aborted) break;
+				try {
+					const { messages, is_running } = await sessionApi.messages(sessionId, agentId);
+					if (cancelled) break;
+					const tail = messages[messages.length - 1];
+					msgsRef.current = messages;
+					currentReplyRef.current = is_running && tail?.role === 'assistant' ? tail : null;
+					setMsgs([...messages]);
+					setPhase(is_running ? 'streaming' : 'idle');
+					setHistoryInterrupted(
+						!is_running && !!tail && (
+							tail.role === 'user' ||
+							(tail.role === 'assistant' && !tail.finished_at)
+						),
+					);
+					setError(null);
+					setReconnecting(false);
+				} catch (e) {
+					if (!cancelled) setError(e as Error);
+					if (isTerminalSessionError(e)) break;
 				}
 			}
 		})();
@@ -355,6 +413,7 @@ export function useMessages(
 			if (!agentId || !sessionId) return;
 
 			const userMsg = UserMsg({ name: 'user', content });
+			setHistoryInterrupted(false);
 			msgsRef.current = [...msgsRef.current, userMsg];
 			scheduleUpdate();
 
@@ -540,6 +599,8 @@ export function useMessages(
 		loading,
 		phase,
 		error,
+		reconnecting,
+		historyInterrupted,
 		send,
 		onUserConfirm,
 		onSubagentConfirm,

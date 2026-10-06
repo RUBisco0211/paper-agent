@@ -23,7 +23,7 @@ export function PaperChatPage() {
   const [citationId, setCitationId] = useState<string | null>(null)
   const [changingModel, setChangingModel] = useState(false)
   const [modelError, setModelError] = useState("")
-  const { msgs, loading, phase, error, send, interrupt, onUserConfirm } =
+  const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm } =
     useMessages(agentId || null, sessionId || null)
   const sessions = useQuery({
     queryKey: ["agent-sessions", agentId],
@@ -77,6 +77,8 @@ export function PaperChatPage() {
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
         {error && <p role="alert" className="px-5 pt-2 text-sm text-destructive">回答失败，请重试</p>}
+        {reconnecting && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">重连中…</p>}
+        {historyInterrupted && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">上次回答已中断，请重新提问</p>}
         <div className="min-h-0 flex-1">
           <MessageScrollerProvider autoScroll defaultScrollPosition="end">
             <MessageScroller><MessageScrollerViewport><MessageScrollerContent className="mx-auto max-w-3xl p-5">
