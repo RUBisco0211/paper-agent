@@ -136,6 +136,7 @@ export function ChatSidebar() {
     try {
       await api.projects.rename(projectToRename.id, { name: projectName.trim() })
       await queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] })
+      void queryClient.invalidateQueries({ queryKey: ["calendar-projects"] })
       await queryClient.invalidateQueries({ queryKey: ["project", projectToRename.id] })
       setProjectToRename(null)
     } catch (cause) {
@@ -153,6 +154,7 @@ export function ChatSidebar() {
       await deleteProjectWithSessions(api, projectToDelete.id)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar-projects"] }),
         queryClient.invalidateQueries({ queryKey: ["bound-sessions"] }),
       ])
       setProjectToDelete(null)
@@ -172,7 +174,7 @@ export function ChatSidebar() {
       <SidebarHeader className="px-4 py-5 font-semibold tracking-tight">对话</SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="pt-0">
-          <CreateProjectDialog trigger={<Button variant="ghost" className="w-full justify-start gap-2" aria-label="新建项目"><Plus className="size-4" />新建项目</Button>} onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }); navigate(`/chat/project/${id}`) }} />
+          <CreateProjectDialog trigger={<Button variant="ghost" className="w-full justify-start gap-2" aria-label="新建项目"><Plus className="size-4" />新建项目</Button>} onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }); void queryClient.invalidateQueries({ queryKey: ["calendar-projects"] }); navigate(`/chat/project/${id}`) }} />
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">全局
