@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { ApiError, type User } from "@/lib/api"
 import { useApi } from "@/lib/api/provider"
@@ -31,14 +32,16 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { api, tokens } = useApi()
+  const queryClient = useQueryClient()
   const [status, setStatus] = useState<AuthStatus>("loading")
   const [user, setUser] = useState<User | null>(null)
 
   const loadUser = useCallback(async () => {
     const current = await api.auth.me()
+    queryClient.clear()
     setUser(current)
     setStatus("authenticated")
-  }, [api])
+  }, [api, queryClient])
 
   /**
    * Restore the session from the refresh cookie exactly once.
@@ -58,30 +61,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await loadUser()
       } catch {
         tokens.clear()
+        queryClient.clear()
         setUser(null)
         setStatus("anonymous")
       }
     })()
-  }, [api, loadUser, tokens])
+  }, [api, loadUser, queryClient, tokens])
 
   const login = useCallback(
     async (email: string, password: string) => {
       const session = await api.auth.login({ email, password })
+      queryClient.clear()
       tokens.set(session)
       setUser(session.user)
       setStatus("authenticated")
     },
-    [api, tokens],
+    [api, queryClient, tokens],
   )
 
   const register = useCallback(
     async (input: { email: string; password: string; display_name?: string }) => {
       const session = await api.auth.register(input)
+      queryClient.clear()
       tokens.set(session)
       setUser(session.user)
       setStatus("authenticated")
     },
-    [api, tokens],
+    [api, queryClient, tokens],
   )
 
   const logout = useCallback(async () => {
@@ -94,10 +100,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } finally {
       tokens.clear()
+      queryClient.clear()
       setUser(null)
       setStatus("anonymous")
     }
-  }, [api, tokens])
+  }, [api, queryClient, tokens])
 
   const value = useMemo<AuthContextValue>(
     () => ({ status, user, login, register, logout, refreshUser: loadUser }),

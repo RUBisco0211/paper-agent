@@ -2,6 +2,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react"
 
 import { AccessTokenStore } from "@/lib/auth/token-store"
 import { createApi, type Api, type ApiClientOptions } from "@/lib/api"
+import { configureAgentClient } from "@upstream/api/client"
 
 interface ApiContextValue {
   api: Api
@@ -20,6 +21,11 @@ export function ApiProvider({
   const value = useMemo<ApiContextValue>(() => {
     const tokens = new AccessTokenStore()
     const api = createApi({ ...options, ...tokens.clientOptions })
+    configureAgentClient({
+      baseUrl: api.agentService.base,
+      getAccessToken: () => tokens.current?.access_token ?? null,
+      refreshAccessToken: async () => (await api.auth.refresh()).access_token,
+    })
     return { api, tokens }
   }, [options])
 

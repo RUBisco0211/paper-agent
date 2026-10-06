@@ -9,12 +9,18 @@ export interface ApiClientOptions {
    * Vite dev proxy can handle `/v1`.
    */
   baseUrl?: string
+  /** AgentScope origin; used when both backends share one access token. */
+  agentServiceBaseUrl?: string
   /** Reads the in-memory access token; the token itself is never persisted. */
   getAccessToken?: () => string | null
   /** Called whenever tokens are issued, refreshed or cleared. */
   onAccessToken?: AccessTokenSink
   /** Injection point for tests. */
   fetchImpl?: typeof fetch
+  /** Refresh through the business API when this client targets AgentScope. */
+  refreshAccessToken?: () => Promise<AccessToken>
+  /** AgentScope requests do not need the business refresh cookie. */
+  credentials?: RequestCredentials
 }
 
 export interface RequestOptions {
@@ -40,6 +46,8 @@ export class ApiClient {
   private readonly fetchImpl: typeof fetch
   private readonly getAccessToken: () => string | null
   private readonly onAccessToken: AccessTokenSink
+  private readonly refreshAccessToken?: () => Promise<AccessToken>
+  private readonly defaultCredentials: RequestCredentials
   private refreshPromise: Promise<AccessToken> | null = null
 
   constructor(options: ApiClientOptions = {}) {
@@ -48,6 +56,8 @@ export class ApiClient {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis)
     this.getAccessToken = options.getAccessToken ?? (() => null)
     this.onAccessToken = options.onAccessToken ?? (() => {})
+    this.refreshAccessToken = options.refreshAccessToken
+    this.defaultCredentials = options.credentials ?? "include"
   }
 
   get base(): string {
@@ -80,6 +90,9 @@ export class ApiClient {
    * same time: the backend revokes the whole token family on replay.
    */
   async refresh(): Promise<AccessToken> {
+    if (this.refreshAccessToken) {
+      return this.refreshAccessToken()
+    }
     if (!this.refreshPromise) {
       this.refreshPromise = this.performRefresh().finally(() => {
         this.refreshPromise = null
@@ -129,7 +142,7 @@ export class ApiClient {
       headers,
       body,
       signal: options.signal,
-      credentials: options.credentials ?? "include",
+      credentials: options.credentials ?? this.defaultCredentials,
     })
   }
 

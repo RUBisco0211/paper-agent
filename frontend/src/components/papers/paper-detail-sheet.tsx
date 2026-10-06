@@ -39,6 +39,7 @@ import { PaperStatusBadge, stageLabel } from "@/components/papers/paper-status"
 import { PdfViewer } from "@/components/papers/pdf-viewer"
 import { METADATA_STATUS_LABEL, PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
+import { useAgentUi } from "@/lib/agent-ui"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { queryKeys } from "@/app/query"
 
@@ -68,6 +69,7 @@ export function PaperDetailSheet({
   onOpenChange: (open: boolean) => void
 }) {
   const { api } = useApi()
+  const agentUi = useAgentUi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const fileInput = useRef<HTMLInputElement>(null)
@@ -219,9 +221,8 @@ export function PaperDetailSheet({
                   <AlertDescription className="flex flex-col gap-2">
                     <span>
                       {STAGE_ERROR_TEXT[paper.processing.error_code ?? ""] ??
-                        paper.processing.error_code ??
                         "处理失败"}
-                      。已完成的阶段能力仍然可用。
+                      。可重试处理，已完成的内容仍可查看。
                     </span>
                     <Button
                       size="sm"
@@ -302,9 +303,8 @@ export function PaperDetailSheet({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-xs">
-                            {stage.error_message ??
-                              STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
-                              "—"}
+                            {STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
+                              (stage.status === "failed" ? "处理失败，可重试" : "—")}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -449,7 +449,7 @@ export function PaperDetailSheet({
             }}
           />
           {paperId ? <AddToProjectMenu paperId={paperId} /> : null}
-          <Button
+          {!agentUi && <Button
             size="sm"
             disabled={startSession.isPending}
             onClick={() => startSession.mutate()}
@@ -460,7 +460,7 @@ export function PaperDetailSheet({
               <MessageSquarePlus data-icon="inline-start" />
             )}
             提问
-          </Button>
+          </Button>}
         </div>
       </SheetContent>
     </Sheet>

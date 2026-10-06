@@ -15,8 +15,18 @@ export type * from "./types"
  */
 export function createApi(options: ApiClientOptions = {}) {
   const client = new ApiClient(options)
+  const agentService = new ApiClient({
+    ...options,
+    baseUrl:
+      options.agentServiceBaseUrl ??
+      import.meta.env.VITE_AGENT_SERVICE_BASE_URL ??
+      "http://127.0.0.1:8001",
+    credentials: "omit",
+    refreshAccessToken: () => client.refresh(),
+  })
   return {
     client,
+    agentService,
     auth: authEndpoints(client),
     library: libraryEndpoints(client),
     projects: projectEndpoints(client),

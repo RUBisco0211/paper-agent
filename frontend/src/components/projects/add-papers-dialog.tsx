@@ -142,7 +142,7 @@ export function AddPapersDialog({
             onClick={() => add.mutate()}
           >
             {add.isPending ? <Spinner data-icon="inline-start" /> : null}
-            添加 {selected.length} 篇
+            添加文献
           </Button>
         </DialogFooter>
       </DialogContent>

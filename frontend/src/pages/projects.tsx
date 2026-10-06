@@ -125,7 +125,6 @@ export function ProjectsPage() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>描述</TableHead>
-                  <TableHead>文献数</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -140,7 +139,6 @@ export function ProjectsPage() {
                     <TableCell className="text-muted-foreground max-w-sm truncate">
                       {project.description ?? "—"}
                     </TableCell>
-                    <TableCell>{project.paper_count}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button

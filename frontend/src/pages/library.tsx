@@ -31,12 +31,14 @@ import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { PaperStatusBadge } from "@/components/papers/paper-status"
 import { PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
+import { useAgentUi } from "@/lib/agent-ui"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 
 const PAGE_SIZE = 20
 
 export function LibraryPage() {
   const { api } = useApi()
+  const agentUi = useAgentUi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const fileInput = useRef<HTMLInputElement>(null)
@@ -199,7 +201,7 @@ export function LibraryPage() {
                       />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
+                      {!agentUi && <Button
                         size="sm"
                         variant="ghost"
                         onClick={(event) => {
@@ -213,7 +215,7 @@ export function LibraryPage() {
                         }}
                       >
                         提问
-                      </Button>
+                      </Button>}
                     </TableCell>
                   </TableRow>
                 ))}

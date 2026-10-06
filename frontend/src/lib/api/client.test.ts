@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
 import { ApiClient } from "./client"
+import { createApi } from "./index"
 import { ApiError } from "./errors"
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -172,5 +173,49 @@ describe("ApiClient", () => {
 
     expect((failure as ApiError).code).toBe("invalid_credentials")
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("AgentScope API connection", () => {
+  it("shares the business token and refreshes it through the business origin", async () => {
+    let token = "expired"
+    const calls: Array<[string, RequestInit | undefined]> = []
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input)
+      calls.push([url, init])
+      if (url === "https://business.test/v1/auth/refresh") {
+        token = "fresh"
+        return jsonResponse({
+          access_token: token,
+          token_type: "bearer",
+          expires_in: 900,
+          expires_at: new Date(Date.now() + 900_000).toISOString(),
+        })
+      }
+      return (init?.headers as Record<string, string>).Authorization ===
+        "Bearer fresh"
+        ? jsonResponse({ agents: [], total: 0 })
+        : jsonResponse({ detail: "invalid_access_token" }, 401)
+    })
+    const api = createApi({
+      baseUrl: "https://business.test",
+      agentServiceBaseUrl: "https://agent.test",
+      getAccessToken: () => token,
+      onAccessToken: (session) => { token = session?.access_token ?? "" },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+
+    const agents = await api.agentService.request<{ agents: unknown[] }>("/agent/")
+
+    expect(agents.agents).toEqual([])
+    expect(calls.map(([url]) => url)).toEqual([
+      "https://agent.test/agent/",
+      "https://business.test/v1/auth/refresh",
+      "https://agent.test/agent/",
+    ])
+    expect((calls[2][1]?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer fresh",
+    )
+    expect(calls[2][1]?.credentials).toBe("omit")
   })
 })

@@ -28,11 +28,14 @@ import { ImportDialog } from "@/components/papers/import-dialog"
 import { PaperStatusBadge } from "@/components/papers/paper-status"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { useApi } from "@/lib/api/provider"
+import { useAgentUi } from "@/lib/agent-ui"
+import { createBoundSession } from "@/lib/agent-sessions"
 import { describeError, notifyError } from "@/lib/errors"
 
 export function ProjectDetailPage() {
   const { projectId = "" } = useParams()
   const { api } = useApi()
+  const agentUi = useAgentUi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [selectedPaper, setSelectedPaper] = useState<string | null>(null)
@@ -65,16 +68,25 @@ export function ProjectDetailPage() {
   const sessions = useQuery({
     queryKey: queryKeys.sessions({ scope: "project", projectId }),
     queryFn: () => api.sessions.list({ scope: "project", project_id: projectId }),
-    enabled: Boolean(projectId),
+    enabled: Boolean(projectId) && !agentUi,
   })
 
   const createSession = useMutation({
-    mutationFn: () =>
-      api.sessions.create({
+    mutationFn: async () => {
+      if (agentUi) {
+        const { agentId, sessionId } = await createBoundSession(api, { projectId })
+        return `/chat/${agentId}/${sessionId}`
+      }
+      const session = await api.sessions.create({
         project_id: projectId,
         title: project.data?.name ?? "项目会话",
-      }),
-    onSuccess: (session) => navigate(`/sessions/${session.id}`),
+      })
+      return `/sessions/${session.id}`
+    },
+    onSuccess: (path) => {
+      void queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
+      navigate(path)
+    },
     onError: (error) => notifyError(error, "创建会话失败"),
   })
 
@@ -132,7 +144,7 @@ export function ProjectDetailPage() {
 
       <div className="flex flex-1 flex-col gap-6 p-6">
         <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">项目文献（{papers.data?.total ?? 0}）</h2>
+          <h2 className="text-sm font-medium">项目文献</h2>
           {papers.isPending ? (
             <Skeleton className="h-24 w-full" />
           ) : items.length === 0 ? (
@@ -191,7 +203,7 @@ export function ProjectDetailPage() {
           )}
         </section>
 
-        <section className="flex flex-col gap-2">
+        {!agentUi && <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">项目会话（{sessions.data?.total ?? 0}）</h2>
           {sessions.data?.items.length ? (
             <ul className="flex flex-col gap-1">
@@ -214,7 +226,7 @@ export function ProjectDetailPage() {
               还没有项目会话。项目会话只覆盖该项目文献，创建后范围不可修改。
             </p>
           )}
-        </section>
+        </section>}
       </div>
 
       <PaperDetailSheet
