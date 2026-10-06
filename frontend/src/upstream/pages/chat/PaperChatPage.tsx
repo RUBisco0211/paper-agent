@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-sessions"
+import { reasoningEffortsForModel } from "./chat-view"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { TextInput } from "@upstream/components/chat/TextInput"
@@ -38,6 +39,10 @@ export function PaperChatPage() {
     queryKey: ["available-chat-models"],
     queryFn: () => availableChatModels(api),
   })
+  const catalog = useQuery({
+    queryKey: ["llm-catalog"],
+    queryFn: api.sessions.llmCatalog,
+  })
   const view = sessions.data?.sessions.find((item) => sameSessionId(item.session.id, sessionId))
   const binding = bindings.data?.find((item) => sameSessionId(item.session_id, sessionId))
   const project = useQuery({
@@ -47,6 +52,8 @@ export function PaperChatPage() {
   })
   const current = view?.session.config.chat_model_config
   const selectedModel = current ? `${current.credential_id}:${current.model}` : ""
+  const availableEfforts = current ? reasoningEffortsForModel(catalog.data?.providers ?? [], current.type, current.model) : []
+  const selectedEffort = typeof current?.parameters.reasoning_effort === "string" ? current.parameters.reasoning_effort : "default"
 
   async function changeModel(value: string) {
     const next = models.data?.find((item) => `${item.credential_id}:${item.model}` === value)
@@ -63,6 +70,23 @@ export function PaperChatPage() {
     }
   }
 
+  async function changeEffort(value: string) {
+    if (!current) return
+    setChangingModel(true)
+    setModelError("")
+    const parameters = { ...current.parameters }
+    if (value === "default") delete parameters.reasoning_effort
+    else parameters.reasoning_effort = value
+    try {
+      await sessionApi.update(sessionId, agentId, { chat_model_config: { ...current, parameters } })
+      await queryClient.invalidateQueries({ queryKey: ["agent-sessions", agentId] })
+    } catch (cause) {
+      setModelError(cause instanceof Error ? cause.message : "切换思考强度失败")
+    } finally {
+      setChangingModel(false)
+    }
+  }
+
   return (
     <CitationProvider onOpen={setCitationId}>
       <main className="flex h-full min-h-0 flex-col">
@@ -70,10 +94,6 @@ export function PaperChatPage() {
           <div className="min-w-0"><h1 className="truncate font-medium">{view?.session.config.name || "新会话"}</h1>
             <p className="text-xs text-muted-foreground">{binding?.scope === "project" ? project.data?.name ?? "项目" : "全局"}</p>
           </div>
-          <Select value={selectedModel} onValueChange={(value) => void changeModel(value)} disabled={changingModel || phase !== "idle"}>
-            <SelectTrigger className="max-w-52"><SelectValue placeholder="选择模型" /></SelectTrigger>
-            <SelectContent>{models.data?.map((item) => <SelectItem key={`${item.credential_id}:${item.model}`} value={`${item.credential_id}:${item.model}`}>{item.type.replace(/_credential$/, "")} · {item.model}</SelectItem>)}</SelectContent>
-          </Select>
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
         {error && <p role="alert" className="px-5 pt-2 text-sm text-destructive">回答失败，请重试</p>}
@@ -92,6 +112,17 @@ export function PaperChatPage() {
         </div>
         <div className="mx-auto w-full max-w-3xl p-4">
           <TextInput
+            className="w-full rounded-[32px] bg-muted p-1"
+            headerSlot={<div className="flex items-center gap-2 px-2 py-1">
+              <Select value={selectedModel} onValueChange={(value) => void changeModel(value)} disabled={changingModel || phase !== "idle"}>
+                <SelectTrigger className="h-8 max-w-56 border-0 bg-transparent text-xs"><SelectValue placeholder="选择模型" /></SelectTrigger>
+                <SelectContent>{models.data?.map((item) => <SelectItem key={`${item.credential_id}:${item.model}`} value={`${item.credential_id}:${item.model}`}>{item.type.replace(/_credential$/, "")} · {item.model}</SelectItem>)}</SelectContent>
+              </Select>
+              {availableEfforts.length > 0 && <Select value={selectedEffort} onValueChange={(value) => void changeEffort(value)} disabled={changingModel || phase !== "idle"}>
+                <SelectTrigger className="h-8 w-32 border-0 bg-transparent text-xs" aria-label="思考强度"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="default">默认思考</SelectItem>{availableEfforts.map((effort) => <SelectItem key={effort} value={effort}>{effort}</SelectItem>)}</SelectContent>
+              </Select>}
+            </div>}
             onSend={(blocks) => void send(blocks)}
             disabled={loading || !binding || !current || changingModel}
             allowedInputTypes={[]}

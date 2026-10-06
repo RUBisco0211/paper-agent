@@ -2,11 +2,12 @@ import { Outlet } from 'react-router-dom';
 
 import { AppSidebar } from '@upstream/components/layout/AppSidebar';
 import { SidebarInset, SidebarProvider } from '@upstream/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader } from '@upstream/components/ui/sidebar';
 
 export function AppLayout() {
 	return (
 		<div className="h-screen flex">
-			<SidebarProvider>
+			<SidebarProvider style={{ '--sidebar-width': '4rem' } as React.CSSProperties}>
 				<AppSidebar />
 				<SidebarInset className="flex-1 overflow-hidden bg-canvas">
 					<Outlet />
@@ -14,4 +15,18 @@ export function AppLayout() {
 			</SidebarProvider>
 		</div>
 	);
+}
+
+export function SectionLayout({ title, section, children }: { title: string; section: string; children: React.ReactNode }) {
+	return <SidebarProvider className="min-h-0 flex-1">
+		<div className="flex h-full w-full gap-2 p-2">
+			<Sidebar collapsible="none" className="rounded-[22px]">
+				<SidebarHeader className="px-4 py-5 font-semibold">{title}</SidebarHeader>
+				<SidebarContent><SidebarGroup><SidebarGroupContent>
+					<p className="rounded-md bg-sidebar-accent px-3 py-2 text-sm font-medium">{section}</p>
+				</SidebarGroupContent></SidebarGroup></SidebarContent>
+			</Sidebar>
+			<main className="flex min-w-0 flex-1 flex-col overflow-y-auto rounded-[22px] bg-card shadow-panel">{children}</main>
+		</div>
+	</SidebarProvider>
 }

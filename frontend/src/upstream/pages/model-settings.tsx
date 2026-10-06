@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
+import { KeyRound, Plus } from "lucide-react"
 import { useState } from "react"
 
 import { useApi } from "@/lib/api/provider"
 import { credentialApi } from "@upstream/api/credential"
 import { Button } from "@upstream/components/ui/button"
 import { Input } from "@upstream/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@upstream/components/ui/select"
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@upstream/components/ui/sidebar"
 
 export function ModelSettingsPage() {
   const { api } = useApi()
@@ -17,6 +18,8 @@ export function ModelSettingsPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
   const selected = provider || catalog.data?.providers[0]?.id || ""
+  const chosen = catalog.data?.providers.find((item) => item.id === selected)
+  const saved = credentials.data?.credentials.filter((item) => item.data.type === `${selected}_credential`) ?? []
 
   async function save(event: React.FormEvent) {
     event.preventDefault()
@@ -36,29 +39,35 @@ export function ModelSettingsPage() {
     }
   }
 
-  return (
-    <main className="h-full overflow-auto p-6 md:p-10">
-      <div className="mx-auto max-w-xl space-y-7">
-        <h1 className="text-2xl font-semibold">模型设置</h1>
-        <form onSubmit={(event) => void save(event)} className="space-y-5 rounded-2xl border bg-card p-6">
-          <label className="block space-y-2 text-sm font-medium">提供商
-            <Select value={selected} onValueChange={setProvider}>
-              <SelectTrigger className="mt-2 w-full"><SelectValue placeholder="选择提供商" /></SelectTrigger>
-              <SelectContent>{catalog.data?.providers.map((item) => <SelectItem key={item.id} value={item.id}>{item.label}</SelectItem>)}</SelectContent>
-            </Select>
-          </label>
-          <label className="block space-y-2 text-sm font-medium">API Key
-            <Input className="mt-2" type="password" autoComplete="off" value={key} onChange={(event) => setKey(event.target.value)} />
-          </label>
-          <Button type="submit" disabled={saving || !selected || !key.trim()}>{saving ? "保存中…" : "保存凭据"}</Button>
-          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          {success && <p role="status" className="text-sm">凭据已保存</p>}
-        </form>
-        <section className="space-y-3"><h2 className="font-medium">已保存的凭据</h2>
-          {credentials.data?.credentials.length === 0 && <p className="text-sm text-muted-foreground">尚未配置</p>}
-          {credentials.data?.credentials.map((item) => <div key={item.id} className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm"><span>{String(item.data.name ?? item.data.type ?? "凭据")}</span><span className="text-muted-foreground">密钥已隐藏</span></div>)}
-        </section>
-      </div>
-    </main>
-  )
+  return <SidebarProvider className="min-h-0 flex-1">
+    <div className="flex h-full w-full gap-2 p-2">
+      <Sidebar collapsible="none" className="rounded-[22px]">
+        <SidebarHeader className="px-4 py-5 font-semibold">模型设置</SidebarHeader>
+        <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
+          {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
+            <SidebarMenuButton isActive={selected === item.id} onClick={() => { setProvider(item.id); setError(""); setSuccess(false) }}><KeyRound />{item.label}</SidebarMenuButton>
+          </SidebarMenuItem>)}
+        </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
+      </Sidebar>
+      <main className="min-w-0 flex-1 overflow-y-auto rounded-[22px] bg-card p-6 shadow-panel">
+        <div className="mx-auto max-w-3xl space-y-8">
+          <header className="border-b pb-5"><h1 className="text-2xl font-semibold">{chosen?.label ?? "模型设置"}</h1></header>
+          <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>
+            {credentials.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
+            {saved.length === 0 && !credentials.isPending && <p className="text-sm text-muted-foreground">尚未配置</p>}
+            {saved.map((item) => <div key={item.id} className="flex items-center justify-between rounded-2xl border px-4 py-3 text-sm"><span>{String(item.data.name ?? chosen?.label ?? "凭据")}</span><span className="text-muted-foreground">密钥已隐藏</span></div>)}
+          </section>
+          <section className="rounded-2xl border p-5"><h2 className="mb-4 flex items-center gap-2 font-medium"><Plus className="size-4" />保存凭据</h2>
+            <form onSubmit={(event) => void save(event)} className="space-y-4">
+              <label htmlFor="provider-key" className="block text-sm">API Key</label>
+              <Input id="provider-key" type="password" autoComplete="off" value={key} onChange={(event) => setKey(event.target.value)} />
+              <Button type="submit" disabled={saving || !selected || !key.trim()}>{saving ? "保存中…" : "保存凭据"}</Button>
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+              {success && <p role="status" className="text-sm">凭据已保存</p>}
+            </form>
+          </section>
+        </div>
+      </main>
+    </div>
+  </SidebarProvider>
 }

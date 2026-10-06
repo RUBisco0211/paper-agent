@@ -215,7 +215,7 @@ export function CalendarTabPage({ events, onEventClick, currentDate, onMonthChan
 		<div className="flex flex-col size-full">
 			<div className="flex items-center justify-between p-4">
 				<h2 className="text-xl font-semibold">
-					{new Date(year, month).toLocaleDateString('en-US', {
+					{new Date(year, month).toLocaleDateString('zh-CN', {
 						year: 'numeric',
 						month: 'long',
 					})}
