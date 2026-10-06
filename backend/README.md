@@ -1,8 +1,8 @@
 # Paper Agent Backend
 
-Paper Agent 的 FastAPI 模块化单体后端：负责账号与登录态、个人论文库、项目范围、论文处理流水线、混合检索与 Agent 会话。
+Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理流水线和混合检索；AgentScope 会话服务运行在独立进程。旧会话执行链将在 R7 移除。
 
-功能契约见 [../docs/overview/minimal-mvp.md](../docs/overview/minimal-mvp.md)，架构基线见 [../docs/overview/prototype.md](../docs/overview/prototype.md)，技术选型见 [../docs/infrastructure/technical-stack-research.md](../docs/infrastructure/technical-stack-research.md)。
+功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md) 的 0018–0034 一组，技术选型见 [../docs/research/technical-stack.md](../docs/research/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
 
 ## 本地依赖
 
@@ -18,14 +18,18 @@ uv run alembic upgrade head
 uv run python main.py
 ```
 
+完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、AgentScope 会话服务、PostgreSQL 和前端。
+
 服务启动后可访问：
 
 - API 文档：<http://127.0.0.1:8000/docs>
 - 健康检查：<http://127.0.0.1:8000/health>
 
+AgentScope Credential 使用独立的 `CREDENTIAL_MASTER_KEY`（32 随机字节的 hex），按用户派生对称密钥加密 API Key。`./start.sh` 仅在 agent_service 数据库尚无凭据时自动生成并写入 `backend/.env`；首次生成后请安全备份。主密钥丢失时已有凭据无法解密，服务会拒绝启动。`CREDENTIAL_BASE_URLS` 可由服务端设置 Provider endpoint 白名单，浏览器提交其他 URL 会被拒绝（见决策 0038–0039）。
+
 ## 测试
 
-集成测试直接连接真实 PostgreSQL（用到 pgvector 与全文检索）：:
+集成测试直接连接真实 PostgreSQL（用到 pgvector 与全文检索）：
 
 ```bash
 docker compose -f ../docker-compose.yml up -d postgres
@@ -60,8 +64,6 @@ tests/            # 按职责分包的测试与架构约束
 有 Router 的七个业务包统一为 `api.py`、`schemas.py`、`depends.py`、`service.py`、
 `domain.py`、`repo.py`、`ports.py`，另有 `__init__.py`。`depends.py` 负责 HTTP 依赖装配，
 `service.py` 负责用例，`repo.py` 负责 ORM；复杂执行过程、外部适配器和纯工具放在同级支持包。
-
-当前目录职责、依赖规则和迁移对照见 [后端源码架构](../docs/overview/backend-architecture.md)。
 
 ## 接口一览
 
@@ -267,7 +269,7 @@ SCRIPT
 
 ## 日志
 
-日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。约定见 [../docs/infrastructure/logging-conventions.md](../docs/infrastructure/logging-conventions.md)。
+日志使用 `structlog`，底层统一走标准库 `logging`。默认输出开发态可读文本，`LOG_JSON=true` 输出单行 JSON；每个请求会返回并记录 `X-Request-ID`。禁止记录 Token、Cookie、密码、请求体、文献原文与模型提示词。
 
 ## 凭据与端口
 

@@ -7,68 +7,49 @@ Paper Agent 管理个人论文库、项目范围和基于论文证据的 Agent �
 ```text
 backend/    FastAPI 模块化单体后端（另有独立的 README）
 frontend/   React + TypeScript + shadcn/ui 前端
-docs/       产品契约、架构基线与技术选型调研
+docs/       产品契约、架构基线、决策记录与调研
 ```
 
 ## 文档
 
 | 文档 | 内容 |
 |---|---|
-| [docs/overview/minimal-mvp.md](docs/overview/minimal-mvp.md) | 本轮 MVP 功能规格与验收标准（功能范围以此为准） |
-| [docs/overview/prototype.md](docs/overview/prototype.md) | 领域模型、数据模型与架构基线 |
-| [docs/overview/backend-architecture.md](docs/overview/backend-architecture.md) | 当前后端源码分包、分层与依赖规则 |
-| [docs/infrastructure/technical-stack-research.md](docs/infrastructure/technical-stack-research.md) | ORM、日志、中间件选型 |
-| [docs/infrastructure/sse-architecture-research.md](docs/infrastructure/sse-architecture-research.md) | SSE 传输与事件模型 |
-| [docs/infrastructure/logging-conventions.md](docs/infrastructure/logging-conventions.md) | 日志事件命名与字段约定 |
-| [docs/overview/implementation-status.md](docs/overview/implementation-status.md) | 当前已实现范围与明确未接入的部分 |
-| [docs/frontend/ui-spec.md](docs/frontend/ui-spec.md) | 前端文案、布局与 shadcn 组件规范（改前端前必读） |
-| [CONTEXT.md](CONTEXT.md) | 领域术语表（ubiquitous language） |
-| [AGENTS.md](AGENTS.md) | 协作约定与必读文档索引 |
+| [AGENTS.md](AGENTS.md) | AI 协作的唯一常驻约束（改代码前必读） |
+| [WORKFLOW.md](WORKFLOW.md) | 给人看的流程总纲：任务分档、七阶段与检查点 |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | 决策索引（正文一条一文件） |
+| [docs/research/technical-stack.md](docs/research/technical-stack.md) | ORM、日志、中间件选型 |
+| [docs/research/sse-transport.md](docs/research/sse-transport.md) | SSE 传输与事件模型 |
+| [docs/research/llm-model-catalog.md](docs/research/llm-model-catalog.md) | 模型目录与 LLM 请求层选型 |
+| [docs/research/agentero-paper-workflow.md](docs/research/agentero-paper-workflow.md) | 论文解析、元数据与 Agent 工具调研 |
+| [docs/research/ai-development-workflows.md](docs/research/ai-development-workflows.md) | AI 辅助开发的规范与进度管理调研 |
 | [.env.example](.env.example) | compose 变量（HF 端点、TEI 镜像、向量模型） |
+
+按场景找决策：`docs/DECISIONS.md` 底部有「按触发场景找」的对照表。
 
 ## 快速开始
 
-需要 Python 3.13、[uv](https://docs.astral.sh/uv/)、Node.js 22+ 与 pnpm。
+需要 Python 3.13、[uv](https://docs.astral.sh/uv/)、Node.js 22+、pnpm 与 Docker。
 
 ```bash
-# 1. 依赖服务（PostgreSQL 16 + pgvector）
-docker compose up -d postgres
-
-# 可选：向量检索所需的 Embedding 服务（TEI + BAAI/bge-m3，首次拉镜像与权重）
-# 直连 huggingface.co 不通时，在仓库根 .env 里设 HF_ENDPOINT=https://hf-mirror.com
-cp .env.example .env
-docker compose up -d embedding
-
-# 2. 后端
-cd backend
-uv sync
-cp .env.example .env
-uv run alembic upgrade head
-uv run python main.py          # http://127.0.0.1:8000
-
-# 3. 前端
-cd ../frontend
-pnpm install
-pnpm dev                       # http://127.0.0.1:5173
+./start.sh  # PostgreSQL、业务服务 :8000、AgentScope :8001、前端 :5173
 ```
 
 ## 验证
 
 ```bash
 # 后端：契约、鉴权隔离、处理流水线、检索与队列语义
-cd backend && uv run pytest -q          # 168 passed, 1 skipped
+cd backend && uv run pytest -q
 
 # 前端：类型检查、组件与启动路径
-cd frontend && pnpm run typecheck && pnpm run test && pnpm run build   # 42 passed
+cd frontend && pnpm run typecheck && pnpm run test && pnpm run build
 ```
 
 接口文档在服务启动后访问 <http://127.0.0.1:8000/docs>（OpenAPI）。浏览器端已实现登录/注册、论文库（上传、DOI/arXiv 导入、
-详情与内嵌 PDF）、项目、模型设置和会话工作区（流式回答、工具状态、排队输入、停止/继续与引用展开）。
+详情与内嵌 PDF）、项目、AgentScope 模型凭据设置和会话工作区（流式回答、工具状态与引用原文）。
 
-当前实现范围与明确未接入的部分见
-[docs/overview/implementation-status.md](docs/overview/implementation-status.md)。AgentScope 执行器、三个只读文献工具、
-流式事件、pending 队列和引用校验均已接入；真实 Provider 的端到端联调需要在设置页选择模型并填写 API Key。
+功能范围与验收标准见 `docs/DECISIONS.md` 的 0018–0034 一组（原功能规格文档已拆为决策条目）。
+AgentScope 服务、三个只读文献工具、会话绑定与引用回查已接入；旧会话执行链仍待 R7 移除。真实 Provider 的浏览器端到端验收已列入 [TODO.md](TODO.md) 的 R8。
 
 ## 数据流向
 
-为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的论文证据发往用户选择的 LLM Provider。LLM API Key 保存在当前浏览器并随 Agent 启动请求提交，后端不把它写入数据库、日志、对象存储或任务队列。
+为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的文献证据发往用户选择的 LLM Provider。LLM API Key 由 AgentScope Credential 服务加密保存，不写入日志、对象存储或任务队列。
