@@ -66,6 +66,11 @@ def check_jwt_secret() -> None:
         )
 
 
+def check_agent_internal_key() -> None:
+    if settings.environment != "development" and len(settings.agent_internal_key) < 32:
+        raise RuntimeError("AGENT_INTERNAL_KEY 必须配置为至少 32 字符")
+
+
 def check_storage() -> None:
     """启动时确认对象存储可用（会顺带创建缺失的 bucket）。"""
     backend = settings.storage_backend
@@ -91,6 +96,7 @@ def check_storage() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     check_jwt_secret()
+    check_agent_internal_key()
     check_embedding_dimensions()
     check_storage()
     scheduler = AsyncioTaskScheduler()

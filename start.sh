@@ -12,8 +12,8 @@
 #   ./start.sh --with-storage   同时启动对象存储（RustFS，S3 兼容）
 #                               backend/.env 里 STORAGE_BACKEND=s3 时会自动启动
 #
-# 环境变量：BACKEND_PORT（默认 8000）、FRONTEND_PORT（默认 5173）、
-#          BACKEND_HOST / FRONTEND_HOST（默认 127.0.0.1）
+# 环境变量：BACKEND_PORT（默认 8000）、AGENT_SERVICE_PORT（默认 8001）、FRONTEND_PORT（默认 5173）、
+#          BACKEND_HOST / AGENT_SERVICE_HOST / FRONTEND_HOST（默认 127.0.0.1）
 #
 # Ctrl-C 会同时停止前后端；日志同时写入 .var/logs/。
 
@@ -26,6 +26,8 @@ LOG_DIR="$ROOT_DIR/.var/logs"
 
 BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
+AGENT_SERVICE_HOST="${AGENT_SERVICE_HOST:-127.0.0.1}"
+AGENT_SERVICE_PORT="${AGENT_SERVICE_PORT:-8001}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
@@ -37,6 +39,7 @@ START_STORAGE=0
 DO_INSTALL=1
 
 BACKEND_PID=""
+AGENT_SERVICE_PID=""
 FRONTEND_PID=""
 TAIL_PIDS=()
 
@@ -98,20 +101,23 @@ cleanup() {
   {
     kill_tree "$FRONTEND_PID" TERM
     kill_tree "$BACKEND_PID" TERM
+    kill_tree "$AGENT_SERVICE_PID" TERM
   } 2>/dev/null
   # 等待子进程真正退出，避免端口被占用
   for _ in $(seq 1 20); do
     local alive=0
     [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null && alive=1
     [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null && alive=1
+    [[ -n "$AGENT_SERVICE_PID" ]] && kill -0 "$AGENT_SERVICE_PID" 2>/dev/null && alive=1
     [[ "$alive" -eq 1 ]] || break
     sleep 0.25
   done
   {
     kill_tree "$FRONTEND_PID" KILL
-  kill_tree "$BACKEND_PID" KILL
+    kill_tree "$BACKEND_PID" KILL
+    kill_tree "$AGENT_SERVICE_PID" KILL
     # 回收子进程，让 bash 的作业表清理干净
-    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID"; do
+    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID" "$AGENT_SERVICE_PID"; do
       [[ -n "$pid" ]] && wait "$pid"
     done
   } 2>/dev/null || true
@@ -172,6 +178,13 @@ if [[ "$START_DB" -eq 1 ]]; then
   (cd "$ROOT_DIR" && docker compose exec -T postgres \
       pg_isready -U paper_agent -d paper_agent) >/dev/null 2>&1 \
     || die "PostgreSQL 未就绪，请查看 docker compose logs postgres"
+  if [[ "$START_BACKEND" -eq 1 ]]; then
+    (cd "$ROOT_DIR" && docker compose exec -T postgres \
+      psql -U paper_agent -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = 'paper_agent_as'" \
+      | grep -qx 1) || \
+      (cd "$ROOT_DIR" && docker compose exec -T postgres \
+        psql -U paper_agent -d postgres -c 'CREATE DATABASE paper_agent_as') >/dev/null
+  fi
   ok "PostgreSQL 已就绪（localhost:5432）"
   echo
 fi
@@ -216,10 +229,49 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     warn "已从 .env.example 生成 backend/.env，请按需修改数据库连接与 Provider 配置"
   fi
 
+  if ! grep -q '^AGENT_INTERNAL_KEY=.' .env; then
+    require openssl
+    printf '\nAGENT_INTERNAL_KEY=%s\n' "$(openssl rand -hex 32)" >>.env
+    ok "已生成服务间检索密钥"
+  fi
+  export BUSINESS_API_URL="${BUSINESS_API_URL:-http://127.0.0.1:$BACKEND_PORT}"
+
   if [[ "$DO_INSTALL" -eq 1 ]]; then
     uv sync --quiet
   fi
   ok "Python 依赖已就绪"
+
+  if ! grep -q '^CREDENTIAL_MASTER_KEY=.' .env; then
+    if ! uv run python - <<'PY' >/dev/null 2>&1
+import os
+
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+
+from app.platform.config import settings
+
+url = make_url(os.environ.get("AGENT_SERVICE_DATABASE_URL") or settings.database_url)
+if not os.environ.get("AGENT_SERVICE_DATABASE_URL"):
+    url = url.set(database="paper_agent_as")
+url = url.set(drivername="postgresql+psycopg")
+engine = create_engine(url)
+try:
+    with engine.connect() as connection:
+        exists = connection.execute(text("SELECT to_regclass('public.credentials')")).scalar()
+        count = connection.execute(text("SELECT count(*) FROM credentials")).scalar() if exists else 0
+        if count:
+            raise RuntimeError("Existing credentials require the original master key")
+finally:
+    engine.dispose()
+PY
+    then
+      die "已有凭据或无法检查 agent_service 数据库；请恢复原 CREDENTIAL_MASTER_KEY，不能生成新密钥"
+    fi
+    require openssl
+    printf '\nCREDENTIAL_MASTER_KEY=%s\n' "$(openssl rand -hex 32)" >>.env
+    chmod 600 .env
+    ok "已生成 Credential 主密钥；请安全备份 backend/.env"
+  fi
 
   uv run alembic upgrade head >/dev/null
   ok "数据库迁移已应用到 head"
@@ -238,6 +290,32 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     tail -n 20 "$LOG_DIR/backend.log" >&2
     exit 1
   fi
+  echo
+
+  step "启动 AgentScope 服务 http://$AGENT_SERVICE_HOST:$AGENT_SERVICE_PORT"
+  uv run uvicorn agent_service.main:app \
+    --host "$AGENT_SERVICE_HOST" --port "$AGENT_SERVICE_PORT" --reload \
+    >"$LOG_DIR/agent-service.log" 2>&1 &
+  AGENT_SERVICE_PID=$!
+  AGENT_SERVICE_PROBE_HOST="$AGENT_SERVICE_HOST"
+  [[ "$AGENT_SERVICE_PROBE_HOST" == "0.0.0.0" ]] && AGENT_SERVICE_PROBE_HOST="127.0.0.1"
+  AGENT_HEALTH_TOKEN="$(uv run python -c 'from uuid import UUID; from app.platform.security import create_access_token; print(create_access_token(user_id=UUID(int=0), auth_session_id=UUID(int=0))[0])')"
+  ready=0
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 2 -H "Authorization: Bearer $AGENT_HEALTH_TOKEN" \
+      "http://$AGENT_SERVICE_PROBE_HOST:$AGENT_SERVICE_PORT/health" >/dev/null 2>&1; then
+      ready=1
+      break
+    fi
+    sleep 0.5
+  done
+  unset AGENT_HEALTH_TOKEN
+  if [[ "$ready" -ne 1 ]]; then
+    fail "AgentScope 服务启动失败，日志末尾："
+    tail -n 20 "$LOG_DIR/agent-service.log" >&2
+    exit 1
+  fi
+  ok "AgentScope 服务已就绪（API 文档 /docs）"
   echo
 fi
 
@@ -271,6 +349,7 @@ fi
 cd "$ROOT_DIR"
 printf '%s%s 服务已启动%s\n' "$BOLD" "$GREEN" "$RESET"
 [[ "$START_FRONTEND" -eq 1 ]] && printf '  %s前端%s   http://%s:%s\n' "$BOLD" "$RESET" "$FRONTEND_HOST" "$FRONTEND_PORT"
+[[ "$START_BACKEND" -eq 1 ]] && printf '  %sAgentScope%s http://%s:%s\n' "$BOLD" "$RESET" "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT"
 [[ "$START_BACKEND" -eq 1 ]] && printf '  %s后端%s   http://%s:%s  %s(文档 /docs)%s\n' \
   "$BOLD" "$RESET" "$BACKEND_HOST" "$BACKEND_PORT" "$DIM" "$RESET"
 printf '  %s日志%s   %s\n' "$BOLD" "$RESET" "$LOG_DIR"
@@ -281,6 +360,8 @@ printf '%s按 Ctrl-C 停止全部服务%s\n\n' "$DIM" "$RESET"
 # 前缀用 bash 的 printf 逐行写（sed/awk 在非终端下会块缓冲，导致日志迟迟不出现）。
 if [[ "$START_BACKEND" -eq 1 ]]; then
   tail -n 0 -f "$LOG_DIR/backend.log" > >(while IFS= read -r line; do printf '[backend] %s\n' "$line"; done) &
+  TAIL_PIDS+=($!)
+  tail -n 0 -f "$LOG_DIR/agent-service.log" > >(while IFS= read -r line; do printf '[agent-service] %s\n' "$line"; done) &
   TAIL_PIDS+=($!)
 fi
 if [[ "$START_FRONTEND" -eq 1 ]]; then

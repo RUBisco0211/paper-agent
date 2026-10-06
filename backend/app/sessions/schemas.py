@@ -226,3 +226,24 @@ def to_citation_read(citation: Citation) -> CitationRead:
         page_end=citation.page_end,
         chunk_ids=citation.chunk_ids,
     )
+
+
+class SessionBindingCreateRequest(BaseModel):
+    session_id: UUID
+    project_id: UUID | None = None
+
+
+class SessionBindingRead(BaseModel):
+    session_id: UUID
+    project_id: UUID | None
+    scope: str
+
+
+class BoundCitationRead(BaseModel):
+    citation_id: str
+    paper_id: UUID
+    title_path: str | None
+    snippet: str
+    page_start: int | None
+    page_end: int | None
+    chunk_ids: list[UUID]

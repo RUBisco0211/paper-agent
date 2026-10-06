@@ -1,0 +1,59 @@
+"""AgentScope HTTP service, kept separate from the business API."""
+
+import os
+from pathlib import Path
+
+from agentscope.app import create_app
+from agentscope.app.deps import get_current_user_id
+from agentscope.app.message_bus import InMemoryMessageBus
+from agentscope.app.workspace_manager import LocalWorkspaceManager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.engine import make_url
+
+from app.platform.config import settings
+
+from .auth import get_agent_service_user_id
+from .credential_storage import EncryptedCredentialStorage
+from .paper_agent import PaperAgent
+from .retrieval_tools import build_retrieval_tools
+
+
+def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI:
+    """Build the single-process AgentScope service with durable SQL storage."""
+    if settings.environment != "development" and settings.jwt_secret_problem:
+        raise RuntimeError("JWT_SECRET_KEY must be configured for agent_service")
+    if settings.environment != "development" and len(settings.agent_internal_key) < 32:
+        raise RuntimeError("AGENT_INTERNAL_KEY must be configured for agent_service")
+    storage = EncryptedCredentialStorage(
+        database_url,
+        key_provider=lambda: settings.credential_master_key.get_secret_value(),
+        create_tables=False,
+        auto_migrate=True,
+    )
+    app = create_app(
+        storage=storage,
+        message_bus=InMemoryMessageBus(),
+        workspace_manager=LocalWorkspaceManager(str(workspace_root)),
+        title="Paper Agent AgentScope Service",
+        extra_agent_tools=build_retrieval_tools,
+        custom_agent_cls=PaperAgent,
+    )
+    app.dependency_overrides[get_current_user_id] = get_agent_service_user_id
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
+    return app
+
+
+database_url = os.environ.get("AGENT_SERVICE_DATABASE_URL") or make_url(
+    settings.database_url,
+).set(database="paper_agent_as").render_as_string(hide_password=False)
+app = create_agent_service_app(
+    database_url,
+    Path(os.environ.get("AGENT_SERVICE_WORKSPACE_ROOT", ".var/agent-workspaces")),
+)

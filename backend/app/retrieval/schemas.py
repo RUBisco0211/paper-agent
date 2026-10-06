@@ -40,3 +40,38 @@ class SearchResponse(BaseModel):
     status: SearchStatus
     channels: dict[str, ChannelRead]
     evidence: list[EvidenceRead]
+
+
+class BoundSearchRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=8, ge=1, le=20)
+
+
+class BoundEvidenceRead(EvidenceRead):
+    citation_id: str
+
+
+class BoundSearchResponse(BaseModel):
+    scope: SearchScope
+    status: SearchStatus
+    channels: dict[str, ChannelRead]
+    evidence: list[BoundEvidenceRead]
+
+
+class BoundListResponse(BaseModel):
+    scope: SearchScope
+    total: int
+    papers: list[dict]
+
+
+class BoundExcerptResponse(BaseModel):
+    citation_id: str
+    paper_id: UUID
+    paper_title: str | None
+    title_path: str | None
+    snippet: str
+    page_start: int | None
+    page_end: int | None
+    chunk_ids: list[UUID]

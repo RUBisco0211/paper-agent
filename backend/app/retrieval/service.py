@@ -3,11 +3,14 @@ from uuid import UUID
 import structlog
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..evidence.citations import build_citation_id
 from ..evidence.ranking import apply_budgets, reciprocal_rank_fusion
 from ..library.repo import PaperRepository
+from ..library.service import PaperLibraryService
 from ..platform.errors import ErrorCode, NotFoundError
 from ..projects.repo import ProjectRepository
 from ..retrieval.ports import EmbeddingAdapter
+from ..sessions.service import SessionBindingService
 from .domain import (
     ChannelReport,
     ChannelStatus,
@@ -19,6 +22,131 @@ from .domain import (
 from .repo import ChunkRepository
 
 logger = structlog.get_logger(__name__)
+
+
+class BoundSearchService:
+    """Resolve immutable session scope before executing business retrieval."""
+
+    def __init__(
+        self, bindings: SessionBindingService, search: "SearchService"
+    ) -> None:
+        self._bindings = bindings
+        self._search = search
+
+    def search(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        query: str,
+        limit: int,
+    ) -> tuple[SearchOutcome, SearchScope]:
+        binding = self._bindings.require(session_id=session_id, user_id=user_id)
+        scope = (
+            SearchScope.PROJECT
+            if binding.project_id is not None
+            else SearchScope.LIBRARY
+        )
+        outcome = self._search.search(
+            user_id=user_id,
+            query=query,
+            scope=scope,
+            project_id=binding.project_id,
+            limit=limit,
+        )
+        for evidence in outcome.evidence:
+            self._bindings.record_citation(
+                session_id=session_id,
+                citation_id=build_citation_id(evidence.chunk_ids),
+                user_paper_id=evidence.paper_id,
+                chunk_ids=evidence.chunk_ids,
+                title_path=evidence.title_path,
+                snippet=evidence.snippet,
+                page_start=evidence.page_start,
+                page_end=evidence.page_end,
+            )
+        return outcome, scope
+
+
+class BoundPaperService:
+    def __init__(
+        self,
+        bindings: SessionBindingService,
+        library: PaperLibraryService,
+        projects: ProjectRepository,
+    ) -> None:
+        self._bindings = bindings
+        self._library = library
+        self._projects = projects
+
+    def list_papers(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        limit: int,
+        offset: int,
+    ) -> tuple[str, int, list[dict]]:
+        binding = self._bindings.require(session_id=session_id, user_id=user_id)
+        if binding.project_id is None:
+            entries, total = self._library.list_entries(
+                user_id=user_id,
+                limit=limit,
+                offset=offset,
+            )
+            scope = "library"
+        else:
+            member_ids = list(self._projects.paper_ids_of(binding.project_id))
+            all_entries = self._library.entries_for(
+                user_id=user_id,
+                user_paper_ids=member_ids,
+            )
+            total = len(all_entries)
+            entries = all_entries[offset : offset + limit]
+            scope = "project"
+        return (
+            scope,
+            total,
+            [
+                {
+                    "paper_id": str(entry.user_paper.id),
+                    "title": entry.user_paper.title,
+                    "authors": entry.user_paper.authors[:5],
+                    "year": entry.user_paper.year,
+                    "venue": entry.user_paper.venue,
+                    "has_fulltext": entry.capabilities.has_fulltext,
+                }
+                for entry in entries
+            ],
+        )
+
+    def get_excerpt(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        citation_id: str,
+    ) -> dict:
+        citation = self._bindings.require_citation(
+            user_id=user_id,
+            session_id=session_id,
+            citation_id=citation_id,
+        )
+        entry = self._library.get_entry(
+            user_id=user_id,
+            user_paper_id=citation.user_paper_id,
+        )
+        return {
+            "citation_id": citation.citation_id,
+            "paper_id": citation.user_paper_id,
+            "paper_title": entry.user_paper.title if entry else None,
+            "title_path": citation.title_path,
+            "snippet": citation.snippet,
+            "page_start": citation.page_start,
+            "page_end": citation.page_end,
+            "chunk_ids": citation.chunk_ids,
+        }
+
 
 SNIPPET_MAX_CHARS = 1200
 EVIDENCE_MAX_CHARS = 6000

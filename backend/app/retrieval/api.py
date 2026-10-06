@@ -1,11 +1,106 @@
-from fastapi import APIRouter
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Query
 
 from ..auth.depends import CurrentUser
-from .depends import SearchServiceDep
+from ..evidence.citations import build_citation_id
+from .depends import (
+    AgentInternalAuth,
+    BoundPaperServiceDep,
+    BoundSearchServiceDep,
+    SearchServiceDep,
+)
 from .domain import SearchOutcome
-from .schemas import ChannelRead, EvidenceRead, SearchRequest, SearchResponse
+from .schemas import (
+    BoundEvidenceRead,
+    BoundExcerptResponse,
+    BoundListResponse,
+    BoundSearchRequest,
+    BoundSearchResponse,
+    ChannelRead,
+    EvidenceRead,
+    SearchRequest,
+    SearchResponse,
+)
 
 router = APIRouter(tags=["retrieval"])
+
+
+@router.get("/internal/papers", response_model=BoundListResponse)
+def list_bound_papers(
+    user_id: UUID,
+    session_id: UUID,
+    _auth: AgentInternalAuth,
+    service: BoundPaperServiceDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> BoundListResponse:
+    scope, total, papers = service.list_papers(
+        user_id=user_id,
+        session_id=session_id,
+        limit=limit,
+        offset=offset,
+    )
+    return BoundListResponse(scope=scope, total=total, papers=papers)
+
+
+@router.get("/internal/excerpt", response_model=BoundExcerptResponse)
+def get_bound_excerpt(
+    user_id: UUID,
+    session_id: UUID,
+    citation_id: str,
+    _auth: AgentInternalAuth,
+    service: BoundPaperServiceDep,
+) -> BoundExcerptResponse:
+    return BoundExcerptResponse(
+        **service.get_excerpt(
+            user_id=user_id,
+            session_id=session_id,
+            citation_id=citation_id,
+        )
+    )
+
+
+@router.post("/internal/search", response_model=BoundSearchResponse)
+def search_bound_session(
+    payload: BoundSearchRequest,
+    _auth: AgentInternalAuth,
+    service: BoundSearchServiceDep,
+) -> BoundSearchResponse:
+    outcome, scope = service.search(
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+        query=payload.query,
+        limit=payload.limit,
+    )
+    return BoundSearchResponse(
+        scope=scope,
+        status=outcome.status,
+        channels={
+            name: ChannelRead(
+                status=report.status,
+                result_count=report.result_count,
+                detail=report.detail,
+            )
+            for name, report in outcome.channels.items()
+        },
+        evidence=[
+            BoundEvidenceRead(
+                paper_id=item.paper_id,
+                chunk_ids=item.chunk_ids,
+                title_path=item.title_path,
+                snippet=item.snippet,
+                page_start=item.page_start,
+                page_end=item.page_end,
+                score=item.score,
+                keyword_rank=item.keyword_rank,
+                vector_rank=item.vector_rank,
+                citation_id=build_citation_id(item.chunk_ids),
+            )
+            for item in outcome.evidence
+        ],
+    )
 
 
 def _to_response(outcome: SearchOutcome, request: SearchRequest) -> SearchResponse:

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: 已知的占位符/示例密钥：出现在生产配置里意味着令牌可被伪造
@@ -73,6 +74,10 @@ class Settings(BaseSettings):
     #: 占位符与弱值会让令牌可被伪造，启动时会检查（见 app/main.py）。
     jwt_secret_key: str = PLACEHOLDER_JWT_SECRET
     jwt_algorithm: str = "HS256"
+    agent_internal_key: str = ""
+    business_api_url: str = "http://127.0.0.1:8000"
+    credential_master_key: SecretStr = SecretStr("")
+    credential_base_urls: dict[str, str] = {}
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 7
     refresh_cookie_name: str = "paper_agent_refresh"

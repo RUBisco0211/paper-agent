@@ -10,8 +10,13 @@ from ..platform.config import settings
 from ..platform.database import SessionDep
 from ..platform.storage import StorageDep
 from ..projects.repo import ProjectRepository
-from .repo import SessionRepository
-from .service import CitationService, ProjectSessionPurger, SessionService
+from .repo import SessionBindingRepository, SessionRepository
+from .service import (
+    CitationService,
+    ProjectSessionPurger,
+    SessionBindingService,
+    SessionService,
+)
 
 
 def get_entry_store(storage: StorageDep) -> EntryStore:
@@ -26,6 +31,17 @@ def get_session_repository(session: SessionDep) -> SessionRepository:
 
 
 SessionRepositoryDep = Annotated[SessionRepository, Depends(get_session_repository)]
+
+
+def get_session_binding_service(session: SessionDep) -> SessionBindingService:
+    return SessionBindingService(
+        SessionBindingRepository(session), ProjectRepository(session)
+    )
+
+
+SessionBindingServiceDep = Annotated[
+    SessionBindingService, Depends(get_session_binding_service)
+]
 
 
 def get_event_broker(request: Request) -> EventBroker:

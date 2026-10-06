@@ -5,10 +5,11 @@ description = "FastAPI backend for Paper Agent"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "agentscope>=2.0.6",
+    "agentscope[service,storage-sql]==2.0.6",
     "alembic>=1.19.1",
     "argon2-cffi>=23.1.0",
     "asgi-correlation-id>=5.0.1",
+    "cryptography>=50,<51",
     "fastapi>=0.141.1",
     "fonttools>=4.60.0",
     "httpx>=0.28",
