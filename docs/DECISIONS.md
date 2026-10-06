@@ -27,7 +27,7 @@
 | 0016 | agent | 用 interrupt + inbox hint 取代 steering / follow-up 双 pending 队列 | 当前 | [0016-interrupt-instead-of-pending-queues.md](decisions/0016-interrupt-instead-of-pending-queues.md) |
 | 0017 | product | Cron 定时检索文献是要做的方向，不在 MVP；不写进不做清单 | 当前 | [0017-cron-scheduled-retrieval-post-mvp.md](decisions/0017-cron-scheduled-retrieval-post-mvp.md) |
 
-### 产品与数据模型（0018–0045）
+### 产品与数据模型（0018–0046）
 
 | # | 标签 | 决策了什么 | 状态 | 文件 |
 |---|------|-----------|------|------|
@@ -59,6 +59,7 @@
 | 0043 | api, security, frontend | 删除会话先删 AgentScope，再删业务绑定与引用，并允许重试 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
 | 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | 当前 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
 | 0045 | frontend, product | 对话页采用 web_ui 双层导航、项目文献侧栏和日历容器 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
+| 0046 | product, frontend, data | 定时任务必须归属项目；日历按项目显示任务 | 当前 | [0046-schedules-belong-to-projects.md](decisions/0046-schedules-belong-to-projects.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

@@ -21,7 +21,7 @@ const router = createBrowserRouter([
       { path: "/library", element: <SectionLayout title="文献库" section="全部文献"><LibraryPage /></SectionLayout> },
       { path: "/projects", element: <Navigate to="/chat" replace /> },
       { path: "/projects/:projectId", element: <LegacyProjectRedirect /> },
-      { path: "/calendar", element: <SectionLayout title="日历" section="月视图"><PaperCalendarPage /></SectionLayout> },
+      { path: "/calendar", element: <PaperCalendarPage /> },
       { path: "/settings", element: <ModelSettingsPage /> },
       { path: "/chat", element: <ChatPage />, children: [
         { path: "project/:projectId", element: <div className="flex h-full items-center justify-center text-muted-foreground">选择会话或新建会话</div> },

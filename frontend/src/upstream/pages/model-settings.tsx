@@ -40,8 +40,8 @@ export function ModelSettingsPage() {
   }
 
   return <SidebarProvider className="min-h-0 flex-1">
-    <div className="flex h-full w-full gap-2 p-2">
-      <Sidebar collapsible="none" className="rounded-[22px]">
+    <div className="flex h-full w-full">
+      <Sidebar collapsible="none" className="border-r">
         <SidebarHeader className="px-4 py-5 font-semibold">模型设置</SidebarHeader>
         <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
           {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
@@ -49,7 +49,7 @@ export function ModelSettingsPage() {
           </SidebarMenuItem>)}
         </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
       </Sidebar>
-      <main className="min-w-0 flex-1 overflow-y-auto rounded-[22px] bg-card p-6 shadow-panel">
+      <main className="min-w-0 flex-1 overflow-y-auto bg-background p-6">
         <div className="mx-auto max-w-3xl space-y-8">
           <header className="border-b pb-5"><h1 className="text-2xl font-semibold">{chosen?.label ?? "模型设置"}</h1></header>
           <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>

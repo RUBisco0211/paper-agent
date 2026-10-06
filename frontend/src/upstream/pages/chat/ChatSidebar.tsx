@@ -168,11 +168,12 @@ export function ChatSidebar() {
   const globalSessions = all.filter((item) => item.binding.project_id === null)
 
   return (
-    <Sidebar collapsible="none" className="rounded-[22px]">
-      <SidebarHeader className="flex-row items-center justify-between px-4 py-5 font-semibold tracking-tight">对话
-        <CreateProjectDialog trigger={<Button variant="ghost" size="icon-sm" aria-label="新建项目"><Plus /></Button>} onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }); navigate(`/chat/project/${id}`) }} />
-      </SidebarHeader>
+    <Sidebar collapsible="none" className="border-r">
+      <SidebarHeader className="px-4 py-5 font-semibold tracking-tight">对话</SidebarHeader>
       <SidebarContent>
+        <SidebarGroup className="pt-0">
+          <CreateProjectDialog trigger={<Button variant="ghost" className="w-full justify-start gap-2" aria-label="新建项目"><Plus className="size-4" />新建项目</Button>} onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }); navigate(`/chat/project/${id}`) }} />
+        </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">全局
             <button type="button" aria-label="新建全局会话" disabled={creating} onClick={() => void create()}><Plus className="size-4" /></button>

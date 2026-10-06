@@ -9,7 +9,7 @@ export function AppLayout() {
 		<div className="h-screen flex">
 			<SidebarProvider style={{ '--sidebar-width': '4rem' } as React.CSSProperties}>
 				<AppSidebar />
-				<SidebarInset className="flex-1 overflow-hidden bg-canvas">
+				<SidebarInset className="flex-1 overflow-hidden bg-background">
 					<Outlet />
 				</SidebarInset>
 			</SidebarProvider>
@@ -19,14 +19,14 @@ export function AppLayout() {
 
 export function SectionLayout({ title, section, children }: { title: string; section: string; children: React.ReactNode }) {
 	return <SidebarProvider className="min-h-0 flex-1">
-		<div className="flex h-full w-full gap-2 p-2">
-			<Sidebar collapsible="none" className="rounded-[22px]">
+		<div className="flex h-full w-full">
+			<Sidebar collapsible="none" className="border-r">
 				<SidebarHeader className="px-4 py-5 font-semibold">{title}</SidebarHeader>
 				<SidebarContent><SidebarGroup><SidebarGroupContent>
 					<p className="rounded-md bg-sidebar-accent px-3 py-2 text-sm font-medium">{section}</p>
 				</SidebarGroupContent></SidebarGroup></SidebarContent>
 			</Sidebar>
-			<main className="flex min-w-0 flex-1 flex-col overflow-y-auto rounded-[22px] bg-card shadow-panel">{children}</main>
+			<main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">{children}</main>
 		</div>
 	</SidebarProvider>
 }

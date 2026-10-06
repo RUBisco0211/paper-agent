@@ -26,9 +26,9 @@ export function ChatPage() {
   const projectId = projectRouteId ?? activeSession?.binding.project_id ?? null
 
   return <SidebarProvider className="min-h-0 flex-1">
-    <div className="flex h-full w-full gap-2 p-2">
+    <div className="flex h-full w-full">
       <ChatSidebar />
-      <div className="min-w-0 flex-1 overflow-hidden rounded-[22px] bg-card shadow-panel">
+      <div className="min-w-0 flex-1 overflow-hidden bg-background">
         {location.pathname === "/chat" ? <div className="flex h-full items-center justify-center text-muted-foreground">{sessions.isPending ? "加载中…" : "新建会话后开始提问"}</div> : <Outlet />}
       </div>
       {projectId && <ProjectPapersPanel key={projectId} projectId={projectId} />}

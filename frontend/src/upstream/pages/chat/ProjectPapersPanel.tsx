@@ -17,7 +17,7 @@ export function ProjectPapersPanel({ projectId }: { projectId: string }) {
 
   return <>
     <Button variant="ghost" size="icon-sm" aria-label={open ? "收起项目文献" : "展开项目文献"} onClick={() => setOpen(!open)} className="self-start">{open ? <PanelRightClose /> : <PanelRightOpen />}</Button>
-    {open && <aside aria-label="项目文献" className="flex w-64 shrink-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+    {open && <aside aria-label="项目文献" className="flex w-64 shrink-0 flex-col overflow-hidden border-l bg-background">
       <header className="flex items-center justify-between border-b px-4 py-3"><span className="truncate font-medium">{project.data?.name ?? "项目文献"}</span>
         <AddPapersDialog projectId={projectId} existingPaperIds={items.map((item) => item.id)} trigger={<Button variant="ghost" size="icon-sm" aria-label="添加文献"><Plus /></Button>} />
       </header>
