@@ -27,7 +27,7 @@
 | 0016 | agent | 用 interrupt + inbox hint 取代 steering / follow-up 双 pending 队列 | 当前 | [0016-interrupt-instead-of-pending-queues.md](decisions/0016-interrupt-instead-of-pending-queues.md) |
 | 0017 | product | Cron 定时检索文献是要做的方向，不在 MVP；不写进不做清单 | 当前 | [0017-cron-scheduled-retrieval-post-mvp.md](decisions/0017-cron-scheduled-retrieval-post-mvp.md) |
 
-### 产品与数据模型（0018–0043）
+### 产品与数据模型（0018–0044）
 
 | # | 标签 | 决策了什么 | 状态 | 文件 |
 |---|------|-----------|------|------|
@@ -57,6 +57,7 @@
 | 0041 | agent, security | Agent 运行时只开放三个文献只读工具，现有 search_papers 承担 RAG 检索 | 当前 | [0041-agent-tool-allowlist.md](decisions/0041-agent-tool-allowlist.md) |
 | 0042 | agent, product, ingest | 入读流程完成后增加基于 MinerU Markdown 的有界原文读取工具 | 当前 | [0042-bounded-paper-original-read.md](decisions/0042-bounded-paper-original-read.md) |
 | 0043 | api, security, frontend | 删除会话先删 AgentScope，再删业务绑定与引用，并允许重试 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
+| 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | 当前 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

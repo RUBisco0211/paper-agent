@@ -10,7 +10,7 @@
 
 Paper Agent 管理个人论文库、项目范围与基于论文证据的 Agent 阅读会话；多用户系统，每个用户的数据与交互彼此隔离。
 
-- 阶段：MVP 功能 F01–F09 已实现，**真实 LLM Provider 的浏览器端到端闭环尚未验收**；**2026-10 起按决策 0006–0016 重构为 agentscope 后端，R1–R5 后端已验证，R6 代码与自动门禁已通过、浏览器联调延至 R8，R7–R8 待完成**
+- 阶段：MVP 功能 F01–F09 已实现，**真实 LLM Provider 的浏览器端到端闭环尚未验收**；**2026-10 起按决策 0006–0016 重构为 agentscope 后端，R1–R7 代码与自动门禁已完成，R8 待验收**
 - 规模：单机 Docker Compose，个人自用，并发 <10，论文库千篇量级
 - 用户：研究者本人在浏览器里完成入库 → 组织范围 → 问答 → 打开原文核对引用
 - 硬约束：单机部署（PostgreSQL 16 + pgvector、本地或 S3 对象存储）；**无 Redis / Celery**（解析走独立 worker 进程，由 DB 协调）；LLM API Key 由 Credential 系统持有、不进日志
@@ -48,7 +48,7 @@ api.py → service.py → domain.py / repo.py / ports.py → platform/
 
 - 新增后端业务包 → 照 `backend/app/library/`（api/service/domain/repo/schemas/depends/ports）
 - 新增后端支持包 → 照 `backend/app/processing/`（纯函数 + 有状态类，不凑统一外观）
-- 新增 Agent 工具 → 照 `backend/app/agent/tools.py`
+- 新增 Agent 工具 → 照 `backend/agent_service/retrieval_tools.py`
 - 新增后端测试 → 照 `backend/tests/library/test_upload.py`
 - 新增前端页面 → 照 `frontend/src/pages/session-workspace.tsx`
 - 新增前端组件 → 照 `frontend/src/components/chat/message-thread.tsx`

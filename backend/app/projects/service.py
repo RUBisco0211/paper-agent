@@ -3,9 +3,9 @@ from uuid import UUID
 import structlog
 
 from ..library.service import LibraryEntry, PaperLibraryService
-from ..platform.errors import ErrorCode, NotFoundError
+from ..platform.errors import ConflictError, ErrorCode, NotFoundError
 from .domain import Project, normalize_name
-from .ports import ProjectSessionCleaner
+from .ports import ProjectSessionGuard
 from .repo import ProjectRepository
 
 logger = structlog.get_logger(__name__)
@@ -30,11 +30,11 @@ class ProjectService:
         self,
         repository: ProjectRepository,
         library: PaperLibraryService,
-        session_cleaner: ProjectSessionCleaner,
+        session_guard: ProjectSessionGuard,
     ) -> None:
         self._repository = repository
         self._library = library
-        self._session_cleaner = session_cleaner
+        self._session_guard = session_guard
 
     def create(
         self,
@@ -98,21 +98,20 @@ class ProjectService:
         return updated
 
     def delete(self, *, user_id: UUID, project_id: UUID) -> None:
-        """Delete a project, its paper links and the sessions bound to it.
+        """Delete a project after its AgentScope sessions have been removed.
 
         Personal library entries and the shared PDF facts are untouched.
         """
         self.get(user_id=user_id, project_id=project_id)
-        purged_sessions = self._session_cleaner.purge_project_sessions(
-            user_id=user_id,
-            project_id=project_id,
-        )
+        if self._session_guard.has_project_sessions(
+            user_id=user_id, project_id=project_id
+        ):
+            raise ConflictError("请先删除项目会话", code=ErrorCode.CONFLICT)
         self._repository.delete_project(project_id)
         self._repository.commit()
         logger.info(
             "service.project.deleted",
             project_id=str(project_id),
-            purged_sessions=purged_sessions,
         )
 
     def add_papers(

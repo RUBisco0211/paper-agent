@@ -45,6 +45,7 @@ import {
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
 import type { Project } from "@/lib/api"
 import { useApi } from "@/lib/api/provider"
+import { deleteProjectWithSessions } from "@/lib/agent-sessions"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 
 export function ProjectsPage() {
@@ -73,11 +74,12 @@ export function ProjectsPage() {
   })
 
   const remove = useMutation({
-    mutationFn: (projectId: string) => api.projects.remove(projectId),
+    mutationFn: (projectId: string) => deleteProjectWithSessions(api, projectId),
     onSuccess: () => {
       notifySuccess("项目已删除")
       setDeleting(null)
       void queryClient.invalidateQueries({ queryKey: ["projects"] })
+      void queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
     },
     onError: (error) => notifyError(error, "删除失败"),
   })

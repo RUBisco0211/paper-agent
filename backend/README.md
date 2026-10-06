@@ -1,6 +1,6 @@
 # Paper Agent Backend
 
-Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理流水线和混合检索；AgentScope 会话服务运行在独立进程。旧会话执行链将在 R7 移除。
+Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理任务和混合检索；AgentScope 会话服务与文献解析 worker 分别运行在独立进程。
 
 功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md) 的 0018–0034 一组，技术选型见 [../docs/research/technical-stack.md](../docs/research/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
 
@@ -15,10 +15,11 @@ Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库�
 uv sync
 cp .env.example .env
 uv run alembic upgrade head
-uv run python main.py
+uv run uvicorn app.main:app --reload
+uv run python -m app.processing.worker  # 另一个终端
 ```
 
-完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、AgentScope 会话服务、PostgreSQL 和前端。
+完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、解析 worker、AgentScope 会话服务、PostgreSQL 和前端。
 
 服务启动后可访问：
 
@@ -48,11 +49,10 @@ app/
 ├── library/      # 个人文献库与共享 PDF
 ├── projects/     # 项目与文献成员
 ├── retrieval/    # 授权检索与 Chunk 仓储
-├── sessions/     # 会话、pending 与引用
-├── processing/   # PDF 工具、MinerU、分块与处理流水线
+├── sessions/     # AgentScope 会话绑定与已登记引用
+├── processing/   # PDF 工具、MinerU、分块、处理流水线与独立 worker
 ├── embedding/    # 向量服务适配器与模型档案
-├── agent/        # Agent 执行器、AgentScope 适配、目录与工具
-├── conversation/ # JSONL 历史、上下文投影与内存事件
+├── agent/        # LLM 模型目录
 ├── evidence/     # 排名融合与引用 ID 工具
 ├── scholar/      # 标识符、元数据查询/合并与 PDF 下载
 ├── platform/     # 配置、数据库、日志、错误、存储与调度
@@ -75,9 +75,9 @@ tests/            # 按职责分包的测试与架构约束
 | 元数据 | `PATCH /v1/papers/{paper_id}/metadata`、`POST /v1/papers/{paper_id}/resolve-metadata` |
 | 处理任务 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry` |
 | 项目 | `/v1/projects`、`/v1/projects/{project_id}`、`GET/POST /v1/projects/{project_id}/papers` |
-| 会话 | `/v1/sessions`、`GET /v1/sessions/{session_id}/entries` |
-| 生成 | `POST /v1/sessions/{session_id}/messages\|stop\|resume`、`GET /v1/sessions/{session_id}/events` |
-| 引用 | `GET /v1/sessions/{session_id}/citations/{citation_id}` |
+| 会话绑定 | `POST/GET /v1/session-bindings`、`DELETE /v1/session-bindings/{session_id}` |
+| 引用 | `GET /v1/session-bindings/{session_id}/citations/{citation_id}` |
+| 模型目录 | `GET /v1/llm-catalog` |
 | 检索 | `POST /v1/search`（library / project / paper 三种授权范围） |
 | 导入 | `POST /v1/imports`、`GET /v1/imports/{import_id}` |
 

@@ -13,8 +13,6 @@ from agentscope.model import (
 )
 
 from ..platform.config import settings
-from ..platform.errors import ValidationError
-from ..sessions.ports import LlmConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,28 +95,3 @@ def _reasoning_efforts(schema: dict | None) -> tuple[str, ...]:
         if values:
             return tuple(str(value) for value in values)
     return ()
-
-
-def validate_llm_config(
-    *,
-    provider: str,
-    model: str,
-    api_key: str,
-    reasoning_effort: str | None = None,
-) -> LlmConfig:
-    """Accept only a provider/model pair published by the model catalog."""
-    provider = provider.strip().lower()
-    model = model.strip()
-    api_key = api_key.strip()
-    if not model_is_available(provider, model):
-        raise ValidationError("请选择支持的模型")
-    if not api_key:
-        raise ValidationError("缺少 API Key")
-    if not reasoning_effort_is_available(provider, model, reasoning_effort):
-        raise ValidationError("所选模型不支持该思考强度")
-    return LlmConfig(
-        provider=provider,
-        model=model,
-        api_key=api_key,
-        reasoning_effort=reasoning_effort,
-    )

@@ -54,7 +54,7 @@ class IngestionPipeline:
     def __init__(
         self,
         *,
-        scheduler: TaskScheduler,
+        scheduler: TaskScheduler | None,
         session_factory: SessionFactory,
         storage: ObjectStorage,
         mineru: MineruParser,
@@ -73,6 +73,8 @@ class IngestionPipeline:
         self._max_chars = max_chars or settings.chunk_max_chars
 
     def submit(self, job_id: UUID) -> None:
+        if self._scheduler is None:
+            return
         self._scheduler.submit(
             lambda: self._run(job_id),
             name=f"ingestion:{job_id}",

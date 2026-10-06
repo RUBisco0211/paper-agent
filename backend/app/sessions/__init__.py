@@ -1,1 +1,1 @@
-"""Sessions domain module: conversation scope, entries and evidence links."""
+"""Business-owned AgentScope session bindings and evidence links."""

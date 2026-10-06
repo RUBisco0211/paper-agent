@@ -11,7 +11,7 @@ vi.mock("@upstream/api/agent", () => ({ agentApi: agent }))
 vi.mock("@upstream/api/credential", () => ({ credentialApi: credential }))
 vi.mock("@upstream/api/session", () => ({ sessionApi: session }))
 
-import { createBoundSession, deleteBoundSession, listBoundSessions, sameSessionId } from "./agent-sessions"
+import { createBoundSession, deleteBoundSession, deleteProjectWithSessions, listBoundSessions, sameSessionId } from "./agent-sessions"
 import { ApiError as AgentApiError } from "@upstream/api/client"
 
 describe("bound AgentScope session creation", () => {
@@ -109,5 +109,28 @@ describe("bound AgentScope session deletion", () => {
     })).rejects.toThrow("Unavailable")
 
     expect(request).not.toHaveBeenCalled()
+  })
+})
+
+describe("project deletion", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("removes bound AgentScope sessions before deleting their project", async () => {
+    const calls: string[] = []
+    agent.list.mockResolvedValue({ agents: [{ id: "agent-1" }] })
+    session.list.mockResolvedValue({ sessions: [{ session: { id: "11111111111111111111111111111111", created_at: "2026-10-06T00:00:00Z" } }] })
+    session.delete.mockImplementation(async () => { calls.push("agent") })
+    const request = vi.fn(async (path: string) => {
+      if (path === "/v1/session-bindings") return {
+        items: [{ session_id: "11111111-1111-1111-1111-111111111111", project_id: "project-1", scope: "project" }], total: 1,
+      }
+      calls.push("binding")
+      return undefined
+    })
+    const remove = vi.fn(async () => { calls.push("project") })
+
+    await deleteProjectWithSessions({ client: { request }, projects: { remove } } as never, "project-1")
+
+    expect(calls).toEqual(["agent", "binding", "project"])
   })
 })

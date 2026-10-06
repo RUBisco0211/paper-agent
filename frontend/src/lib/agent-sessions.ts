@@ -112,3 +112,19 @@ export async function deleteBoundSession(
   }
   await api.client.request(`${BINDINGS}/${input.sessionId}`, { method: "DELETE" })
 }
+
+export async function deleteProjectWithSessions(api: Api, projectId: string): Promise<void> {
+  const bindings = (await listBindings(api)).filter((item) => item.project_id === projectId)
+  if (bindings.length) {
+    const sessions = await listBoundSessions(api)
+    for (const binding of bindings) {
+      const active = sessions.find((item) => sameSessionId(item.binding.session_id, binding.session_id))
+      if (active) {
+        await deleteBoundSession(api, { agentId: active.agentId, sessionId: active.session.session.id })
+      } else {
+        await api.client.request(`${BINDINGS}/${binding.session_id}`, { method: "DELETE" })
+      }
+    }
+  }
+  await api.projects.remove(projectId)
+}

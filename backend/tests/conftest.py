@@ -18,9 +18,6 @@ from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
-from app.agent.service import SessionExecutor
-from app.conversation.events import EventBroker
-from app.conversation.service import EntryStore
 from app.main import create_app
 from app.platform.config import settings
 from app.platform.database import get_session, get_session_factory
@@ -30,11 +27,6 @@ from app.platform.storage import (
     get_object_storage,
 )
 from app.platform.tasks import InlineTaskScheduler, get_task_scheduler
-from app.sessions.depends import (
-    get_event_broker,
-    get_session_executor,
-    get_sse_idle_timeout,
-)
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
@@ -193,16 +185,6 @@ def client(
     app.dependency_overrides[get_session_factory] = lambda: session_factory
     app.dependency_overrides[get_object_storage] = lambda: storage
     app.dependency_overrides[get_task_scheduler] = InlineTaskScheduler
-    broker = EventBroker(buffer_size=settings.session_event_buffer_size)
-    executor = SessionExecutor(
-        entries=EntryStore(storage),
-        events=broker,
-        session_factory=session_factory,
-        scheduler=InlineTaskScheduler(),
-    )
-    app.dependency_overrides[get_event_broker] = lambda: broker
-    app.dependency_overrides[get_session_executor] = lambda: executor
-    app.dependency_overrides[get_sse_idle_timeout] = lambda: 0.5
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -272,55 +254,6 @@ def make_pdf() -> Callable[..., bytes]:
 
 def auth_headers(access_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {access_token}"}
-
-
-def install_agent_runner(
-    client: TestClient,
-    *,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-    runner,
-) -> SessionExecutor:
-    """Replace the executor so a test controls the agent turn."""
-    from app.conversation.events import EventBroker as _EventBroker
-    from app.conversation.service import EntryStore as _EntryStore
-
-    broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
-    executor = SessionExecutor(
-        entries=_EntryStore(storage),
-        events=broker,
-        session_factory=session_factory,
-        scheduler=InlineTaskScheduler(),
-        runner=runner,
-    )
-    client.app.dependency_overrides[get_event_broker] = lambda: broker
-    client.app.dependency_overrides[get_session_executor] = lambda: executor
-    return executor
-
-
-def install_async_agent_runner(
-    client: TestClient,
-    *,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-    runner,
-    scheduler,
-) -> SessionExecutor:
-    """Executor bound to the app event loop, for concurrency tests."""
-    from app.conversation.events import EventBroker as _EventBroker
-    from app.conversation.service import EntryStore as _EntryStore
-
-    broker = _EventBroker(buffer_size=settings.session_event_buffer_size)
-    executor = SessionExecutor(
-        entries=_EntryStore(storage),
-        events=broker,
-        session_factory=session_factory,
-        scheduler=scheduler,
-        runner=runner,
-    )
-    client.app.dependency_overrides[get_event_broker] = lambda: broker
-    client.app.dependency_overrides[get_session_executor] = lambda: executor
-    return executor
 
 
 @pytest.fixture

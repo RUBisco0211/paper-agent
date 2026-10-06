@@ -4,8 +4,7 @@ from fastapi import Depends
 
 from ..library.depends import PaperLibraryServiceDep
 from ..platform.database import SessionDep
-from ..platform.storage import StorageDep
-from .ports import ProjectSessionCleaner
+from .ports import ProjectSessionGuard
 from .repo import ProjectRepository
 from .service import ProjectService
 
@@ -17,31 +16,24 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
 ProjectRepositoryDep = Annotated[ProjectRepository, Depends(get_project_repository)]
 
 
-def get_project_session_cleaner(
-    session: SessionDep,
-    storage: StorageDep,
-) -> ProjectSessionCleaner:
-    """Purge the sessions bound to a project before the project row goes away.
+def get_project_session_guard(session: SessionDep) -> ProjectSessionGuard:
+    from ..sessions.repo import SessionBindingRepository
 
-    The import is local because the sessions module depends on projects.
-    """
-    from ..sessions.depends import build_project_session_cleaner
-
-    return build_project_session_cleaner(session=session, storage=storage)
+    return SessionBindingRepository(session)
 
 
-ProjectSessionCleanerDep = Annotated[
-    ProjectSessionCleaner,
-    Depends(get_project_session_cleaner),
+ProjectSessionGuardDep = Annotated[
+    ProjectSessionGuard,
+    Depends(get_project_session_guard),
 ]
 
 
 def get_project_service(
     repository: ProjectRepositoryDep,
     library: PaperLibraryServiceDep,
-    session_cleaner: ProjectSessionCleanerDep,
+    session_guard: ProjectSessionGuardDep,
 ) -> ProjectService:
-    return ProjectService(repository, library, session_cleaner)
+    return ProjectService(repository, library, session_guard)
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]

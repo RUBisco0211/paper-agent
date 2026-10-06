@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -72,6 +74,32 @@ def test_project_lifecycle(
     )
     assert missing.status_code == 404
     assert missing.json()["code"] == "project_not_found"
+
+
+def test_project_deletion_waits_for_bound_agent_sessions_when_the_project_has_a_session(
+    client: TestClient, api_prefix: str, register_user
+) -> None:
+    token = register_user(email="bound-project@example.com")["access_token"]
+    project_id = _create_project(client, api_prefix, token, "Bound")
+    session_id = str(uuid4())
+    bound = client.post(
+        f"{api_prefix}/session-bindings",
+        headers=auth_headers(token),
+        json={"session_id": session_id, "project_id": project_id},
+    )
+    assert bound.status_code == 201
+
+    rejected = client.delete(
+        f"{api_prefix}/projects/{project_id}", headers=auth_headers(token)
+    )
+
+    assert rejected.status_code == 409
+    assert (
+        client.get(
+            f"{api_prefix}/projects/{project_id}", headers=auth_headers(token)
+        ).status_code
+        == 200
+    )
 
 
 def test_invalid_project_name_is_rejected(

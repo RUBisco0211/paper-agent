@@ -2,8 +2,8 @@
 #
 # Paper Agent 本地启动脚本
 #
-#   ./start.sh                  启动 PostgreSQL、后端与前端（首次会自动安装依赖并执行迁移）
-#   ./start.sh --backend-only   只启动 PostgreSQL 与后端
+#   ./start.sh                  启动 PostgreSQL、后端、解析 worker 与前端（首次安装并迁移）
+#   ./start.sh --backend-only   只启动 PostgreSQL、后端与解析 worker
 #   ./start.sh --frontend-only  只启动前端（需后端已在别处运行）
 #   ./start.sh --no-install     跳过 uv sync / pnpm install
 #   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库）
@@ -39,6 +39,7 @@ START_STORAGE=0
 DO_INSTALL=1
 
 BACKEND_PID=""
+WORKER_PID=""
 AGENT_SERVICE_PID=""
 FRONTEND_PID=""
 TAIL_PIDS=()
@@ -101,6 +102,7 @@ cleanup() {
   {
     kill_tree "$FRONTEND_PID" TERM
     kill_tree "$BACKEND_PID" TERM
+    kill_tree "$WORKER_PID" TERM
     kill_tree "$AGENT_SERVICE_PID" TERM
   } 2>/dev/null
   # 等待子进程真正退出，避免端口被占用
@@ -108,6 +110,7 @@ cleanup() {
     local alive=0
     [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null && alive=1
     [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null && alive=1
+    [[ -n "$WORKER_PID" ]] && kill -0 "$WORKER_PID" 2>/dev/null && alive=1
     [[ -n "$AGENT_SERVICE_PID" ]] && kill -0 "$AGENT_SERVICE_PID" 2>/dev/null && alive=1
     [[ "$alive" -eq 1 ]] || break
     sleep 0.25
@@ -115,9 +118,10 @@ cleanup() {
   {
     kill_tree "$FRONTEND_PID" KILL
     kill_tree "$BACKEND_PID" KILL
+    kill_tree "$WORKER_PID" KILL
     kill_tree "$AGENT_SERVICE_PID" KILL
     # 回收子进程，让 bash 的作业表清理干净
-    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID" "$AGENT_SERVICE_PID"; do
+    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID" "$WORKER_PID" "$AGENT_SERVICE_PID"; do
       [[ -n "$pid" ]] && wait "$pid"
     done
   } 2>/dev/null || true
@@ -292,6 +296,18 @@ PY
   fi
   echo
 
+  step "启动文献解析 worker"
+  uv run python -m app.processing.worker >"$LOG_DIR/worker.log" 2>&1 &
+  WORKER_PID=$!
+  sleep 0.5
+  if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+    fail "解析 worker 启动失败，日志末尾："
+    tail -n 20 "$LOG_DIR/worker.log" >&2
+    exit 1
+  fi
+  ok "解析 worker 已启动"
+  echo
+
   step "启动 AgentScope 服务 http://$AGENT_SERVICE_HOST:$AGENT_SERVICE_PORT"
   uv run uvicorn agent_service.main:app \
     --host "$AGENT_SERVICE_HOST" --port "$AGENT_SERVICE_PORT" --reload \
@@ -352,6 +368,7 @@ printf '%s%s 服务已启动%s\n' "$BOLD" "$GREEN" "$RESET"
 [[ "$START_BACKEND" -eq 1 ]] && printf '  %sAgentScope%s http://%s:%s\n' "$BOLD" "$RESET" "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT"
 [[ "$START_BACKEND" -eq 1 ]] && printf '  %s后端%s   http://%s:%s  %s(文档 /docs)%s\n' \
   "$BOLD" "$RESET" "$BACKEND_HOST" "$BACKEND_PORT" "$DIM" "$RESET"
+[[ "$START_BACKEND" -eq 1 ]] && printf '  %s解析 worker%s   独立进程\n' "$BOLD" "$RESET"
 printf '  %s日志%s   %s\n' "$BOLD" "$RESET" "$LOG_DIR"
 printf '%s按 Ctrl-C 停止全部服务%s\n\n' "$DIM" "$RESET"
 
@@ -360,6 +377,8 @@ printf '%s按 Ctrl-C 停止全部服务%s\n\n' "$DIM" "$RESET"
 # 前缀用 bash 的 printf 逐行写（sed/awk 在非终端下会块缓冲，导致日志迟迟不出现）。
 if [[ "$START_BACKEND" -eq 1 ]]; then
   tail -n 0 -f "$LOG_DIR/backend.log" > >(while IFS= read -r line; do printf '[backend] %s\n' "$line"; done) &
+  TAIL_PIDS+=($!)
+  tail -n 0 -f "$LOG_DIR/worker.log" > >(while IFS= read -r line; do printf '[worker] %s\n' "$line"; done) &
   TAIL_PIDS+=($!)
   tail -n 0 -f "$LOG_DIR/agent-service.log" > >(while IFS= read -r line; do printf '[agent-service] %s\n' "$line"; done) &
   TAIL_PIDS+=($!)

@@ -141,6 +141,38 @@ class IngestionRepository:
             return None
         return _to_job(record, self._stages_of([record.id]).get(record.id, []))
 
+    def claim_next_queued_job(self) -> UUID | None:
+        record = self._session.scalar(
+            select(IngestionJobRecord)
+            .where(IngestionJobRecord.status == IngestionStatus.QUEUED.value)
+            .order_by(IngestionJobRecord.created_at, IngestionJobRecord.id)
+            .with_for_update(skip_locked=True)
+            .limit(1)
+        )
+        if record is None:
+            return None
+        record.status = IngestionStatus.RUNNING.value
+        record.started_at = record.started_at or _now()
+        job_id = record.id
+        self._session.commit()
+        return job_id
+
+    def recover_interrupted_jobs(self) -> int:
+        records = self._session.scalars(
+            select(IngestionJobRecord).where(
+                IngestionJobRecord.status == IngestionStatus.RUNNING.value
+            )
+        ).all()
+        for record in records:
+            record.status = IngestionStatus.QUEUED.value
+            record.current_stage = None
+            for stage in self._stages_of([record.id]).get(record.id, []):
+                if stage.status == StageStatus.RUNNING.value:
+                    stage.status = StageStatus.PENDING.value
+                    stage.started_at = None
+        self._session.commit()
+        return len(records)
+
     def latest_jobs_for_papers(
         self,
         paper_ids: list[UUID],

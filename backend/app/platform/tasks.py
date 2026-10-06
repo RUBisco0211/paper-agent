@@ -1,9 +1,4 @@
-"""In-process task scheduling for background processing.
-
-The MVP is a single process: ingestion and import jobs run as asyncio tasks on
-the application event loop. The boundary exists so a Celery/Redis queue can
-replace it without touching domain code, and so tests can execute work inline.
-"""
+"""Schedule lightweight API tasks while ingestion runs in a DB-backed worker."""
 
 import asyncio
 import threading
@@ -43,6 +38,19 @@ class AsyncioTaskScheduler:
         # Tasks are fire-and-forget; nothing to join beyond letting the loop
         # finish the currently scheduled callbacks.
         await asyncio.sleep(0)
+
+
+class ApiTaskScheduler:
+    """Leave ingestion jobs in PostgreSQL while scheduling lightweight API work."""
+
+    def __init__(self, background: TaskScheduler) -> None:
+        self._background = background
+
+    def submit(self, factory: TaskFactory, *, name: str) -> None:
+        if name.startswith("ingestion:"):
+            logger.debug("task.queued_for_worker", task_name=name)
+            return
+        self._background.submit(factory, name=name)
 
 
 class InlineTaskScheduler:

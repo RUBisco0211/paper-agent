@@ -7,18 +7,13 @@ from asgi_correlation_id import CorrelationIdMiddleware
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .agent.scope import AgentScopeRunner
-from .agent.service import SessionExecutor
 from .api import build_api_router
-from .conversation.events import EventBroker
-from .conversation.service import EntryStore
 from .platform.config import settings
-from .platform.database import SessionLocal
 from .platform.errors import register_exception_handlers
 from .platform.logging import configure_logging
 from .platform.request_logging import RequestLoggingMiddleware
 from .platform.storage import get_object_storage
-from .platform.tasks import AsyncioTaskScheduler
+from .platform.tasks import ApiTaskScheduler, AsyncioTaskScheduler
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -101,18 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     check_storage()
     scheduler = AsyncioTaskScheduler()
     scheduler.bind_loop(asyncio.get_running_loop())
-    broker = EventBroker(buffer_size=settings.session_event_buffer_size)
-    executor = SessionExecutor(
-        entries=EntryStore(get_object_storage()),
-        events=broker,
-        session_factory=SessionLocal,
-        scheduler=scheduler,
-        # 真实执行器：AgentScope + 三个只读工具；测试里由依赖覆盖替换
-        runner=AgentScopeRunner(session_factory=SessionLocal),
-    )
-    app.state.task_scheduler = scheduler
-    app.state.event_broker = broker
-    app.state.session_executor = executor
+    app.state.task_scheduler = ApiTaskScheduler(scheduler)
     try:
         yield
     finally:
