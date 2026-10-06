@@ -4,6 +4,7 @@ from fastapi import Depends
 
 from ..library.depends import PaperLibraryServiceDep
 from ..platform.database import SessionDep
+from ..schedules.repo import ScheduleBindingRepository
 from .ports import ProjectSessionGuard
 from .repo import ProjectRepository
 from .service import ProjectService
@@ -32,8 +33,11 @@ def get_project_service(
     repository: ProjectRepositoryDep,
     library: PaperLibraryServiceDep,
     session_guard: ProjectSessionGuardDep,
+    session: SessionDep,
 ) -> ProjectService:
-    return ProjectService(repository, library, session_guard)
+    return ProjectService(
+        repository, library, session_guard, ScheduleBindingRepository(session)
+    )
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]

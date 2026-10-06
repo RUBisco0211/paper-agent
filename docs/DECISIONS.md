@@ -60,6 +60,7 @@
 | 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | 当前 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
 | 0045 | frontend, product | 对话页采用 web_ui 双层导航、项目文献侧栏和日历容器 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
 | 0046 | product, frontend, data | 定时任务必须归属项目；日历按项目显示任务 | 当前 | [0046-schedules-belong-to-projects.md](decisions/0046-schedules-belong-to-projects.md) |
+| 0047 | product, agent, data, frontend | 项目自定义 prompt 用 AgentScope 定时触发；每次独立运行，任务页聚合结果 | 当前 | [0047-project-scheduled-agent-runs.md](decisions/0047-project-scheduled-agent-runs.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

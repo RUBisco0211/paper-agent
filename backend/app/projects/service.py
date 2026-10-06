@@ -4,6 +4,7 @@ import structlog
 
 from ..library.service import LibraryEntry, PaperLibraryService
 from ..platform.errors import ConflictError, ErrorCode, NotFoundError
+from ..schedules.repo import ScheduleBindingRepository
 from .domain import Project, normalize_name
 from .ports import ProjectSessionGuard
 from .repo import ProjectRepository
@@ -31,10 +32,12 @@ class ProjectService:
         repository: ProjectRepository,
         library: PaperLibraryService,
         session_guard: ProjectSessionGuard,
+        schedules: ScheduleBindingRepository,
     ) -> None:
         self._repository = repository
         self._library = library
         self._session_guard = session_guard
+        self._schedules = schedules
 
     def create(
         self,
@@ -103,6 +106,8 @@ class ProjectService:
         Personal library entries and the shared PDF facts are untouched.
         """
         self.get(user_id=user_id, project_id=project_id)
+        if self._schedules.has_project_tasks(user_id, project_id):
+            raise ConflictError("请先删除项目定时任务", code=ErrorCode.CONFLICT)
         if self._session_guard.has_project_sessions(
             user_id=user_id, project_id=project_id
         ):

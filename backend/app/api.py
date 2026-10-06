@@ -14,6 +14,7 @@ from .library.api import router as library_router
 from .platform.config import settings
 from .projects.api import router as projects_router
 from .retrieval.api import router as retrieval_router
+from .schedules.api import router as schedules_router
 from .sessions.api import bindings_router
 from .sessions.api import settings_router as agent_settings_router
 
@@ -27,6 +28,7 @@ def build_api_router() -> APIRouter:
     router.include_router(ingestion_router)
     router.include_router(projects_router)
     router.include_router(retrieval_router)
+    router.include_router(schedules_router)
     router.include_router(bindings_router)
     router.include_router(agent_settings_router)
     return router

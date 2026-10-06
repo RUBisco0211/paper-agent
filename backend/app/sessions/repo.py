@@ -26,6 +26,12 @@ class SessionBindingRecord(Base, CreatedAtMixin):
         nullable=True,
         index=True,
     )
+    schedule_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("schedule_bindings.schedule_id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
 
 class BoundCitationRecord(Base, CreatedAtMixin):
@@ -75,7 +81,8 @@ class SessionBindingRepository:
         self, *, user_id: UUID, limit: int, offset: int
     ) -> tuple[list[SessionBindingRecord], int]:
         statement = select(SessionBindingRecord).where(
-            SessionBindingRecord.user_id == user_id
+            SessionBindingRecord.user_id == user_id,
+            SessionBindingRecord.schedule_id.is_(None),
         )
         total = (
             self._session.scalar(
@@ -94,15 +101,43 @@ class SessionBindingRepository:
         return list(records), int(total)
 
     def add(
-        self, *, session_id: UUID, user_id: UUID, project_id: UUID | None
+        self,
+        *,
+        session_id: UUID,
+        user_id: UUID,
+        project_id: UUID | None,
+        schedule_id: str | None = None,
     ) -> SessionBindingRecord:
         record = SessionBindingRecord(
             session_id=session_id,
             user_id=user_id,
             project_id=project_id,
+            schedule_id=schedule_id,
         )
         self._session.add(record)
         self._session.flush()
+        return record
+
+    def add_scheduled_if_absent(
+        self,
+        *,
+        session_id: UUID,
+        user_id: UUID,
+        project_id: UUID,
+        schedule_id: str,
+    ) -> SessionBindingRecord:
+        self._session.execute(
+            pg_insert(SessionBindingRecord)
+            .values(
+                session_id=session_id,
+                user_id=user_id,
+                project_id=project_id,
+                schedule_id=schedule_id,
+            )
+            .on_conflict_do_nothing(index_elements=["session_id"]),
+        )
+        record = self.get(session_id)
+        assert record is not None
         return record
 
     def commit(self) -> None:
