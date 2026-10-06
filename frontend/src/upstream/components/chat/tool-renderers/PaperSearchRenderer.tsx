@@ -9,25 +9,34 @@ interface Evidence {
   page_end: number | null
 }
 
-function readEvidence(pair: ToolCallWithResult): Evidence[] {
+function readSearch(pair: ToolCallWithResult): { status: string; evidence: Evidence[] } {
   const text = getResultText(pair.result)
   try {
     const data: unknown = JSON.parse(text)
-    if (!data || typeof data !== "object" || !("evidence" in data) || !Array.isArray(data.evidence)) return []
-    return data.evidence.filter((item): item is Evidence =>
-      Boolean(item && typeof item.citation_id === "string" && typeof item.snippet === "string"),
-    )
+    if (!data || typeof data !== "object" || !("evidence" in data) || !Array.isArray(data.evidence)) {
+      return { status: "unavailable", evidence: [] }
+    }
+    return {
+      status: "status" in data && typeof data.status === "string" ? data.status : "ok",
+      evidence: data.evidence.filter((item): item is Evidence =>
+        Boolean(item && typeof item.citation_id === "string" && typeof item.snippet === "string"),
+      ),
+    }
   } catch {
-    return []
+    return { status: "unavailable", evidence: [] }
   }
 }
 
 function PaperEvidence({ pair }: { pair: ToolCallWithResult }) {
   const openCitation = useCitationOpen()
-  const evidence = readEvidence(pair)
-  if (!evidence.length) return <p className="p-3 text-sm text-muted-foreground">没有可引用的文献片段</p>
+  const { status, evidence } = readSearch(pair)
+  if (pair.result?.state === "error" || status === "unavailable") {
+    return <p role="alert" className="p-3 text-sm text-destructive">检索暂不可用，请重试</p>
+  }
+  if (!evidence.length) return <p className="p-3 text-sm text-muted-foreground">{status === "degraded" ? "检索已降级，未找到可引用的文献片段" : "没有可引用的文献片段"}</p>
   return (
     <div className="space-y-2 py-2">
+      {status === "degraded" && <p className="text-xs text-muted-foreground">检索已降级，本次仅使用可用通道</p>}
       {evidence.map((item) => (
         <div key={item.citation_id} className="rounded-xl border bg-card p-3 text-sm">
           <p className="line-clamp-4 whitespace-pre-wrap">{item.snippet}</p>
