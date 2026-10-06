@@ -48,7 +48,7 @@ cd frontend && pnpm run typecheck && pnpm run test && pnpm run build
 详情与内嵌 PDF）、项目、AgentScope 模型凭据设置和会话工作区（流式回答、工具状态与引用原文）。
 
 功能范围与验收标准见 `docs/DECISIONS.md` 的 0018–0034 一组（原功能规格文档已拆为决策条目）。
-AgentScope 服务、三个只读文献工具、会话绑定与引用回查已接入；旧会话执行链已移除，文献解析由独立 worker 消费数据库任务。真实 Provider 的浏览器端到端验收已列入 [TODO.md](TODO.md) 的 R8。
+AgentScope 服务、三个只读文献工具、会话绑定与引用回查已接入；旧会话执行链已移除，文献解析由独立 worker 消费数据库任务。DeepSeek 浏览器主路径已验证；剩余边界回测见 [TODO.md](TODO.md) 的 R8。
 
 ## 数据流向
 

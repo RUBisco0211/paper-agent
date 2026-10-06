@@ -17,6 +17,7 @@ import {
 	FileText,
 	FileVideo2,
 	Loader2,
+	Square,
 	TriangleAlert,
 } from 'lucide-react';
 import * as mime from 'mime-types';
@@ -417,6 +418,7 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 	// separate alert below the body.
 	const errorInfo = message.error;
 	const isError = message.finished_reason === ReplyFinishedReason.ERROR || !!errorInfo;
+	const isInterrupted = message.finished_reason === ReplyFinishedReason.INTERRUPTED;
 
 	const startMs = new Date(message.created_at).getTime();
 	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
@@ -461,13 +463,16 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 					<MessageFooter className="font-mono">
 						<Badge
 							variant="secondary"
-							aria-label={isRunning ? t('messageBubble.running') : undefined}
+							aria-label={isRunning ? t('messageBubble.running') : isInterrupted ? t('messageBubble.stopped') : undefined}
 						>
 							{isRunning ? (
 								<Loader2 data-icon="inline-start" className="animate-spin" />
+							) : isInterrupted ? (
+								<Square data-icon="inline-start" />
 							) : (
 								<CheckCircle data-icon="inline-start" />
 							)}
+							{isInterrupted && <span>{t('messageBubble.stopped')}</span>}
 							<span className="tabular-nums tracking-tighter">{elapsedText}</span>
 							{hasUsage && (
 								<>
