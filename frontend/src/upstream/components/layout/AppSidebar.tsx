@@ -20,20 +20,20 @@ export function AppSidebar() {
 
   return <Sidebar collapsible="none" className="w-16 border-r [&_[data-slot=sidebar-container]]:w-16 [&_[data-slot=sidebar-inner]]:w-16">
     <SidebarHeader className="items-center px-2 pt-4">
-      <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground font-semibold" aria-label="Paper Agent">P</span>
+      <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-semibold" aria-label="Paper Agent">P</span>
     </SidebarHeader>
     <SidebarContent className="pt-5">
       <SidebarGroup className="px-2"><SidebarGroupContent><SidebarMenu>
         {routes.map(({ to, label, icon: Icon }) => <SidebarMenuItem key={to}>
-          <SidebarMenuButton asChild tooltip={{ children: label, hidden: false }} isActive={location.pathname === to || location.pathname.startsWith(`${to}/`)} className="mx-auto size-10! justify-center p-0! [&_svg]:size-5!">
+          <SidebarMenuButton asChild tooltip={{ children: label, hidden: false }} isActive={location.pathname === to || location.pathname.startsWith(`${to}/`)} className="mx-auto size-8! justify-center p-0!">
             <NavLink to={to} aria-label={label}><Icon /><span className="sr-only">{label}</span></NavLink>
           </SidebarMenuButton>
         </SidebarMenuItem>)}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
     </SidebarContent>
     <SidebarFooter className="items-center px-2 pb-4"><SidebarMenu><SidebarMenuItem>
-      <DropdownMenu><DropdownMenuTrigger asChild><SidebarMenuButton size="lg" aria-label="账户" className="mx-auto size-10! justify-center p-1!">
-        <Avatar className="size-8"><AvatarFallback>{(user?.display_name || user?.email || "?").slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
+      <DropdownMenu><DropdownMenuTrigger asChild><SidebarMenuButton size="lg" aria-label="账户" className="mx-auto size-8! justify-center p-0!">
+        <Avatar className="size-7"><AvatarFallback>{(user?.display_name || user?.email || "?").slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
       </SidebarMenuButton></DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="end" className="w-52">
           <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel><DropdownMenuSeparator />
