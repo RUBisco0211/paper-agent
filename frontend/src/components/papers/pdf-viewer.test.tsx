@@ -89,3 +89,17 @@ it("lets the user select PDF text and copy it from the context menu", async () =
   await user.click(await screen.findByRole("menuitem", { name: "复制" }))
   expect(await navigator.clipboard.readText()).toBe("Selectable PDF text")
 })
+
+it("zooms with a modifier wheel and scrolls horizontally with shift wheel", async () => {
+  render(<PdfViewer paperId="paper-1" />)
+  const region = await screen.findByRole("region", { name: "PDF 页面" })
+  fireEvent.wheel(region, { ctrlKey: true, deltaY: -100 })
+  expect(await screen.findByText("125%")).toBeTruthy()
+  Object.defineProperty(region, "scrollLeft", { configurable: true, writable: true, value: 20 })
+  fireEvent.wheel(region, { shiftKey: true, deltaY: 60 })
+  expect(region.scrollLeft).toBe(80)
+  fireEvent.keyDown(region, { ctrlKey: true, key: "-" })
+  expect(await screen.findByText("100%")).toBeTruthy()
+  fireEvent.keyDown(region, { shiftKey: true, key: "ArrowRight" })
+  expect(region.scrollLeft).toBe(160)
+})

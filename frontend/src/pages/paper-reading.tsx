@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, PanelRightClose, PanelRightOpen } from "lucide-react"
+import { ArrowLeft, Copy, Info, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { useEffect, useState } from "react"
 import katex from "katex"
 import "katex/dist/katex.min.css"
@@ -11,6 +11,7 @@ import { useApi } from "@/lib/api/provider"
 import type { PaperBlock } from "@/lib/api/types"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { Button } from "@upstream/components/ui/button"
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@upstream/components/ui/resizable"
 import { Skeleton } from "@upstream/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@upstream/components/ui/tabs"
 
@@ -150,16 +151,21 @@ export function PaperReadingPage() {
         <h1 className="truncate font-medium">{paper.data?.title || paper.data?.original_filename || "文献"}</h1>
         {paper.data && <p className="text-muted-foreground truncate text-xs">{paper.data.authors.join("、") || "作者未知"}{paper.data.year ? ` · ${paper.data.year}` : ""}</p>}
       </div>
-      <Button variant="ghost" size="sm" onClick={() => setInfoOpen(true)}>文献信息</Button>
+      <Button variant="ghost" size="icon-sm" aria-label="文献信息" title="文献信息" onClick={() => setInfoOpen(true)}><Info /></Button>
       <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => setPanelOpen(!panelOpen)}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
     </header>
-    <div className="flex min-h-0 flex-1">
-      <main className="min-w-0 flex-1 overflow-hidden">
-        {paper.isPending ? <Skeleton className="m-4 h-[80%]" /> : paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data?.pdf.available ? <PdfViewer paperId={paperId} target={target} /> : <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p>}
-      </main>
-      {panelOpen && <aside aria-label="文献分块" className="flex w-80 shrink-0 flex-col overflow-hidden border-l bg-background">
-        {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null) }} className="min-h-0 flex-1">
-          <div className="overflow-x-auto border-b px-2">
+    <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+      <ResizablePanel minSize="20rem" className="min-h-0 min-w-0">
+        <main className="h-full min-w-0 overflow-hidden">
+          {paper.isPending ? <Skeleton className="m-4 h-[80%]" /> : paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data?.pdf.available ? <PdfViewer paperId={paperId} target={target} /> : <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p>}
+        </main>
+      </ResizablePanel>
+      {panelOpen && <>
+        <ResizableHandle aria-label="调整分块宽度" withHandle />
+        <ResizablePanel defaultSize="26rem" minSize="20rem" maxSize="50rem" className="min-h-0 min-w-0">
+          <aside aria-label="文献分块" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+        {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null) }} className="h-full min-h-0 flex-1 gap-0">
+          <div className="flex h-12 shrink-0 items-center overflow-x-auto border-b px-2">
             <TabsList variant="line" className="w-max">
               {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
             </TabsList>
@@ -186,8 +192,10 @@ export function PaperReadingPage() {
             {blocks.hasNextPage && <Button className="mt-2 w-full" variant="ghost" size="sm" disabled={blocks.isFetchingNextPage} onClick={() => void blocks.fetchNextPage()}>加载更多</Button>}
           </div>
         </Tabs> : <p className="p-4 text-sm text-muted-foreground">{overview.isError ? describeError(overview.error) : paper.data?.capabilities.has_fulltext ? "暂无原文片段" : "文献尚未完成解析"}</p>}
-      </aside>}
-    </div>
+          </aside>
+        </ResizablePanel>
+      </>}
+    </ResizablePanelGroup>
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
   </div>
 }

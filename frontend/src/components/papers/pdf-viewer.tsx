@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type RefObject } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
 import { ChevronLeft, ChevronRight, Copy, Minus, Plus } from "lucide-react"
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy, type PDFDocumentLoadingTask } from "pdfjs-dist"
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
@@ -36,6 +36,22 @@ export function PdfViewer({
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+
+  useEffect(() => {
+    const element = scrollRef.current
+    if (!element) return
+    function handleWheel(event: WheelEvent) {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault()
+        setScale((value) => Math.min(3, Math.max(0.5, value + (event.deltaY < 0 ? 0.25 : -0.25))))
+      } else if (event.shiftKey && element) {
+        event.preventDefault()
+        element.scrollLeft += event.deltaY || event.deltaX
+      }
+    }
+    element.addEventListener("wheel", handleWheel, { passive: false })
+    return () => element.removeEventListener("wheel", handleWheel)
+  }, [document])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -93,6 +109,16 @@ export function PdfViewer({
     if (closest !== currentPage) setCurrentPage(closest)
   }
 
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && (event.key === "+" || event.key === "=" || event.key === "-")) {
+      event.preventDefault()
+      setScale((value) => Math.min(3, Math.max(0.5, value + (event.key === "-" ? -0.25 : 0.25))))
+    } else if (event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault()
+      event.currentTarget.scrollLeft += event.key === "ArrowLeft" ? -80 : 80
+    }
+  }
+
   function showTextMenu(event: MouseEvent<HTMLDivElement>) {
     const selection = window.getSelection()
     const root = scrollRef.current
@@ -122,17 +148,17 @@ export function PdfViewer({
   if (!document) return <div className="flex h-full flex-col gap-2 p-6"><Skeleton className="h-6 w-40" /><Skeleton className="h-full w-full" /></div>
 
   return <div className={className ?? "flex h-full w-full min-h-0 flex-col"}>
-    <div className="flex shrink-0 items-center justify-center gap-2 border-b px-2 py-1">
+    <div className="flex h-12 shrink-0 items-center justify-center gap-2 border-b px-2">
       <Button aria-label="上一页" title="上一页" variant="ghost" size="icon" disabled={currentPage <= 1} onClick={() => goToPage(currentPage - 1)}><ChevronLeft /></Button>
       <span className="min-w-16 text-center text-xs tabular-nums">{currentPage} / {document.numPages}</span>
       <Button aria-label="下一页" title="下一页" variant="ghost" size="icon" disabled={currentPage >= document.numPages} onClick={() => goToPage(currentPage + 1)}><ChevronRight /></Button>
       <span className="bg-border mx-1 h-5 w-px" />
-      <Button aria-label="缩小" title="缩小" variant="ghost" size="icon" disabled={scale <= 0.5} onClick={() => setScale((value) => Math.max(0.5, value - 0.25))}><Minus /></Button>
+      <Button aria-label="缩小" title="缩小（Ctrl/⌘ + 滚轮）" variant="ghost" size="icon" disabled={scale <= 0.5} onClick={() => setScale((value) => Math.max(0.5, value - 0.25))}><Minus /></Button>
       <span className="min-w-9 text-center text-xs tabular-nums">{Math.round(scale * 100)}%</span>
-      <Button aria-label="放大" title="放大" variant="ghost" size="icon" disabled={scale >= 3} onClick={() => setScale((value) => Math.min(3, value + 0.25))}><Plus /></Button>
+      <Button aria-label="放大" title="放大（Ctrl/⌘ + 滚轮）" variant="ghost" size="icon" disabled={scale >= 3} onClick={() => setScale((value) => Math.min(3, value + 0.25))}><Plus /></Button>
     </div>
-    <div ref={scrollRef} role="region" aria-label="PDF 页面" onScroll={trackScroll} onContextMenu={showTextMenu} className="bg-muted/30 min-h-0 flex-1 overflow-auto p-3">
-      <div className="flex flex-col items-center gap-4">
+    <div ref={scrollRef} role="region" aria-label="PDF 页面" tabIndex={0} onScroll={trackScroll} onKeyDown={handleKeyDown} onContextMenu={showTextMenu} className="bg-muted/30 min-h-0 flex-1 overflow-auto p-3">
+      <div className="flex min-w-full w-max flex-col items-center gap-4">
         {Array.from({ length: document.numPages }, (_, index) => {
           const number = index + 1
           return <PdfPageCanvas key={number} document={document} number={number} scale={scale} target={target?.page === number ? target : undefined} rootRef={scrollRef} pageRef={(element) => {

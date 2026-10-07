@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
+import type { ReactNode } from "react"
 import { expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
@@ -11,6 +12,11 @@ import { PaperReadingPage } from "@/pages/paper-reading"
 
 vi.mock("@/components/papers/pdf-viewer", () => ({
   PdfViewer: ({ target }: { target?: { page: number } }) => <p>PDF 第 {target?.page ?? 1} 页</p>,
+}))
+vi.mock("@upstream/components/ui/resizable", () => ({
+  ResizablePanelGroup: ({ children, className }: { children: ReactNode; className?: string }) => <div className={className}>{children}</div>,
+  ResizablePanel: ({ children, className, defaultSize }: { children: ReactNode; className?: string; defaultSize?: string }) => <div className={className} data-default-size={defaultSize}>{children}</div>,
+  ResizableHandle: ({ "aria-label": label }: { "aria-label": string }) => <div role="separator" aria-label={label} />,
 }))
 
 it("shows MinerU block type tabs and locates the selected block when it is clicked", async () => {
@@ -104,4 +110,23 @@ it("renders a MinerU display equation without showing its image fallback or raw 
   await waitFor(() => expect(document.querySelector(".katex")).toBeTruthy())
   expect(screen.queryByText("图片预览不可用")).toBeNull()
   expect(screen.queryByText(/\$\$ E = mc\^2 \$\$/)).toBeNull()
+})
+
+it("keeps the paper toolbars aligned and lets the block sidebar be resized", async () => {
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.includes("/blocks")) return new Response(JSON.stringify({ types: ["text"], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  expect(await screen.findByRole("tab", { name: "正文" })).toBeTruthy()
+  expect(screen.getByRole("button", { name: "文献信息" }).querySelector("svg")).toBeTruthy()
+  expect(screen.getByRole("separator", { name: "调整分块宽度" })).toBeTruthy()
+  expect(screen.getByRole("complementary", { name: "文献分块" }).querySelector("[data-slot=tabs]")?.className).toContain("h-full")
 })
