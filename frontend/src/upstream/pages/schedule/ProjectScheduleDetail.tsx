@@ -1,19 +1,27 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
-import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
+import { Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
+import { useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 import type { ProjectSchedule } from "@/lib/project-schedules"
 import { scheduleApi } from "@upstream/api/schedule"
-import { sessionApi } from "@upstream/api/session"
-import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
-import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { Button } from "@upstream/components/ui/button"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@upstream/components/ui/tooltip"
-import { BoundCitationSheet } from "@upstream/pages/chat/BoundCitationSheet"
 import { parseCronExpression } from "./schedule-utils"
 import { describeScheduleFrequency } from "./schedule-frequency"
+
+function formatRunTime(value: string, timezone: string): string {
+  // AgentScope stores UTC without an offset; Date would otherwise read it as local time.
+  const timestamp = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : `${value}Z`
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return "时间未知"
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: timezone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  }).format(date)
+}
 
 export function ProjectScheduleDetail({
   task,
@@ -24,10 +32,9 @@ export function ProjectScheduleDetail({
   onClose: () => void
   onDelete: (scheduleId: string) => Promise<void>
 }) {
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [citationId, setCitationId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const scheduleId = task?.schedule.id ?? ""
   const runs = useQuery({
@@ -35,18 +42,6 @@ export function ProjectScheduleDetail({
     queryFn: () => scheduleApi.listSessions(scheduleId),
     enabled: Boolean(scheduleId),
   })
-  const runId = selectedRunId ?? runs.data?.sessions[0]?.id ?? null
-  const messages = useQuery({
-    queryKey: ["schedule-run-messages", runId],
-    queryFn: () => sessionApi.messages(runId!, task!.schedule.agent_id),
-    enabled: Boolean(runId && task),
-  })
-
-  useEffect(() => {
-    setSelectedRunId(null)
-    setCitationId(null)
-    setError("")
-  }, [scheduleId])
 
   if (!task) return null
   const parsed = parseCronExpression(task.schedule.data.cron_expression, task.schedule.data.started_at)
@@ -92,8 +87,7 @@ export function ProjectScheduleDetail({
           <TooltipProvider>
             <div className="flex shrink-0 items-center gap-1">
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={task.schedule.data.enabled ? "暂停任务" : "启用任务"} disabled={busy} onClick={() => void changeEnabled()}>{task.schedule.data.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}</Button></TooltipTrigger><TooltipContent>{task.schedule.data.enabled ? "暂停任务" : "启用任务"}</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="刷新结果" disabled={runs.isFetching || messages.isFetching} onClick={() => { void runs.refetch(); if (runId) void messages.refetch() }}><RefreshCw className="size-4" /></Button></TooltipTrigger><TooltipContent>刷新结果</TooltipContent></Tooltip>
-              {runId && <Tooltip><TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><Link to={`/scheduled/${task.schedule.id}/runs/${runId}`} aria-label="打开会话" onClick={onClose}><ExternalLink className="size-4" /></Link></Button></TooltipTrigger><TooltipContent>打开会话</TooltipContent></Tooltip>}
+              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="刷新结果" disabled={runs.isFetching} onClick={() => void runs.refetch()}><RefreshCw className="size-4" /></Button></TooltipTrigger><TooltipContent>刷新结果</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="删除任务" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void remove()}><Trash2 className="size-4" /></Button></TooltipTrigger><TooltipContent>删除任务</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><SheetClose asChild><Button variant="ghost" size="icon-sm" aria-label="关闭"><X className="size-4" /></Button></SheetClose></TooltipTrigger><TooltipContent>关闭</TooltipContent></Tooltip>
             </div>
@@ -106,15 +100,11 @@ export function ProjectScheduleDetail({
           {runs.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
           {runs.isError && <p role="alert" className="text-sm text-destructive">无法读取运行记录</p>}
           {runs.data?.sessions.length === 0 && <p className="text-sm text-muted-foreground">尚无运行记录</p>}
-          <div className="mb-4 flex flex-wrap gap-2">
-            {runs.data?.sessions.map((run) => <Button key={run.id} size="sm" variant={run.id === runId ? "secondary" : "outline"} onClick={() => setSelectedRunId(run.id)}>{new Date(run.created_at).toLocaleString()}</Button>)}
+          <div className="flex flex-col gap-1">
+            {runs.data?.sessions.map((run) => <Button key={run.id} type="button" variant="ghost" className="w-full justify-start text-left" onClick={() => { onClose(); navigate(`/scheduled/${task.schedule.id}/runs/${run.id}`) }}>{formatRunTime(run.created_at, task.schedule.data.timezone)}</Button>)}
           </div>
-          {messages.isPending && runId && <p className="text-sm text-muted-foreground">加载结果中…</p>}
-          {messages.isError && <p role="alert" className="text-sm text-destructive">无法读取此次结果</p>}
-          {messages.data && <CitationProvider onOpen={setCitationId}><div className="mx-auto max-w-3xl space-y-4">{messages.data.messages.filter((message) => message.role === "assistant").map((message) => <ASMessageBubble key={message.id} message={message} onUserConfirm={() => setError("定时任务无法等待人工确认")} />)}</div></CitationProvider>}
         </div>
       </SheetContent>
     </Sheet>
-    {runId && <BoundCitationSheet sessionId={runId} citationId={citationId} onOpenChange={(open) => !open && setCitationId(null)} />}
   </>
 }

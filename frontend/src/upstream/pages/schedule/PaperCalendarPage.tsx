@@ -144,6 +144,6 @@ export function PaperCalendarPage() {
       </main>
     </div>
     <ProjectScheduleDialog projects={projects.data ?? []} projectId={selectedProjectId} onProjectChange={setCreateProjectId} models={models.data ?? []} open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateProjectId(null) }} onCreate={create} />
-    <ProjectScheduleDetail task={selectedTask} onClose={() => setSelectedTaskId(null)} onDelete={remove} />
+    {selectedTask && <ProjectScheduleDetail task={selectedTask} onClose={() => setSelectedTaskId(null)} onDelete={remove} />}
   </SidebarProvider>
 }

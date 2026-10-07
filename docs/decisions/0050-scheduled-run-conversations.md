@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-07
 - TAGS: product, frontend, agent
-- STATUS: 当前
+- STATUS: 已被 0051 取代
 - SUPERSEDES: —
 
 ## DECISION

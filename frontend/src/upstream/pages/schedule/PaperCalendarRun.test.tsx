@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { expect, it, vi } from "vitest"
 
@@ -11,13 +12,13 @@ vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { projects: { list:
 vi.mock("@/lib/project-schedules", () => ({
   listProjectSchedules: async () => [{ projectId: null, schedule: { id: "task-1", agent_id: "agent-1", data: { name: "问候", enabled: true, cron_expression: "0 10 * * *", started_at: "2026-10-07T00:00:00Z", timezone: "Asia/Shanghai" } } }],
 }))
-vi.mock("@upstream/api/schedule", () => ({ scheduleApi: { listSessions: async () => ({ sessions: [{ id: "run-1", agent_id: "agent-1", source_schedule_id: "task-1", config: { name: "问候" } }], total: 1 }) } }))
+vi.mock("@upstream/api/schedule", () => ({ scheduleApi: { listSessions: async () => ({ sessions: [{ id: "run-1", agent_id: "agent-1", source_schedule_id: "task-1", created_at: "2026-10-07T02:00:00", config: { name: "问候" } }], total: 1 }) } }))
 vi.mock("@upstream/pages/chat/PaperChatPage", () => ({ PaperChatPage: ({ scheduledRun }: { scheduledRun: { id: string } }) => <div>运行会话 {scheduledRun.id}</div> }))
 vi.mock("./calendar-tab-page", () => ({ CalendarTabPage: () => <div>日历网格</div> }))
-vi.mock("./ProjectScheduleDetail", () => ({ ProjectScheduleDetail: () => null }))
 
 function renderRun(path: string) {
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={[path]}><Routes>
+    <Route path="/scheduled" element={<PaperCalendarPage />} />
     <Route path="/scheduled/:scheduleId/runs/:sessionId" element={<PaperCalendarPage />} />
   </Routes></MemoryRouter></QueryClientProvider>)
 }
@@ -27,6 +28,15 @@ it("shows a run in the scheduled main area when it belongs to the task", async (
   expect(await screen.findByText("运行会话 run-1")).toBeTruthy()
   expect(screen.getByText("定时任务")).toBeTruthy()
   expect(screen.getByRole("link", { name: "返回月视图" })).toBeTruthy()
+})
+
+it("opens a scheduled conversation when its run record is clicked", async () => {
+  const user = userEvent.setup()
+  renderRun("/scheduled")
+  await user.click(await screen.findByRole("button", { name: "问候" }))
+  await user.click(await screen.findByRole("button", { name: "2026/10/07 10:00:00" }))
+  expect(await screen.findByText("运行会话 run-1")).toBeTruthy()
+  expect(screen.getByText("定时任务")).toBeTruthy()
 })
 
 it("does not open an unlisted run when its id is in the URL", async () => {
