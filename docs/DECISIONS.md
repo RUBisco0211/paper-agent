@@ -75,6 +75,7 @@
 | 0059 | frontend, library, product | 文献块显示图片与公式预览，PDF 连续滚动并按可见页绘制 | 当前 | [0059-paper-block-previews-continuous-pdf.md](decisions/0059-paper-block-previews-continuous-pdf.md) |
 | 0060 | frontend, library, product | PDF 叠加可选文本层并提供复制菜单；旧 MinerU 图片路径回退，公式优先渲染源码 | 当前 | [0060-paper-text-selection-and-legacy-previews.md](decisions/0060-paper-text-selection-and-legacy-previews.md) |
 | 0061 | frontend, library | 文献阅读双栏统一工具栏高度，分块侧栏可拖拽，PDF 支持滚轮及键盘快捷操作 | 当前 | [0061-paper-reading-controls.md](decisions/0061-paper-reading-controls.md) |
+| 0062 | frontend, library | 文献信息抽屉不再重复渲染 PDF；阅读页并行加载，图片和图表共用大图查看器 | 当前 | [0062-paper-preview-and-loading.md](decisions/0062-paper-preview-and-loading.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

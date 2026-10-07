@@ -32,7 +32,6 @@ import { Spinner } from "@upstream/components/ui/spinner"
 import { Textarea } from "@upstream/components/ui/textarea"
 import { AddToProjectMenu } from "@/components/papers/add-to-project-menu"
 import { PaperStatusBadge, stageLabel } from "@/components/papers/paper-status"
-import { PdfViewer } from "@/components/papers/pdf-viewer"
 import { METADATA_STATUS_LABEL, PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
 import { useAgentUi } from "@/lib/agent-ui"
@@ -419,14 +418,6 @@ export function PaperDetailSheet({
                 ) : null}
               </section>
 
-              {paper.capabilities.has_pdf ? (
-                <section className="flex flex-col gap-2">
-                  <h3 className="text-sm font-medium">原文</h3>
-                  <div className="h-[28rem] overflow-hidden rounded-md border">
-                    <PdfViewer paperId={paper.id} />
-                  </div>
-                </section>
-              ) : null}
             </div>
           ) : null}
         </div>

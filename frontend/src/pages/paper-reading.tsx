@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, Info, PanelRightClose, PanelRightOpen } from "lucide-react"
+import { ArrowLeft, Copy, Info, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
 import { useEffect, useState } from "react"
 import katex from "katex"
 import "katex/dist/katex.min.css"
@@ -11,8 +11,8 @@ import { useApi } from "@/lib/api/provider"
 import type { PaperBlock } from "@/lib/api/types"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { Button } from "@upstream/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@upstream/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@upstream/components/ui/resizable"
-import { Skeleton } from "@upstream/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@upstream/components/ui/tabs"
 
 const BLOCK_LABELS: Record<string, string> = {
@@ -44,7 +44,11 @@ function normalizeFormula(formula: string): string {
   return text
 }
 
-function BlockImagePreview({ paperId, block }: { paperId: string; block: PaperBlock }) {
+function BlockImagePreview({ paperId, block, onOpen }: {
+  paperId: string
+  block: PaperBlock
+  onOpen?: (source: string) => void
+}) {
   const { api } = useApi()
   const [source, setSource] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
@@ -67,7 +71,10 @@ function BlockImagePreview({ paperId, block }: { paperId: string; block: PaperBl
   }, [api, paperId, block.id])
   if (failed) return <span className="text-muted-foreground text-xs">图片预览不可用</span>
   if (!source) return <span className="bg-muted block h-24 animate-pulse rounded-sm" />
-  return <img src={source} alt={block.text || "图片预览"} className="max-h-48 w-full rounded-sm object-contain" />
+  const image = <img src={source} alt={block.text || "图片预览"} className="max-h-48 w-full rounded-sm object-contain" />
+  return onOpen
+    ? <button type="button" aria-label={block.type === "chart" ? "查看图表" : "查看图片"} className="w-full cursor-zoom-in" onClick={() => onOpen(source)}>{image}</button>
+    : image
 }
 
 export function PaperReadingPage() {
@@ -85,6 +92,8 @@ export function PaperReadingPage() {
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
   const [infoOpen, setInfoOpen] = useState(false)
+  const [imageViewer, setImageViewer] = useState<{ source: string; title: string } | null>(null)
+  const [imageZoom, setImageZoom] = useState(1)
 
   const paper = useQuery({
     queryKey: ["paper", paperId],
@@ -152,19 +161,19 @@ export function PaperReadingPage() {
         {paper.data && <p className="text-muted-foreground truncate text-xs">{paper.data.authors.join("、") || "作者未知"}{paper.data.year ? ` · ${paper.data.year}` : ""}</p>}
       </div>
       <Button variant="ghost" size="icon-sm" aria-label="文献信息" title="文献信息" onClick={() => setInfoOpen(true)}><Info /></Button>
-      <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => setPanelOpen(!panelOpen)}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
+      <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => { setPanelOpen(!panelOpen); setImageViewer(null) }}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
     </header>
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel minSize="20rem" className="min-h-0 min-w-0">
         <main className="h-full min-w-0 overflow-hidden">
-          {paper.isPending ? <Skeleton className="m-4 h-[80%]" /> : paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data?.pdf.available ? <PdfViewer paperId={paperId} target={target} /> : <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p>}
+        {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} />}
         </main>
       </ResizablePanel>
       {panelOpen && <>
         <ResizableHandle aria-label="调整分块宽度" withHandle />
         <ResizablePanel defaultSize="26rem" minSize="20rem" maxSize="50rem" className="min-h-0 min-w-0">
           <aside aria-label="文献分块" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-        {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null) }} className="h-full min-h-0 flex-1 gap-0">
+        {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null); setImageViewer(null) }} className="h-full min-h-0 flex-1 gap-0">
           <div className="flex h-12 shrink-0 items-center overflow-x-auto border-b px-2">
             <TabsList variant="line" className="w-max">
               {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
@@ -180,12 +189,14 @@ export function PaperReadingPage() {
                 <button type="button" onClick={() => selectBlock(block)} className="w-full px-3 py-2 text-left">
                   <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
                   <span className="mt-1 block">
-                    {block.has_image && (block.type === "image" || (isFormula && !block.formula)) && <BlockImagePreview paperId={paperId} block={block} />}
                     {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
-                    {block.text && (!markup || block.type === "image") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
+                    {block.text && (!markup || block.type === "image" || block.type === "chart") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
                     {!block.text && !markup && !block.has_image && <span className="text-muted-foreground text-sm">{blockLabel(block.type)}</span>}
                   </span>
                 </button>
+                {block.has_image && (block.type === "image" || block.type === "chart" || (isFormula && !block.formula)) && <div className="px-3 pb-2">
+                  <BlockImagePreview paperId={paperId} block={block} onOpen={block.type === "image" || block.type === "chart" ? (source) => { setImageViewer({ source, title: block.type === "chart" ? "图表预览" : "图片预览" }); setImageZoom(1) } : undefined} />
+                </div>}
                 {canCopy && <Button variant="ghost" size="icon-sm" className="absolute right-1 top-1" aria-label={isFormula ? "复制公式" : "复制正文"} title={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button>}
               </div>
             })}
@@ -197,5 +208,22 @@ export function PaperReadingPage() {
       </>}
     </ResizablePanelGroup>
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
+    <Dialog open={Boolean(imageViewer)} onOpenChange={(open) => { if (!open) setImageViewer(null) }}>
+      <DialogContent className="flex h-[92vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4 pr-12">
+          <DialogTitle className="min-w-0 flex-1 truncate">{imageViewer?.title}</DialogTitle>
+          <DialogDescription className="sr-only">放大或缩小图片以查看细节</DialogDescription>
+          <Button variant="ghost" size="icon-sm" aria-label="缩小图片" disabled={imageZoom <= 0.5} onClick={() => setImageZoom((value) => Math.max(0.5, value - 0.25))}><Minus /></Button>
+          <span className="min-w-10 text-center text-xs tabular-nums">{Math.round(imageZoom * 100)}%</span>
+          <Button variant="ghost" size="icon-sm" aria-label="放大图片" disabled={imageZoom >= 4} onClick={() => setImageZoom((value) => Math.min(4, value + 0.25))}><Plus /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="重置缩放" onClick={() => setImageZoom(1)}><RotateCcw /></Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-4">
+          <div className="flex min-h-full min-w-full items-center justify-center">
+            {imageViewer && <img src={imageViewer.source} alt={imageViewer.title} className="h-auto shrink-0 object-contain" style={{ width: imageZoom === 1 ? "auto" : `${imageZoom * 90}vw`, maxWidth: imageZoom === 1 ? "100%" : "none", maxHeight: imageZoom === 1 ? "calc(92vh - 5rem)" : "none" }} />}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 }

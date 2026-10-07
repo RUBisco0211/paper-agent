@@ -9,6 +9,8 @@ import { createQueryClient } from "@/app/query"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { ApiProvider } from "@/lib/api/provider"
 
+vi.mock("@/components/papers/pdf-viewer", () => ({ PdfViewer: () => <div>重复 PDF 预览</div> }))
+
 const PAPER = {
   id: "p1",
   title: "注意力机制",
@@ -43,6 +45,19 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe("PaperDetailSheet", () => {
+  it("PaperDetailSheet omits the PDF viewer when paper information opens", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => String(input).includes("/v1/projects")
+      ? json({ items: [], total: 0, limit: 100, offset: 0 })
+      : json({ ...PAPER, capabilities: { ...PAPER.capabilities, has_pdf: true }, pdf: { available: true, page_count: 2, byte_size: 1000 } }))
+    render(<QueryClientProvider client={createQueryClient()}>
+      <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+        <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
+      </ApiProvider>
+    </QueryClientProvider>)
+    expect(await screen.findByText("注意力机制")).toBeTruthy()
+    expect(screen.queryByText("重复 PDF 预览")).toBeNull()
+    expect(screen.queryByRole("heading", { name: "原文" })).toBeNull()
+  })
   it("shows completed steps with a visible check and one section divider", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })

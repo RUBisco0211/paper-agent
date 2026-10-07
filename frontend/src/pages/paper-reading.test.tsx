@@ -130,3 +130,44 @@ it("keeps the paper toolbars aligned and lets the block sidebar be resized", asy
   expect(screen.getByRole("separator", { name: "调整分块宽度" })).toBeTruthy()
   expect(screen.getByRole("complementary", { name: "文献分块" }).querySelector("[data-slot=tabs]")?.className).toContain("h-full")
 })
+
+it("PaperReadingPage starts PDF loading when metadata is pending", async () => {
+  let resolveDetail: ((response: Response) => void) | undefined
+  const fetchImpl = vi.fn((input: string | URL) => {
+    if (String(input).endsWith("/v1/papers/p1")) return new Promise<Response>((resolve) => { resolveDetail = resolve })
+    return Promise.resolve(new Response(JSON.stringify({ types: [], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } }))
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
+  resolveDetail?.(new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: false } }), { headers: { "Content-Type": "application/json" } }))
+})
+
+it("PaperReadingPage opens a zoomable preview when a chart has an image", async () => {
+  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:chart"), revokeObjectURL: vi.fn() }))
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.endsWith("/blocks/5/image")) return new Response(new Blob(["chart"], { type: "image/png" }))
+    if (url.includes("/blocks")) return new Response(JSON.stringify({
+      types: ["chart"], items: [{ id: 5, type: "chart", page: 2, text: "统计图", has_image: true }], total: 1, offset: 0, limit: 50,
+    }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "查看图表" }))
+  expect(await screen.findByRole("dialog", { name: "图表预览" })).toBeTruthy()
+  await user.click(screen.getByRole("button", { name: "放大图片" }))
+  expect(screen.getByText("125%")).toBeTruthy()
+})
