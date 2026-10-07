@@ -69,6 +69,8 @@ def check_agent_internal_key() -> None:
 def check_storage() -> None:
     """启动时确认对象存储可用（会顺带创建缺失的 bucket）。"""
     backend = settings.storage_backend
+    if settings.environment != "development" and backend != "s3":
+        raise RuntimeError("生产环境必须配置 S3 兼容对象存储")
     try:
         storage = get_object_storage()
         probe = "system/startup-probe"
@@ -80,7 +82,7 @@ def check_storage() -> None:
             backend=backend,
             error=type(exc).__name__,
         )
-        return
+        raise RuntimeError("对象存储不可用，无法启动业务服务") from exc
     logger.info(
         "configuration.storage_ready",
         backend=backend,

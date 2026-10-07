@@ -1,3 +1,5 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Lock
 from uuid import UUID
 
 from sqlalchemy.orm import Session, sessionmaker
@@ -8,7 +10,8 @@ from app.ingestion.repo import (
     IngestionRepository,
     IngestionStageRecordOrm,
 )
-from app.library.repo import UserPaperRecord
+from app.ingestion.service import IngestionService
+from app.library.repo import PaperRepository, UserPaperRecord
 from app.platform.tasks import ApiTaskScheduler
 from app.processing.worker import IngestionWorker
 
@@ -19,6 +22,75 @@ class RecordingPipeline:
 
     def run_sync(self, job_id: UUID) -> None:
         self.jobs.append(job_id)
+
+
+def test_concurrent_requests_share_one_paper_and_one_active_job(
+    session_factory: sessionmaker[Session],
+    db_session: Session,
+) -> None:
+    gate = Barrier(2, timeout=5)
+
+    def create() -> tuple[UUID, UUID]:
+        with session_factory() as session:
+            papers = PaperRepository(session)
+            gate.wait()
+            paper = papers.get_or_add_paper(
+                file_hash="a" * 64, byte_size=100, page_count=1
+            )
+            session.commit()
+            service = IngestionService(IngestionRepository(session), papers)
+            job = service.start_for_paper(paper.id)
+            assert job is not None
+            return paper.id, job.id
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: create(), range(2)))
+    assert results[0] == results[1]
+
+
+def test_worker_runs_distinct_jobs_concurrently_when_capacity_is_two(
+    session_factory: sessionmaker[Session],
+    db_session: Session,
+    register_user,
+    client,
+    api_prefix,
+    make_pdf,
+) -> None:
+    token = register_user(email="parallel-worker@example.com")["access_token"]
+    paper_ids = []
+    for page_count in (1, 2):
+        response = client.post(
+            f"{api_prefix}/papers",
+            headers={"Authorization": f"Bearer {token}"},
+            files={
+                "file": (f"{page_count}.pdf", make_pdf(page_count), "application/pdf")
+            },
+        )
+        paper_ids.append(
+            db_session.get(
+                UserPaperRecord, UUID(response.json()["paper"]["id"])
+            ).paper_id
+        )
+    for paper_id in paper_ids:
+        IngestionRepository(db_session).create_job(
+            paper_id=paper_id, stages=(IngestionStage.FULLTEXT,)
+        )
+    db_session.commit()
+    barrier = Barrier(2, timeout=5)
+    observed = []
+    lock = Lock()
+
+    class ParallelPipeline:
+        def run_sync(self, job_id: UUID) -> None:
+            barrier.wait()
+            with lock:
+                observed.append(job_id)
+
+    worker = IngestionWorker(
+        session_factory=session_factory, pipeline=ParallelPipeline()
+    )
+    assert worker.run_batch(max_concurrent_jobs=2) == 2
+    assert len(observed) == 2
 
 
 def test_api_scheduler_leaves_parsing_to_the_worker_when_jobs_are_submitted() -> None:

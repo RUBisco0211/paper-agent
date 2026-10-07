@@ -53,6 +53,7 @@ class Paper:
     has_keyword_index: bool
     has_embedding: bool
     mineru_version: str | None
+    artifact_manifest_key: str | None
     created_at: datetime
     updated_at: datetime
 

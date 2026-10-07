@@ -46,6 +46,8 @@ class IngestionService:
         Returns ``None`` when every stage already has verifiable output, so a
         duplicate upload never re-parses a paper that is already readable.
         """
+        self._papers.lock_paper(paper_id)
+        self._papers.expire_all()
         paper = self._papers.get_paper(paper_id)
         if paper is None:
             return None

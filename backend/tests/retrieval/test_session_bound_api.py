@@ -2,7 +2,9 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
+from app.library.repo import UserPaperRecord
 from app.platform.config import settings
+from app.retrieval.repo import ChunkRecord
 from app.sessions.repo import SessionBindingRepository
 from tests.conftest import auth_headers
 from tests.retrieval.test_search_api import _index_chunks, _upload
@@ -41,7 +43,9 @@ def test_registered_citation_is_visible_only_to_the_bound_owner_when_queried(
 ) -> None:
     owner = register_user(email="citation-owner@example.com")
     stranger = register_user(email="citation-stranger@example.com")
-    paper_id = _upload(client, api_prefix, owner["access_token"], make_pdf(page_count=1))
+    paper_id = _upload(
+        client, api_prefix, owner["access_token"], make_pdf(page_count=1)
+    )
     session_id = str(uuid4())
     created = client.post(
         f"{api_prefix}/session-bindings",
@@ -105,7 +109,9 @@ def test_session_binding_deletion_removes_registered_citations_when_owner_delete
     client: TestClient, api_prefix: str, register_user, make_pdf, db_session
 ) -> None:
     owner = register_user(email="delete-citation-owner@example.com")
-    paper_id = _upload(client, api_prefix, owner["access_token"], make_pdf(page_count=1))
+    paper_id = _upload(
+        client, api_prefix, owner["access_token"], make_pdf(page_count=1)
+    )
     session_id = str(uuid4())
     client.post(
         f"{api_prefix}/session-bindings",
@@ -130,9 +136,12 @@ def test_session_binding_deletion_removes_registered_citations_when_owner_delete
     )
 
     assert response.status_code == 204
-    assert SessionBindingRepository(db_session).get_citation(
-        UUID(session_id), "cit_delete_me"
-    ) is None
+    assert (
+        SessionBindingRepository(db_session).get_citation(
+            UUID(session_id), "cit_delete_me"
+        )
+        is None
+    )
 
 
 def test_session_binding_deletion_returns_not_found_when_already_removed(
@@ -271,6 +280,13 @@ def test_internal_search_uses_bound_project_and_registers_retrievable_citation(
     inside = _upload(client, api_prefix, token, make_pdf(page_count=1))
     outside = _upload(client, api_prefix, token, make_pdf(page_count=2))
     _index_chunks(db_session, user_paper_id=inside, contents=["inside attention note"])
+    paper_id = db_session.get(UserPaperRecord, UUID(inside)).paper_id
+    indexed_chunk = db_session.query(ChunkRecord).filter_by(paper_id=paper_id).one()
+    indexed_chunk.chunk_metadata = {
+        "artifact_manifest_key": "mineru/example/manifest.json",
+        "source_ranges": [{"block_id": 0, "char_start": 0, "char_end": 21}],
+    }
+    db_session.commit()
     _index_chunks(
         db_session, user_paper_id=outside, contents=["outside attention note"]
     )
@@ -320,6 +336,25 @@ def test_internal_search_uses_bound_project_and_registers_retrievable_citation(
     assert excerpt.status_code == 200
     assert excerpt.json()["paper_id"] == inside
     assert excerpt.json()["page_start"] == 1
+    assert (
+        excerpt.json()["source_locations"][0]["chunk_id"]
+        == body["evidence"][0]["chunk_ids"][0]
+    )
+    assert excerpt.json()["source_locations"][0]["source_ranges"][0]["char_end"] == 21
+    db_session.delete(indexed_chunk)
+    db_session.commit()
+    after_reindex = client.get(
+        f"{api_prefix}/internal/excerpt",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        params={
+            "user_id": user["user"]["id"],
+            "session_id": session_id,
+            "citation_id": body["evidence"][0]["citation_id"],
+        },
+    )
+    assert (
+        after_reindex.json()["source_locations"] == excerpt.json()["source_locations"]
+    )
 
 
 def test_internal_search_covers_all_owned_papers_when_session_is_global(

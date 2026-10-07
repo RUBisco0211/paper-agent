@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-06
 - TAGS: ingest, product, agent
-- STATUS: 当前
+- STATUS: 解析 worker 部分已被 0056 取代；项目删除部分仍当前
 - SUPERSEDES: —
 
 ## DECISION

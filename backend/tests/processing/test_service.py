@@ -1,22 +1,26 @@
 """End-to-end pipeline tests with deterministic stand-in providers."""
 
+import hashlib
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from threading import Barrier
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.ingestion.depends import get_ingestion_service
+from app.ingestion.domain import IngestionStage
 from app.ingestion.repo import IngestionRepository
 from app.ingestion.service import IngestionService
 from app.library.depends import get_ingestion_starter
 from app.library.repo import PaperRepository
 from app.platform.config import settings
-from app.platform.storage import ObjectStorage
+from app.platform.storage import ObjectStorage, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
 from app.processing.mineru import MineruArtifact, MineruParser
 from app.processing.service import IngestionPipeline
+from app.processing.worker import IngestionWorker
 from app.retrieval.depends import get_embedding_adapter
 from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers, build_pdf_with_text
@@ -46,6 +50,62 @@ CONTENT_LIST = [
         "page_idx": 2,
     },
 ]
+
+
+def test_two_papers_complete_fulltext_and_indexing_in_parallel(
+    session_factory: sessionmaker[Session],
+    db_session: Session,
+    storage: ObjectStorage,
+    make_pdf,
+) -> None:
+    gate = Barrier(2, timeout=5)
+
+    class ConcurrentMineru(FakeMineruParser):
+        def parse(self, *, pdf_path: Path) -> MineruArtifact:
+            gate.wait()
+            return super().parse(pdf_path=pdf_path)
+
+    with session_factory() as session:
+        papers = PaperRepository(session)
+        ingestion = IngestionRepository(session)
+        job_ids = []
+        for count in (1, 2):
+            pdf = make_pdf(count)
+            file_hash = hashlib.sha256(pdf).hexdigest()
+            storage.put_bytes(paper_pdf_key(file_hash), pdf)
+            paper = papers.add_paper(
+                file_hash=file_hash, byte_size=len(pdf), page_count=count
+            )
+            job_ids.append(
+                ingestion.create_job(
+                    paper_id=paper.id,
+                    stages=(
+                        IngestionStage.FULLTEXT,
+                        IngestionStage.CHUNKING,
+                        IngestionStage.EMBEDDING,
+                    ),
+                ).id
+            )
+        session.commit()
+    pipeline = IngestionPipeline(
+        scheduler=None,
+        session_factory=session_factory,
+        storage=storage,
+        mineru=ConcurrentMineru(),
+        resolver=MetadataResolver([]),
+        embeddings=FakeEmbeddingAdapter(),
+    )
+    worker = IngestionWorker(session_factory=session_factory, pipeline=pipeline)
+    assert worker.run_batch(max_concurrent_jobs=2) == 2
+    with session_factory() as session:
+        ingestion = IngestionRepository(session)
+        papers = PaperRepository(session)
+        for job_id in job_ids:
+            job = ingestion.get_job(job_id)
+            assert job.status.value == "succeeded"
+            paper = papers.get_paper(job.paper_id)
+            assert paper.artifact_manifest_key is not None
+            assert paper.has_keyword_index and paper.has_embedding
 
 
 class FakeMineruParser(MineruParser):
@@ -144,6 +204,39 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
     )
 
 
+def test_failed_artifact_write_never_publishes_orphaned_fulltext(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    session_factory: sessionmaker[Session],
+    storage: ObjectStorage,
+    monkeypatch,
+) -> None:
+    original_put = storage.put_bytes
+
+    def fail_markdown(key: str, data: bytes) -> None:
+        if key.endswith("full.md"):
+            raise OSError("storage write failed")
+        original_put(key, data)
+
+    monkeypatch.setattr(storage, "put_bytes", fail_markdown)
+    _override_services(
+        client,
+        session_factory=session_factory,
+        storage=storage,
+        mineru=FakeMineruParser(),
+        embeddings=FakeEmbeddingAdapter(),
+        resolver=MetadataResolver([]),
+    )
+    token = register_user(email="artifact-failure@example.com")["access_token"]
+    response = _upload(
+        client, api_prefix, token, build_pdf_with_text("artifact failure")
+    )
+    assert response.status_code == 202
+    assert response.json()["paper"]["capabilities"]["has_fulltext"] is False
+    assert not list(storage.files("mineru/"))
+
+
 def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     client: TestClient,
     api_prefix: str,
@@ -210,8 +303,21 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     stored = {key.rsplit("/", 1)[-1] for key in storage.files("mineru/")}
     assert "content_list.json" in stored
     assert "full.md" in stored
+    assert "manifest.json" in stored
     assert "figure-1.png" in stored
     assert mineru.calls and mineru.calls[0].suffix == ".pdf"
+    with session_factory() as session:
+        from app.library.repo import UserPaperRecord
+
+        paper = PaperRepository(session).get_paper(
+            session.get(UserPaperRecord, UUID(paper_id)).paper_id
+        )
+        assert paper.artifact_manifest_key is not None
+        manifest = __import__("json").loads(
+            storage.read_text(paper.artifact_manifest_key)
+        )
+        assert manifest["parser_version"] == "2.1.0"
+        assert manifest["files"]["content_list.json"]["sha256"]
 
     search = client.post(
         f"{api_prefix}/search",

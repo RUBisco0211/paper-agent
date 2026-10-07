@@ -64,6 +64,7 @@ class BoundSearchService:
                 snippet=evidence.snippet,
                 page_start=evidence.page_start,
                 page_end=evidence.page_end,
+                source_locations=self._search.source_locations(evidence.chunk_ids),
             )
         return outcome, scope
 
@@ -145,6 +146,7 @@ class BoundPaperService:
             "page_start": citation.page_start,
             "page_end": citation.page_end,
             "chunk_ids": citation.chunk_ids,
+            "source_locations": citation.source_locations or [],
         }
 
 
@@ -177,6 +179,9 @@ class SearchService:
         self._rrf_k = rrf_k
         self._max_evidence = max_evidence
         self._max_evidence_per_paper = max_evidence_per_paper
+
+    def source_locations(self, chunk_ids: list[UUID]) -> list[dict]:
+        return self._chunks.source_locations(chunk_ids)
 
     def search(
         self,

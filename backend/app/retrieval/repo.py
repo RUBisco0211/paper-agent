@@ -95,6 +95,27 @@ class ChunkRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def source_locations(self, chunk_ids: list[UUID]) -> list[dict]:
+        if not chunk_ids:
+            return []
+        records = self._session.scalars(
+            select(ChunkRecord).where(ChunkRecord.id.in_(chunk_ids))
+        ).all()
+        by_id = {record.id: record for record in records}
+        return [
+            {
+                "chunk_id": str(chunk_id),
+                "artifact_manifest_key": (by_id[chunk_id].chunk_metadata or {}).get(
+                    "artifact_manifest_key"
+                ),
+                "source_ranges": (by_id[chunk_id].chunk_metadata or {}).get(
+                    "source_ranges", []
+                ),
+            }
+            for chunk_id in chunk_ids
+            if chunk_id in by_id
+        ]
+
     def replace_chunks(self, *, paper_id: UUID, drafts: list[ChunkDraft]) -> int:
         """Idempotently rewrite a paper's chunks.
 

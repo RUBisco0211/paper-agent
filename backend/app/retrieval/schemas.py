@@ -75,3 +75,4 @@ class BoundExcerptResponse(BaseModel):
     page_start: int | None
     page_end: int | None
     chunk_ids: list[UUID]
+    source_locations: list[dict] = Field(default_factory=list)

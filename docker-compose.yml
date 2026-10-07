@@ -75,9 +75,8 @@ services:
   #   STORAGE_BACKEND=s3
   #   S3_ENDPOINT_URL=http://127.0.0.1:9000
   #   S3_ACCESS_KEY=... / S3_SECRET_KEY=... / S3_BUCKET=paper-agent
-  # 提醒：RustFS 官方标注「rapid development，请勿用于生产环境」。单机 MVP 用本地
-  # 文件系统（STORAGE_BACKEND=local + 卷）即可；等需要多实例共享或异地备份再启用。
-  # 服务器上若要换 MinIO 的继任者/云对象存储，只需改这几项配置。
+  # 提醒：RustFS 官方标注「rapid development，请勿用于生产环境」。它只供开发验证；
+  # 生产配置受信任的 S3 兼容服务或云对象存储，并设置 STORAGE_BACKEND=s3。
   storage:
     image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
     container_name: paper-agent-storage

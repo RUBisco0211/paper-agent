@@ -123,18 +123,11 @@ class PaperLibraryService:
         stream: BinaryIO,
     ) -> tuple[LibraryEntry, IngestionJob | None]:
         stored = self._store_stream(stream)
-        paper = self._papers.get_paper_by_hash(stored.file_hash)
-        if paper is None:
-            paper = self._papers.add_paper(
-                file_hash=stored.file_hash,
-                byte_size=stored.byte_size,
-                page_count=stored.page_count,
-            )
-            logger.info(
-                "service.library.paper_created",
-                paper_id=str(paper.id),
-                file_hash=stored.file_hash,
-            )
+        paper = self._papers.get_or_add_paper(
+            file_hash=stored.file_hash,
+            byte_size=stored.byte_size,
+            page_count=stored.page_count,
+        )
 
         user_paper = self._papers.get_user_paper_for_paper(
             user_id=user_id,
@@ -167,13 +160,11 @@ class PaperLibraryService:
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         stored = self._store_stream(stream)
         self._ensure_no_identifier_conflict(entry.user_paper, stored)
-        paper = self._papers.get_paper_by_hash(stored.file_hash)
-        if paper is None:
-            paper = self._papers.add_paper(
-                file_hash=stored.file_hash,
-                byte_size=stored.byte_size,
-                page_count=stored.page_count,
-            )
+        paper = self._papers.get_or_add_paper(
+            file_hash=stored.file_hash,
+            byte_size=stored.byte_size,
+            page_count=stored.page_count,
+        )
         self._papers.link_user_paper_to_paper(user_paper_id, paper.id)
         user_paper = self._papers.get_user_paper(user_paper_id)
         assert user_paper is not None
@@ -219,13 +210,11 @@ class PaperLibraryService:
             stored = self._store_path(downloaded.path)
         self._ensure_no_identifier_conflict(completion.entry.user_paper, stored)
 
-        paper = self._papers.get_paper_by_hash(stored.file_hash)
-        if paper is None:
-            paper = self._papers.add_paper(
-                file_hash=stored.file_hash,
-                byte_size=stored.byte_size,
-                page_count=stored.page_count,
-            )
+        paper = self._papers.get_or_add_paper(
+            file_hash=stored.file_hash,
+            byte_size=stored.byte_size,
+            page_count=stored.page_count,
+        )
         self._papers.link_user_paper_to_paper(user_paper_id, paper.id)
         user_paper = self._papers.get_user_paper(user_paper_id)
         assert user_paper is not None

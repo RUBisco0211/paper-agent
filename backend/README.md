@@ -292,12 +292,12 @@ PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的
 
 | 后端 | 适用 | 配置 |
 |---|---|---|
-| `local`（默认） | 单机部署，挂一个卷即可；`local_path` 零拷贝 | `STORAGE_ROOT`（默认 `.var/storage`） |
-| `s3` | 多实例共享、异地备份；自建或云对象存储 | `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` |
+| `local`（开发默认） | 仅开发与测试；`local_path` 零拷贝 | `STORAGE_ROOT`（默认 `.var/storage`） |
+| `s3`（生产必选） | 自建或云对象存储，启动时检查可用性 | `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` |
 
 - 自建对象存储用 **RustFS**（Apache-2.0，S3 兼容）：`docker compose --profile storage up -d storage`，
   控制台在 `http://127.0.0.1:9001`。RustFS 官方标注处于快速开发阶段，**不要用于生产**；
-  生产可换 Garage、云对象存储，或回到 `local` + 卷。
+  生产应使用经过验证的 S3 兼容服务或云对象存储。
 - 换后端是配置变更：Key 布局（`papers/…`、`mineru/…`、`sessions/…`）不变，业务代码不感知。
 - 唯一差异由 `materialize()` 抹平：MinerU 上传需要真实文件路径，`s3` 实现会下载到临时文件并在退出时删除。
 - 一致性由 `tests/platform/test_object_storage.py` 保证：同一组用例跑在 local、模拟 S3 与

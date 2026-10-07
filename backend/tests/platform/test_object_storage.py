@@ -11,12 +11,20 @@ import boto3
 import pytest
 from moto import mock_aws
 
+from app.main import check_storage
 from app.platform.config import settings
 from app.platform.s3_storage import MULTIPART_THRESHOLD, S3ObjectStorage
 from app.platform.storage import LocalObjectStorage, mineru_artifact_key, paper_pdf_key
 
 BUCKET = "paper-agent-test"
 LIVE = os.environ.get("PAPER_AGENT_LIVE_STORAGE") == "1"
+
+
+def test_production_startup_requires_s3_object_storage(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "storage_backend", "local")
+    with pytest.raises(RuntimeError, match="S3"):
+        check_storage()
 
 
 @pytest.fixture(params=["local", "s3"] + (["s3-live"] if LIVE else []))

@@ -10,10 +10,10 @@
 
 Paper Agent 管理个人论文库、项目范围与基于论文证据的 Agent 阅读会话；多用户系统，每个用户的数据与交互彼此隔离。
 
-- 阶段：MVP 功能 F01–F09 已实现；2026-10 起按决策 0006–0016 重构为 agentscope 后端，**R1–R7 自动门禁与 R8 DeepSeek 浏览器主路径已通过；R8 服务端多页 PDF 与真实会话并行已回测，浏览器无刷新断线恢复、检索故障、内嵌 PDF 和并行交互待回测**
+- 阶段：MVP 功能 F01–F09 已实现；2026-10 起按决策 0006–0016 重构为 agentscope 后端，**R1–R7 自动门禁、R8 DeepSeek 浏览器主路径及 R9 并发入库自动门禁已通过；真实 MinerU/S3 并发负载与 R8 浏览器边界待回测**
 - 规模：单机 Docker Compose，个人自用，并发 <10，论文库千篇量级
 - 用户：研究者本人在浏览器里完成入库 → 组织范围 → 问答 → 打开原文核对引用
-- 硬约束：单机部署（PostgreSQL 16 + pgvector、本地或 S3 对象存储）；**无 Redis / Celery**（解析走独立 worker 进程，由 DB 协调）；LLM API Key 由 Credential 系统持有、不进日志
+- 硬约束：单机部署（PostgreSQL 16 + pgvector；生产用 S3 兼容对象存储，开发/测试可用本地适配器）；**无 Redis / Celery**（解析走独立 worker 进程，由 DB 协调）；LLM API Key 由 Credential 系统持有、不进日志
 - **明确不做**：多实例部署；会话分支（框架 `messages` 为 upsert 语义）；历史编辑；跨会话历史合并；精确区域高亮与图表交互；标题/关键词联网搜论文；GROBID；多解析器回退；Agent 写工具；HITL 权限确认与沙箱；MCP/Skill 市场、channels、TTS
 - **已扩展**：Cron 定时任务支持全局或项目范围与一周内选日（0049）。
 - **后置（MVP 之后，非否决）**：Agent Team（0006）、rerank（0011）、历史导出（0009）。这些**不是不做**，评估时不要当成已否决。

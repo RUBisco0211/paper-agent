@@ -62,6 +62,7 @@ class SessionBindingService:
         snippet: str,
         page_start: int | None,
         page_end: int | None,
+        source_locations: list[dict] | None = None,
     ) -> None:
         self._bindings.add_citation(
             session_id=session_id,
@@ -72,6 +73,7 @@ class SessionBindingService:
             snippet=snippet,
             page_start=page_start,
             page_end=page_end,
+            source_locations=source_locations,
         )
         self._bindings.commit()
 

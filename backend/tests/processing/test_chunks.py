@@ -66,6 +66,23 @@ def test_oversized_block_is_split_instead_of_truncated() -> None:
     assert len(chunks) > 1
     assert all(len(chunk.content) <= 200 for chunk in chunks)
     assert sum(len(chunk.content) for chunk in chunks) >= len(long_text) * 0.95
+    assert all(chunk.chunk_metadata["source_ranges"] for chunk in chunks)
+
+
+def test_split_chunk_keeps_exact_source_offsets_and_its_own_page() -> None:
+    blocks = [
+        _block("text", "alpha " * 45, page=0, bbox=[1, 2, 3, 4]),
+        _block("text", "beta " * 45, page=1),
+    ]
+    chunks = build_chunks(blocks, target_tokens=10_000, max_chars=80)
+
+    assert {chunk.page_start for chunk in chunks} == {1, 2}
+    for chunk in chunks:
+        rebuilt = "".join(
+            blocks[source["block_id"]]["text"][source["char_start"]:source["char_end"]]
+            for source in chunk.chunk_metadata["source_ranges"]
+        )
+        assert rebuilt.replace(" ", "") == chunk.content.replace(" ", "")
 
 
 def test_empty_blocks_produce_no_chunks() -> None:

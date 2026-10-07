@@ -14,6 +14,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from ..platform.database import (
@@ -64,6 +65,7 @@ class PaperRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         server_default=false(),
     )
     mineru_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    artifact_manifest_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class UserPaperRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -146,6 +148,28 @@ class PaperRepository:
         self._session.flush()
         return _to_paper(record)
 
+    def get_or_add_paper(
+        self, *, file_hash: str, byte_size: int, page_count: int
+    ) -> Paper:
+        self._session.execute(
+            pg_insert(PaperRecord)
+            .values(
+                file_hash=file_hash,
+                byte_size=byte_size,
+                page_count=page_count,
+                metadata_status=MetadataStatus.UNRECOGNIZED.value,
+            )
+            .on_conflict_do_nothing(index_elements=[PaperRecord.file_hash])
+        )
+        paper = self.get_paper_by_hash(file_hash)
+        assert paper is not None
+        return paper
+
+    def lock_paper(self, paper_id: UUID) -> None:
+        self._session.execute(
+            select(PaperRecord.id).where(PaperRecord.id == paper_id).with_for_update()
+        ).scalar_one_or_none()
+
     def set_paper_capabilities(self, paper_id: UUID, **capabilities: bool) -> None:
         record = self._session.get(PaperRecord, paper_id)
         if record is None:
@@ -179,6 +203,17 @@ class PaperRepository:
         if record is None:
             return
         record.mineru_version = version
+        self._session.flush()
+
+    def publish_artifact(
+        self, paper_id: UUID, *, manifest_key: str, parser_version: str | None
+    ) -> None:
+        record = self._session.get(PaperRecord, paper_id)
+        if record is None:
+            return
+        record.artifact_manifest_key = manifest_key
+        record.mineru_version = parser_version
+        record.has_fulltext = True
         self._session.flush()
 
     def all_paper_ids(self) -> list[UUID]:
@@ -427,6 +462,7 @@ def _to_paper(record: PaperRecord) -> Paper:
         has_keyword_index=record.has_keyword_index,
         has_embedding=record.has_embedding,
         mineru_version=record.mineru_version,
+        artifact_manifest_key=record.artifact_manifest_key,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )

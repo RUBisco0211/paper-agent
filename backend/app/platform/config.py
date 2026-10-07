@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     mineru_api_url: str | None = None
     mineru_api_key: str | None = None
     mineru_timeout_seconds: float = 600.0
+    ingestion_concurrency: int = 2
     embedding_api_url: str | None = None
     embedding_api_key: str | None = None
     # 默认按 BAAI/bge-m3：1024 维、8192 上下文、无需 query/document 前缀。

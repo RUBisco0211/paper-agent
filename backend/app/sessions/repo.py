@@ -55,6 +55,7 @@ class BoundCitationRecord(Base, CreatedAtMixin):
     snippet: Mapped[str] = mapped_column(Text, nullable=False)
     page_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     page_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_locations: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
 
 class SessionBindingRepository:
@@ -162,6 +163,7 @@ class SessionBindingRepository:
         snippet: str,
         page_start: int | None,
         page_end: int | None,
+        source_locations: list[dict] | None = None,
     ) -> None:
         self._session.execute(
             pg_insert(BoundCitationRecord)
@@ -174,6 +176,7 @@ class SessionBindingRepository:
                 snippet=snippet,
                 page_start=page_start,
                 page_end=page_end,
+                source_locations=source_locations,
             )
             .on_conflict_do_nothing(
                 index_elements=["session_id", "citation_id"],

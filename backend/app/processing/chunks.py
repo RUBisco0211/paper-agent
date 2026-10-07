@@ -5,7 +5,6 @@ heading path, page range and source block ids so evidence can be traced back to
 the original paper.
 """
 
-import re
 from dataclasses import dataclass, field
 
 from ..retrieval.domain import ChunkDraft
@@ -13,13 +12,13 @@ from ..retrieval.domain import ChunkDraft
 CHARS_PER_TOKEN = 4
 HEADING_TYPES = {"title", "heading"}
 MAX_TITLE_LEVEL = 3
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 
 @dataclass(slots=True)
 class _Buffer:
     texts: list[str] = field(default_factory=list)
     block_ids: list[int] = field(default_factory=list)
+    spans: list[dict] = field(default_factory=list)
     page_start: int | None = None
     page_end: int | None = None
     title_path: str | None = None
@@ -35,8 +34,24 @@ class _Buffer:
     def clear(self) -> None:
         self.texts.clear()
         self.block_ids.clear()
+        self.spans.clear()
         self.page_start = None
         self.page_end = None
+
+    def append(self, text: str, block_id: int, block: dict, page: int | None) -> None:
+        start = len(self.text) + (2 if self.texts else 0)
+        self.texts.append(text)
+        self.block_ids.append(block_id)
+        span = {"block_id": block_id, "start": start, "end": start + len(text)}
+        if page is not None:
+            span["page"] = page
+        bbox = block.get("bbox")
+        if isinstance(bbox, list) and len(bbox) == 4:
+            span["bbox"] = bbox
+        self.spans.append(span)
+        self.page_start, self.page_end = _page_range(
+            self.page_start, self.page_end, page
+        )
 
 
 def build_chunks(
@@ -57,16 +72,43 @@ def build_chunks(
             buffer.clear()
             return
         text = buffer.text
-        for piece in _split_oversized(text, max_chars=max_chars):
+        for start, end in _split_oversized_ranges(text, max_chars=max_chars):
+            piece = text[start:end]
+            source_ranges = []
+            for span in buffer.spans:
+                overlap_start = max(start, span["start"])
+                overlap_end = min(end, span["end"])
+                if overlap_start >= overlap_end:
+                    continue
+                source = {
+                    "block_id": span["block_id"],
+                    "char_start": overlap_start - span["start"],
+                    "char_end": overlap_end - span["start"],
+                }
+                for field_name in ("page", "bbox"):
+                    if field_name in span:
+                        source[field_name] = span[field_name]
+                source_ranges.append(source)
             drafts.append(
                 ChunkDraft(
                     chunk_index=index,
                     content=piece,
                     title_path=buffer.title_path,
-                    page_start=buffer.page_start,
-                    page_end=buffer.page_end,
-                    block_ids=list(buffer.block_ids),
-                    chunk_metadata={"char_count": len(piece)},
+                    page_start=min(
+                        (item["page"] for item in source_ranges if "page" in item),
+                        default=None,
+                    ),
+                    page_end=max(
+                        (item["page"] for item in source_ranges if "page" in item),
+                        default=None,
+                    ),
+                    block_ids=list(
+                        dict.fromkeys(item["block_id"] for item in source_ranges)
+                    ),
+                    chunk_metadata={
+                        "char_count": len(piece),
+                        "source_ranges": source_ranges,
+                    },
                 ),
             )
             index += 1
@@ -88,26 +130,14 @@ def build_chunks(
                 ):
                     _close()
             if text:
-                buffer.texts.append(text)
-                buffer.block_ids.append(block_id)
-                buffer.page_start, buffer.page_end = _page_range(
-                    buffer.page_start,
-                    buffer.page_end,
-                    page,
-                )
+                buffer.append(text, block_id, block, page)
             buffer.title_path = " > ".join(headings) or None
             continue
 
         if not text:
             continue
         buffer.title_path = buffer.title_path or (" > ".join(headings) or None)
-        buffer.texts.append(text)
-        buffer.block_ids.append(block_id)
-        buffer.page_start, buffer.page_end = _page_range(
-            buffer.page_start,
-            buffer.page_end,
-            page,
-        )
+        buffer.append(text, block_id, block, page)
 
         if (
             _estimated_tokens(buffer.text) >= target_tokens
@@ -179,26 +209,21 @@ def _clean(value: object) -> str | None:
     return text or None
 
 
-def _split_oversized(text: str, *, max_chars: int) -> list[str]:
-    """Split a single oversized block instead of dropping or truncating it."""
-    if len(text) <= max_chars:
-        return [text]
-
-    pieces: list[str] = []
-    current = ""
-    for sentence in _SENTENCE_SPLIT.split(text):
-        if not sentence:
-            continue
-        candidate = f"{current} {sentence}".strip() if current else sentence
-        if len(candidate) <= max_chars:
-            current = candidate
-            continue
-        if current:
-            pieces.append(current)
-        while len(sentence) > max_chars:
-            pieces.append(sentence[:max_chars])
-            sentence = sentence[max_chars:]
-        current = sentence
-    if current:
-        pieces.append(current)
-    return pieces
+def _split_oversized_ranges(text: str, *, max_chars: int) -> list[tuple[int, int]]:
+    """Split without losing offsets into the parsed source text."""
+    ranges: list[tuple[int, int]] = []
+    start = 0
+    while start < len(text):
+        end = min(start + max_chars, len(text))
+        if end < len(text):
+            boundary = text.rfind(" ", start + 1, end + 1)
+            if boundary > start:
+                end = boundary
+        while end > start and text[end - 1].isspace():
+            end -= 1
+        if end > start:
+            ranges.append((start, end))
+        start = end
+        while start < len(text) and text[start].isspace():
+            start += 1
+    return ranges

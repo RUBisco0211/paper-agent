@@ -57,7 +57,7 @@
 | 0041 | agent, security | Agent 运行时只开放三个文献只读工具，现有 search_papers 承担 RAG 检索 | 当前 | [0041-agent-tool-allowlist.md](decisions/0041-agent-tool-allowlist.md) |
 | 0042 | agent, product, ingest | 入读流程完成后增加基于 MinerU Markdown 的有界原文读取工具 | 当前 | [0042-bounded-paper-original-read.md](decisions/0042-bounded-paper-original-read.md) |
 | 0043 | api, security, frontend | 删除会话先删 AgentScope，再删业务绑定与引用，并允许重试 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
-| 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | 当前 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
+| 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | worker 部分已被 0056 取代 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
 | 0045 | frontend, product | 对话页采用 web_ui 双层导航、项目文献侧栏和日历容器 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
 | 0046 | product, frontend, data | 定时任务必须归属项目；日历按项目显示任务 | 已被 0049 取代 | [0046-schedules-belong-to-projects.md](decisions/0046-schedules-belong-to-projects.md) |
 | 0047 | product, agent, data, frontend | 项目自定义 prompt 用 AgentScope 定时触发；每次独立运行，任务页聚合结果 | 已被 0049 取代 | [0047-project-scheduled-agent-runs.md](decisions/0047-project-scheduled-agent-runs.md) |
@@ -69,6 +69,7 @@
 | 0053 | frontend, product | 授权 PDF 用 PDF.js 在页面内渲染并支持引用页定位、翻页与缩放 | 当前 | [0053-embedded-pdf-rendering.md](decisions/0053-embedded-pdf-rendering.md) |
 | 0054 | frontend, product | 删除定时任务等不可撤销操作统一使用站内确认弹窗 | 已被 0055 取代 | [0054-destructive-confirmation-dialogs.md](decisions/0054-destructive-confirmation-dialogs.md) |
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |
+| 0056 | ingest, storage, citation | 单 worker 有界并发；生产 S3 兼容存储；MinerU 版本清单与引用来源范围 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

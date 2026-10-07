@@ -6,6 +6,7 @@ capability. Only blocking stages stop the job; metadata is best effort.
 """
 
 import asyncio
+import hashlib
 import json
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -28,6 +29,7 @@ from ..platform.errors import AppError, ErrorCode
 from ..platform.storage import (
     ObjectStorage,
     mineru_artifact_key,
+    mineru_job_artifact_key,
     paper_pdf_key,
 )
 from ..platform.tasks import TaskScheduler
@@ -186,9 +188,9 @@ class IngestionPipeline:
         if stage is IngestionStage.METADATA:
             return self._metadata_stage(papers, paper)
         if stage is IngestionStage.FULLTEXT:
-            return self._fulltext_stage(papers, paper.id, paper.file_hash)
+            return self._fulltext_stage(papers, paper.id, paper.file_hash, job.id)
         if stage is IngestionStage.CHUNKING:
-            return self._chunking_stage(papers, chunks, paper.id, paper.file_hash)
+            return self._chunking_stage(papers, chunks, paper)
         return self._embedding_stage(papers, chunks, paper.id)
 
     def _metadata_stage(self, papers: PaperRepository, paper) -> dict:
@@ -283,25 +285,59 @@ class IngestionPipeline:
         papers: PaperRepository,
         paper_id: UUID,
         file_hash: str,
+        job_id: UUID,
     ) -> dict:
+        artifact_prefix = mineru_job_artifact_key(file_hash, str(job_id), "")
+        self._storage.delete_prefix(artifact_prefix)
         with self._pdf_file(file_hash) as pdf_path:
             artifact = self._mineru.parse(pdf_path=pdf_path)
-        self._storage.put_bytes(
-            mineru_artifact_key(file_hash, CONTENT_LIST_OBJECT),
-            json.dumps(artifact.content_list, ensure_ascii=False).encode("utf-8"),
+        files: dict[str, dict] = {}
+
+        def write(relative_path: str, payload: bytes) -> None:
+            key = mineru_job_artifact_key(file_hash, str(job_id), relative_path)
+            self._storage.put_bytes(key, payload)
+            files[relative_path] = {
+                "key": key,
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "bytes": len(payload),
+            }
+
+        manifest_key = mineru_job_artifact_key(file_hash, str(job_id), "manifest.json")
+        try:
+            write(
+                CONTENT_LIST_OBJECT,
+                json.dumps(artifact.content_list, ensure_ascii=False).encode("utf-8"),
+            )
+            if artifact.markdown:
+                write(MARKDOWN_OBJECT, artifact.markdown.encode("utf-8"))
+            for name, payload in artifact.images.items():
+                write(name if name.startswith("images/") else f"images/{name}", payload)
+            manifest = {
+                "schema_version": 1,
+                "job_id": str(job_id),
+                "file_hash": file_hash,
+                "parser_version": artifact.version,
+                "files": files,
+            }
+            self._storage.put_bytes(
+                manifest_key,
+                json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode(
+                    "utf-8"
+                ),
+            )
+        except Exception:
+            try:
+                self._storage.delete_prefix(artifact_prefix)
+            except Exception as cleanup_error:
+                logger.warning(
+                    "pipeline.artifact_cleanup_failed",
+                    job_id=str(job_id),
+                    error_type=type(cleanup_error).__name__,
+                )
+            raise
+        papers.publish_artifact(
+            paper_id, manifest_key=manifest_key, parser_version=artifact.version
         )
-        if artifact.markdown:
-            self._storage.put_bytes(
-                mineru_artifact_key(file_hash, MARKDOWN_OBJECT),
-                artifact.markdown.encode("utf-8"),
-            )
-        for name, payload in artifact.images.items():
-            self._storage.put_bytes(
-                mineru_artifact_key(file_hash, f"images/{name}"),
-                payload,
-            )
-        papers.set_paper_capabilities(paper_id, has_fulltext=True)
-        papers.set_parser_version(paper_id, artifact.version)
         return {
             "blocks": len(artifact.content_list),
             "images": len(artifact.images),
@@ -312,14 +348,31 @@ class IngestionPipeline:
         self,
         papers: PaperRepository,
         chunks: ChunkRepository,
-        paper_id: UUID,
-        file_hash: str,
+        paper,
     ) -> dict:
-        payload = json.loads(
-            self._storage.read_text(
-                mineru_artifact_key(file_hash, CONTENT_LIST_OBJECT)
-            ),
-        )
+        if paper.artifact_manifest_key:
+            manifest = json.loads(self._storage.read_text(paper.artifact_manifest_key))
+            if manifest.get("file_hash") != paper.file_hash:
+                raise AppError(
+                    "MinerU 产物与论文不匹配",
+                    code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                    status_code=502,
+                )
+            entry = manifest["files"][CONTENT_LIST_OBJECT]
+            raw = self._storage.read_bytes(entry["key"])
+            if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+                raise AppError(
+                    "MinerU 产物校验失败",
+                    code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                    status_code=502,
+                )
+            payload = json.loads(raw)
+        else:
+            payload = json.loads(
+                self._storage.read_text(
+                    mineru_artifact_key(paper.file_hash, CONTENT_LIST_OBJECT)
+                )
+            )
         drafts = build_chunks(
             payload,
             target_tokens=self._target_tokens,
@@ -331,8 +384,10 @@ class IngestionPipeline:
                 code=ErrorCode.INGESTION_ARTIFACT_INVALID,
                 status_code=502,
             )
-        count = chunks.replace_chunks(paper_id=paper_id, drafts=drafts)
-        papers.set_paper_capabilities(paper_id, has_keyword_index=True)
+        for draft in drafts:
+            draft.chunk_metadata["artifact_manifest_key"] = paper.artifact_manifest_key
+        count = chunks.replace_chunks(paper_id=paper.id, drafts=drafts)
+        papers.set_paper_capabilities(paper.id, has_keyword_index=True)
         return {"chunks": count}
 
     def _embedding_stage(

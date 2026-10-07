@@ -1,6 +1,7 @@
 """Run queued ingestion jobs outside the HTTP process."""
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 
@@ -39,6 +40,26 @@ class IngestionWorker:
         self._pipeline.run_sync(job_id)
         return True
 
+    def run_batch(self, *, max_concurrent_jobs: int) -> int:
+        if max_concurrent_jobs < 1:
+            raise ValueError("max_concurrent_jobs must be positive")
+        job_ids = []
+        for _ in range(max_concurrent_jobs):
+            with self._session_factory() as session:
+                job_id = IngestionRepository(session).claim_next_queued_job()
+            if job_id is None:
+                break
+            job_ids.append(job_id)
+        if not job_ids:
+            return 0
+        with ThreadPoolExecutor(max_workers=max_concurrent_jobs) as executor:
+            futures = [
+                executor.submit(self._pipeline.run_sync, job_id) for job_id in job_ids
+            ]
+            for future in futures:
+                future.result()
+        return len(job_ids)
+
 
 def main() -> None:
     configure_logging()
@@ -58,7 +79,7 @@ def main() -> None:
     worker.recover_interrupted()
     logger.info("worker.started")
     while True:
-        if not worker.run_once():
+        if not worker.run_batch(max_concurrent_jobs=settings.ingestion_concurrency):
             time.sleep(0.5)
 
 

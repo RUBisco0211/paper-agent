@@ -13,6 +13,7 @@ adapter uploads a file) goes through :meth:`ObjectStorage.materialize`.
 """
 
 import os
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from functools import lru_cache
@@ -31,6 +32,10 @@ def paper_pdf_key(file_hash: str) -> str:
 
 def mineru_artifact_key(file_hash: str, relative_path: str) -> str:
     return f"mineru/{file_hash[0:2]}/{file_hash[2:4]}/{file_hash}/{relative_path}"
+
+
+def mineru_job_artifact_key(file_hash: str, job_id: str, relative_path: str) -> str:
+    return mineru_artifact_key(file_hash, f"runs/{job_id}/{relative_path}")
 
 
 def mineru_artifact_prefix(file_hash: str) -> str:
@@ -86,9 +91,16 @@ class LocalObjectStorage:
     def put_bytes(self, key: str, data: bytes) -> None:
         path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.tmp")
-        temporary.write_bytes(data)
-        os.replace(temporary, path)
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            try:
+                handle.write(data)
+                handle.flush()
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def read_bytes(self, key: str) -> bytes:
         return self._resolve(key).read_bytes()
@@ -145,17 +157,19 @@ class LocalObjectStorage:
         """Stream an iterable into a new object and return the byte count."""
         path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(f".{path.name}.tmp")
         size = 0
-        try:
-            with temporary.open("wb") as handle:
+        with tempfile.NamedTemporaryFile(
+            dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            temporary = Path(handle.name)
+            try:
                 for chunk in chunks:
                     handle.write(chunk)
                     size += len(chunk)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
-        os.replace(temporary, path)
+                handle.flush()
+                os.replace(temporary, path)
+            finally:
+                temporary.unlink(missing_ok=True)
         return size
 
 
