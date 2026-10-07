@@ -1,4 +1,5 @@
 import hashlib
+import json
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -10,7 +11,8 @@ import structlog
 from ..ingestion.domain import IngestionJob
 from ..platform.config import settings as app_settings
 from ..platform.errors import AppError, ConflictError, ErrorCode, NotFoundError
-from ..platform.storage import ObjectStorage, paper_pdf_key
+from ..platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
+from ..processing.blocks import build_block_index
 from ..processing.pdf import ensure_pdf_magic, inspect_pdf
 from ..processing.text import detect_identifiers
 from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
@@ -115,6 +117,82 @@ class PaperLibraryService:
         self._max_pdf_pages = max_pdf_pages or app_settings.max_pdf_pages
 
     # Uploads ---------------------------------------------------------------
+    def list_blocks(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_id: UUID,
+        block_type: str | None,
+        offset: int,
+        limit: int,
+    ) -> dict:
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.has_fulltext:
+            return {
+                "types": [],
+                "items": [],
+                "total": 0,
+                "offset": offset,
+                "limit": limit,
+            }
+        try:
+            if paper.artifact_manifest_key:
+                manifest = json.loads(
+                    self._storage.read_text(paper.artifact_manifest_key)
+                )
+                if manifest.get("file_hash") != paper.file_hash:
+                    raise ValueError("artifact hash mismatch")
+                files = manifest["files"]
+                part = files.get("blocks_index.json") or files["content_list.json"]
+                raw = self._storage.read_bytes(part["key"])
+                if hashlib.sha256(raw).hexdigest() != part["sha256"]:
+                    raise ValueError("artifact checksum mismatch")
+                payload = json.loads(raw)
+                index = (
+                    payload
+                    if "blocks_index.json" in files
+                    else build_block_index(payload)
+                )
+            else:
+                raw = self._storage.read_text(
+                    mineru_artifact_key(paper.file_hash, "content_list.json")
+                )
+                index = build_block_index(json.loads(raw))
+            items = index["items"]
+            types = index["types"]
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献解析结果不可读取",
+                code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+        selected = (
+            [item for item in items if item["type"] == block_type]
+            if block_type
+            else items
+        )
+        return {
+            "types": types,
+            "items": selected[offset : offset + limit],
+            "total": len(selected),
+            "offset": offset,
+            "limit": limit,
+        }
+
+    def get_block(self, *, user_id: UUID, user_paper_id: UUID, block_id: int) -> dict:
+        result = self.list_blocks(
+            user_id=user_id,
+            user_paper_id=user_paper_id,
+            block_type=None,
+            offset=0,
+            limit=1000000,
+        )
+        for item in result["items"]:
+            if item["id"] == block_id:
+                return item
+        raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+
     def upload_pdf(
         self,
         *,

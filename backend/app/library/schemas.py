@@ -47,6 +47,24 @@ class UserPaperDetail(UserPaperSummary):
     pdf: PdfInfoRead
 
 
+class PaperBlockRead(BaseModel):
+    id: int
+    type: str
+    page: int
+    text: str
+    bbox: list[float] | None = None
+    page_size: list[float] | None = None
+    coordinate_system: str | None = None
+
+
+class PaperBlocksResponse(BaseModel):
+    types: list[str]
+    items: list[PaperBlockRead]
+    total: int
+    offset: int
+    limit: int
+
+
 class UploadResponse(BaseModel):
     paper: UserPaperSummary
     ingestion_job: IngestionJobRead | None = None

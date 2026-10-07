@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..agent.catalog import ProviderOption
 
@@ -62,3 +62,4 @@ class BoundCitationRead(BaseModel):
     page_start: int | None
     page_end: int | None
     chunk_ids: list[UUID]
+    source_locations: list[dict] = Field(default_factory=list)

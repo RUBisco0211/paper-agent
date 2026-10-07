@@ -131,6 +131,24 @@ export interface UserPaperDetail extends UserPaperSummary {
   }
 }
 
+export interface PaperBlock {
+  id: number
+  type: string
+  page: number
+  text: string
+  bbox: number[] | null
+  page_size: number[] | null
+  coordinate_system: "normalized" | "page" | null
+}
+
+export interface PaperBlocksResponse {
+  types: string[]
+  items: PaperBlock[]
+  total: number
+  offset: number
+  limit: number
+}
+
 export interface UploadResponse {
   paper: UserPaperSummary
   ingestion_job?: IngestionJob | null

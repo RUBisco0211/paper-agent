@@ -8,6 +8,7 @@ import {
 import { AppShell } from "@/app/app-shell"
 import { RequireAuth } from "@/app/require-auth"
 import { LibraryPage } from "@/pages/library"
+import { PaperReadingPage } from "@/pages/paper-reading"
 import { LoginPage } from "@/pages/login"
 import { ProjectDetailPage } from "@/pages/project-detail"
 import { ProjectsPage } from "@/pages/projects"
@@ -28,6 +29,7 @@ export function createAppRoutes(): RouteObject[] {
       children: [
         { index: true, element: <Navigate to="/library" replace /> },
         { path: "library", element: <LibraryPage /> },
+        { path: "library/:paperId", element: <PaperReadingPage /> },
         { path: "projects", element: <ProjectsPage /> },
         { path: "projects/:projectId", element: <ProjectDetailPage /> },
         { path: "sessions/:sessionId", element: <SessionWorkspacePage /> },

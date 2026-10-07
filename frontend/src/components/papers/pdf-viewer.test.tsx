@@ -43,3 +43,12 @@ it("navigates and zooms within the PDF when controls are used", async () => {
   expect(await screen.findByText("125%")).toBeTruthy()
   expect(pdf.getViewport).toHaveBeenCalledWith(expect.objectContaining({ scale: 1.25 }))
 })
+
+it("marks a normalized MinerU block on a portrait PDF page", async () => {
+  render(<PdfViewer paperId="paper-1" target={{
+    page: 2, bbox: [100, 200, 500, 300], pageSize: [1000, 1000], coordinateSystem: "normalized",
+  }} />)
+  const region = await screen.findByLabelText("所选片段位置")
+  expect(region.style.left).toBe("10%")
+  expect(region.style.top).toBe("20%")
+})

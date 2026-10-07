@@ -38,6 +38,7 @@ from ..retrieval.repo import ChunkRepository
 from ..scholar.identifiers import Identifier, IdentifierType
 from ..scholar.merge import merge_provider_metadata, merge_sources
 from ..scholar.metadata import MetadataResolver, build_default_resolver
+from .blocks import build_block_index
 from .chunks import build_chunks
 from .mineru import MineruParser
 from .text import detect_identifiers
@@ -47,6 +48,7 @@ logger = structlog.get_logger(__name__)
 EMBEDDING_BATCH_SIZE = 32
 NON_BLOCKING_STAGES = {IngestionStage.METADATA}
 CONTENT_LIST_OBJECT = "content_list.json"
+BLOCKS_INDEX_OBJECT = "blocks_index.json"
 MARKDOWN_OBJECT = "full.md"
 
 
@@ -307,6 +309,12 @@ class IngestionPipeline:
             write(
                 CONTENT_LIST_OBJECT,
                 json.dumps(artifact.content_list, ensure_ascii=False).encode("utf-8"),
+            )
+            write(
+                BLOCKS_INDEX_OBJECT,
+                json.dumps(
+                    build_block_index(artifact.content_list), ensure_ascii=False
+                ).encode("utf-8"),
             )
             if artifact.markdown:
                 write(MARKDOWN_OBJECT, artifact.markdown.encode("utf-8"))

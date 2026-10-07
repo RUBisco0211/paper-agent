@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from uuid import UUID
@@ -17,11 +19,102 @@ from app.library.depends import (
 )
 from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
 from app.library.service import PaperLibraryService
-from app.platform.storage import ObjectStorage
+from app.platform.storage import ObjectStorage, mineru_job_artifact_key
 from app.scholar.metadata import MetadataResolver
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
+
+
+def test_paper_blocks_are_filtered_and_private(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+    storage: ObjectStorage,
+) -> None:
+    owner = register_user(email="block-owner@example.com")
+    stranger = register_user(email="block-stranger@example.com")
+    entry_id = UUID(
+        _upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"][
+            "id"
+        ]
+    )
+    paper = db_session.get(
+        PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id
+    )
+    index = {
+        "types": ["text", "table"],
+        "items": [
+            {
+                "id": 0,
+                "type": "text",
+                "page": 1,
+                "text": "Body",
+                "bbox": [10, 20, 100, 80],
+                "page_size": [612, 792],
+            },
+            {
+                "id": 1,
+                "type": "table",
+                "page": 2,
+                "text": "Result",
+                "bbox": None,
+                "page_size": None,
+            },
+        ],
+    }
+    key = mineru_job_artifact_key(paper.file_hash, "test", "blocks_index.json")
+    payload = json.dumps(index).encode()
+    storage.put_bytes(key, payload)
+    manifest_key = mineru_job_artifact_key(paper.file_hash, "test", "manifest.json")
+    storage.put_bytes(
+        manifest_key,
+        json.dumps(
+            {
+                "file_hash": paper.file_hash,
+                "files": {
+                    "blocks_index.json": {
+                        "key": key,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                },
+            }
+        ).encode(),
+    )
+    paper.artifact_manifest_key = manifest_key
+    paper.has_fulltext = True
+    db_session.commit()
+
+    response = client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks",
+        params={"type": "table"},
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["types"] == ["text", "table"]
+    assert [item["id"] for item in response.json()["items"]] == [1]
+    direct = client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks/1",
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert direct.status_code == 200
+    assert direct.json()["page"] == 2
+    assert (
+        client.get(
+            f"{api_prefix}/papers/{entry_id}/blocks/1",
+            headers=auth_headers(stranger["access_token"]),
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"{api_prefix}/papers/{entry_id}/blocks",
+            headers=auth_headers(stranger["access_token"]),
+        ).status_code
+        == 404
+    )
 
 
 class _NoopPdfFetcher:

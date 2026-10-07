@@ -91,6 +91,7 @@ def read_bound_citation(
         page_start=citation.page_start,
         page_end=citation.page_end,
         chunk_ids=citation.chunk_ids,
+        source_locations=citation.source_locations or [],
     )
 
 

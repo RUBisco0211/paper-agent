@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft } from "lucide-react"
 import { useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-sessions"
@@ -18,7 +18,7 @@ import {
 import { sessionApi } from "@upstream/api/session"
 import type { SessionRecord } from "@upstream/api/types"
 import { useMessages } from "@upstream/hooks/useMessages"
-import { BoundCitationSheet } from "./BoundCitationSheet"
+import { notifyError } from "@/lib/errors"
 
 export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?: SessionRecord; scheduledScope?: string } = {}) {
   const params = useParams()
@@ -26,7 +26,8 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const sessionId = scheduledRun?.id ?? params.sessionId ?? ""
   const { api } = useApi()
   const queryClient = useQueryClient()
-  const [citationId, setCitationId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  const location = useLocation()
   const [changingModel, setChangingModel] = useState(false)
   const [modelError, setModelError] = useState("")
   const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm } =
@@ -60,6 +61,26 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const selectedModel = current ? `${current.credential_id}:${current.model}` : ""
   const availableEfforts = current ? reasoningEffortsForModel(catalog.data?.providers ?? [], current.type, current.model) : []
   const selectedEffort = typeof current?.parameters.reasoning_effort === "string" ? current.parameters.reasoning_effort : "default"
+
+  async function openCitation(citationId: string) {
+    try {
+      const citation = await api.client.request<{
+        paper_id: string
+        page_start: number | null
+        source_locations?: Array<{ source_ranges?: Array<{ block_id: number; page?: number }> }>
+      }>(`/v1/session-bindings/${sessionId}/citations/${citationId}`)
+      const source = citation.source_locations?.flatMap((item) => item.source_ranges ?? [])[0]
+      const params = new URLSearchParams()
+      const page = source?.page ?? citation.page_start
+      if (page) params.set("page", String(page))
+      if (source) params.set("block", String(source.block_id))
+      navigate(`/library/${citation.paper_id}${params.size ? `?${params}` : ""}`, {
+        state: { from: location.pathname },
+      })
+    } catch (error) {
+      notifyError(error, "无法打开引用原文")
+    }
+  }
 
   async function changeModel(value: string) {
     const next = models.data?.find((item) => `${item.credential_id}:${item.model}` === value)
@@ -96,7 +117,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }
 
   return (
-    <CitationProvider onOpen={setCitationId}>
+    <CitationProvider onOpen={(id) => void openCitation(id)}>
       <main className="flex h-full min-h-0 flex-col">
         <header className="flex items-center justify-between gap-4 border-b bg-background px-5 py-3">
           <div className="flex min-w-0 items-center gap-2">
@@ -143,7 +164,6 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
           />
         </div>
       </main>
-      <BoundCitationSheet sessionId={sessionId} citationId={citationId} onOpenChange={(open) => !open && setCitationId(null)} />
     </CitationProvider>
   )
 }

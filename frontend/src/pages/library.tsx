@@ -26,7 +26,6 @@ import {
   TableRow,
 } from "@upstream/components/ui/table"
 import { ImportDialog } from "@/components/papers/import-dialog"
-import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { PaperStatusBadge } from "@/components/papers/paper-status"
 import { PAPER_SOURCE_LABEL } from "@/lib/api/types"
 import { useApi } from "@/lib/api/provider"
@@ -44,7 +43,6 @@ export function LibraryPage() {
 
   const [query, setQuery] = useState("")
   const [offset, setOffset] = useState(0)
-  const [selectedPaper, setSelectedPaper] = useState<string | null>(null)
 
   const papers = useQuery({
     queryKey: queryKeys.papers({ q: query, offset }),
@@ -175,7 +173,7 @@ export function LibraryPage() {
                   <TableRow
                     key={paper.id}
                     className="cursor-pointer"
-                    onClick={() => setSelectedPaper(paper.id)}
+                    onClick={() => navigate(`/library/${paper.id}`, { state: { from: "/library" } })}
                   >
                     <TableCell className="max-w-md">
                       <p className="truncate font-medium">
@@ -247,14 +245,6 @@ export function LibraryPage() {
         ) : null}
       </div>
 
-      <PaperDetailSheet
-        paperId={selectedPaper}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedPaper(null)
-          }
-        }}
-      />
     </>
   )
 }

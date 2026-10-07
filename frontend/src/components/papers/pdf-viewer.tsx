@@ -10,21 +10,32 @@ import { Skeleton } from "@upstream/components/ui/skeleton"
 
 GlobalWorkerOptions.workerSrc = workerUrl
 
+export interface PdfTarget {
+  page: number
+  bbox?: number[] | null
+  pageSize?: number[] | null
+  coordinateSystem?: "normalized" | "page" | null
+}
+
 export function PdfViewer({
   paperId,
   page,
+  target,
   className,
 }: {
   paperId: string
   page?: number | null
+  target?: PdfTarget
   className?: string
 }) {
   const { api } = useApi()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null)
-  const [currentPage, setCurrentPage] = useState(page ?? 1)
+  const [currentPage, setCurrentPage] = useState(target?.page ?? page ?? 1)
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
+  const [renderedPage, setRenderedPage] = useState<number | null>(null)
+  const [renderedSize, setRenderedSize] = useState<{ width: number; height: number } | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -53,8 +64,8 @@ export function PdfViewer({
   }, [api, paperId])
 
   useEffect(() => {
-    setCurrentPage(page ?? 1)
-  }, [page, paperId])
+    setCurrentPage(target?.page ?? page ?? 1)
+  }, [target, page, paperId])
 
   const pageNumber = document
     ? Math.min(Math.max(currentPage, 1), document.numPages)
@@ -72,6 +83,7 @@ export function PdfViewer({
         const context = canvas?.getContext("2d")
         if (!canvas || !context) throw new Error("无法创建 PDF 画布")
         const viewport = pdfPage.getViewport({ scale })
+        setRenderedSize({ width: viewport.width, height: viewport.height })
         const pixelRatio = Math.min(window.devicePixelRatio || 1, 2)
         canvas.width = Math.floor(viewport.width * pixelRatio)
         canvas.height = Math.floor(viewport.height * pixelRatio)
@@ -84,7 +96,10 @@ export function PdfViewer({
           transform: pixelRatio === 1 ? undefined : [pixelRatio, 0, 0, pixelRatio, 0, 0],
         })
         await renderTask.promise
-        if (!disposed) setError(null)
+        if (!disposed) {
+          setRenderedPage(pageNumber)
+          setError(null)
+        }
       } catch (cause) {
         if (!disposed && !(cause instanceof Error && cause.name === "RenderingCancelledException")) {
           setError(describeError(cause))
@@ -96,6 +111,18 @@ export function PdfViewer({
       renderTask?.cancel()
     }
   }, [document, pageNumber, scale])
+
+  const box = target?.bbox
+  const size = target?.pageSize
+  const region = box && size && renderedSize && renderedPage === pageNumber && target?.page === pageNumber
+    && box.length === 4 && size.length === 2
+    && (target?.coordinateSystem === "normalized" || Math.abs(renderedSize.width / renderedSize.height - size[0] / size[1]) < 0.05)
+    ? {
+        left: `${box[0] / size[0] * 100}%`,
+        top: `${box[1] / size[1] * 100}%`,
+        width: `${(box[2] - box[0]) / size[0] * 100}%`,
+        height: `${(box[3] - box[1]) / size[1] * 100}%`,
+      } : null
 
   if (error) {
     return <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-sm">{error}</div>
@@ -115,7 +142,10 @@ export function PdfViewer({
         <Button aria-label="放大" title="放大" variant="ghost" size="icon" disabled={scale >= 3} onClick={() => setScale((value) => Math.min(3, value + 0.25))}><Plus /></Button>
       </div>
       <div className="bg-muted/30 min-h-0 flex-1 overflow-auto p-3">
-        <canvas ref={canvasRef} role="img" aria-label="文献原文" className="bg-white mx-auto block shadow-sm" />
+        <div className="relative mx-auto w-fit shadow-sm">
+          <canvas ref={canvasRef} role="img" aria-label="文献原文" className="block bg-white" />
+          {region && <div data-testid="pdf-region" aria-label="所选片段位置" className="pointer-events-none absolute rounded-sm border-2 border-amber-500 bg-amber-400/20" style={region} />}
+        </div>
       </div>
     </div>
   )

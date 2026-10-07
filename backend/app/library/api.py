@@ -14,6 +14,8 @@ from .schemas import (
     FetchMetadataResponse,
     FetchPdfResponse,
     MetadataFetchRead,
+    PaperBlockRead,
+    PaperBlocksResponse,
     PaperInfoUpdateRequest,
     UploadResponse,
     UserPaperDetail,
@@ -24,6 +26,42 @@ from .schemas import (
 from .service import PaperInfoUpdate
 
 router = APIRouter(prefix="/papers", tags=["library"])
+
+
+@router.get("/{paper_id}/blocks", response_model=PaperBlocksResponse)
+def list_paper_blocks(
+    paper_id: UUID,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+    block_type: Annotated[str | None, Query(alias="type")] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> PaperBlocksResponse:
+    return PaperBlocksResponse.model_validate(
+        service.list_blocks(
+            user_id=user.id,
+            user_paper_id=paper_id,
+            block_type=block_type,
+            offset=offset,
+            limit=limit,
+        )
+    )
+
+
+@router.get("/{paper_id}/blocks/{block_id}", response_model=PaperBlockRead)
+def read_paper_block(
+    paper_id: UUID,
+    block_id: int,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+) -> PaperBlockRead:
+    return PaperBlockRead.model_validate(
+        service.get_block(
+            user_id=user.id,
+            user_paper_id=paper_id,
+            block_id=block_id,
+        )
+    )
 
 
 def _job_schema(

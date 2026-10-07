@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, FileText, MessageSquarePlus } from "lucide-react"
-import { useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { PageHeader } from "@/app/app-shell"
@@ -26,7 +25,6 @@ import {
 import { AddPapersDialog } from "@/components/projects/add-papers-dialog"
 import { ImportDialog } from "@/components/papers/import-dialog"
 import { PaperStatusBadge } from "@/components/papers/paper-status"
-import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { useApi } from "@/lib/api/provider"
 import { useAgentUi } from "@/lib/agent-ui"
 import { createBoundSession } from "@/lib/agent-sessions"
@@ -38,7 +36,6 @@ export function ProjectDetailPage() {
   const agentUi = useAgentUi()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [selectedPaper, setSelectedPaper] = useState<string | null>(null)
   // 侧边栏的“添加文献”跳到这里并带 ?add=1；对话框开关直接由 URL 决定，
   // 这样重复点击同一个菜单项也能再次打开。
   const [searchParams, setSearchParams] = useSearchParams()
@@ -178,7 +175,7 @@ export function ProjectDetailPage() {
                     <TableRow
                       key={paper.id}
                       className="cursor-pointer"
-                      onClick={() => setSelectedPaper(paper.id)}
+                      onClick={() => navigate(`/library/${paper.id}`, { state: { from: `/projects/${projectId}` } })}
                     >
                       <TableCell className="max-w-lg">
                         <p className="truncate font-medium">
@@ -229,10 +226,6 @@ export function ProjectDetailPage() {
         </section>}
       </div>
 
-      <PaperDetailSheet
-        paperId={selectedPaper}
-        onOpenChange={(open) => !open && setSelectedPaper(null)}
-      />
     </>
   )
 }

@@ -7,6 +7,8 @@ import type {
   Page,
   PaperInfoInput,
   PaperListParams,
+  PaperBlocksResponse,
+  PaperBlock,
   UploadResponse,
   UserPaperDetail,
   UserPaperSummary,
@@ -33,6 +35,12 @@ export function libraryEndpoints(client: ApiClient) {
 
     detail: (paperId: Uuid) =>
       client.request<UserPaperDetail>(`${PAPERS}/${paperId}`),
+
+    blocks: (paperId: Uuid, params: { type?: string; offset?: number; limit?: number } = {}) =>
+      client.request<PaperBlocksResponse>(`${PAPERS}/${paperId}/blocks`, { query: params }),
+
+    block: (paperId: Uuid, blockId: number) =>
+      client.request<PaperBlock>(`${PAPERS}/${paperId}/blocks/${blockId}`),
 
     /** Fetched as a blob so the caller can render it in an embedded viewer. */
     pdfBlob: async (paperId: Uuid, options: { signal?: AbortSignal } = {}) => {
