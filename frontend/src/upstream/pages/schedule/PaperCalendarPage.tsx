@@ -1,18 +1,19 @@
 import { useQuery } from "@tanstack/react-query"
 import { CronExpressionParser } from "cron-parser"
-import { Clock3, Plus } from "lucide-react"
+import { ChevronDown, MoreHorizontal, Plus } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, sameSessionId } from "@/lib/agent-sessions"
-import { createProjectSchedule, deleteProjectSchedule, listProjectSchedules } from "@/lib/project-schedules"
+import { createProjectSchedule, deleteProjectSchedule, listProjectSchedules, type ProjectSchedule } from "@/lib/project-schedules"
 import { agentApi } from "@upstream/api/agent"
 import { scheduleApi } from "@upstream/api/schedule"
 import { Button } from "@upstream/components/ui/button"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@upstream/components/ui/collapsible"
 import { PaperChatPage } from "@upstream/pages/chat/PaperChatPage"
 import type { ScheduleEvent } from "./event"
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarProvider } from "@upstream/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from "@upstream/components/ui/sidebar"
 import { CalendarTabPage } from "./calendar-tab-page"
 import { ProjectScheduleDetail } from "./ProjectScheduleDetail"
 import { ProjectScheduleDialog, type ScheduleDraft } from "./ProjectScheduleDialog"
@@ -44,6 +45,15 @@ function monthEvents(tasks: Awaited<ReturnType<typeof listProjectSchedules>>, cu
     }
     return events
   })
+}
+
+function TaskRows({ tasks, activeTaskId, onSelect }: { tasks: ProjectSchedule[]; activeTaskId: string | null; onSelect: (scheduleId: string) => void }) {
+  return tasks.map((task) => <SidebarMenuItem key={task.schedule.id}>
+    <SidebarMenuButton type="button" isActive={activeTaskId === task.schedule.id} onClick={() => onSelect(task.schedule.id)}>
+      <span className="truncate">{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</span>
+    </SidebarMenuButton>
+    <SidebarMenuAction type="button" showOnHover aria-label={`${task.schedule.data.name}详情`} onClick={() => onSelect(task.schedule.id)}><MoreHorizontal /></SidebarMenuAction>
+  </SidebarMenuItem>)
 }
 
 export function PaperCalendarPage() {
@@ -85,8 +95,15 @@ export function PaperCalendarPage() {
     enabled: createOpen,
   })
   const events = useMemo(() => monthEvents(tasks.data ?? [], currentDate), [tasks.data, currentDate])
+  const orderedTasks = useMemo(() => [...(tasks.data ?? [])].sort((a, b) => (b.schedule.created_at ?? "").localeCompare(a.schedule.created_at ?? "")), [tasks.data])
   const selectedTask = tasks.data?.find((task) => task.schedule.id === selectedTaskId) ?? null
   const selectedProjectId = createProjectId ?? ""
+  const activeTaskId = selectedTaskId ?? scheduleId ?? null
+
+  function openCreate(projectId: string | null) {
+    setCreateProjectId(projectId)
+    setCreateOpen(true)
+  }
 
   async function create(draft: ScheduleDraft) {
     const listed = await agentApi.list()
@@ -109,23 +126,29 @@ export function PaperCalendarPage() {
   return <SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full w-full">
       <Sidebar collapsible="none" className="border-r">
-        <SidebarHeader className="px-4 py-5 font-semibold">定时任务</SidebarHeader>
+        <SidebarHeader className="px-4 py-5 font-semibold tracking-tight">定时任务</SidebarHeader>
         <SidebarContent>
-          <SidebarGroup><SidebarGroupContent>
-            <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><Clock3 className="size-4" /><span>全局</span></div>
-            {tasks.data?.filter((task) => task.projectId === null).map((task) => <button key={task.schedule.id} type="button" className="block w-full truncate px-8 py-1 text-left text-sm hover:bg-accent" onClick={() => setSelectedTaskId(task.schedule.id)}>{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</button>)}
-          </SidebarGroupContent></SidebarGroup>
+          <SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between">全局
+              <button type="button" aria-label="新建全局定时任务" onClick={() => openCreate(null)}><Plus className="size-4" /></button>
+            </SidebarGroupLabel>
+            <SidebarGroupContent><SidebarMenu><TaskRows tasks={orderedTasks.filter((task) => task.projectId === null)} activeTaskId={activeTaskId} onSelect={setSelectedTaskId} /></SidebarMenu></SidebarGroupContent>
+          </SidebarGroup>
           {projects.isPending && <p className="px-4 text-sm text-muted-foreground">加载中…</p>}
           {projects.isError && <p role="alert" className="px-4 text-sm text-destructive">无法读取项目</p>}
           {tasks.isError && <p role="alert" className="px-4 text-sm text-destructive">无法读取定时任务</p>}
           {projects.isSuccess && projects.data.length === 0 && <p className="px-4 text-sm text-muted-foreground">暂无项目</p>}
-          {projects.data?.map((project) => <SidebarGroup key={project.id}>
-            <SidebarGroupContent>
-              <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><Clock3 className="size-4" /><span className="min-w-0 flex-1 truncate">{project.name}</span></div>
-              {tasks.data?.filter((task) => task.projectId === project.id).map((task) => <button key={task.schedule.id} type="button" className="block w-full truncate px-8 py-1 text-left text-sm hover:bg-accent" onClick={() => setSelectedTaskId(task.schedule.id)}>{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</button>)}
-              {!tasks.data?.some((task) => task.projectId === project.id) && <p className="px-8 py-1 text-xs text-muted-foreground">暂无定时任务</p>}
-            </SidebarGroupContent>
-          </SidebarGroup>)}
+          {projects.data?.map((project) => <Collapsible key={project.id} defaultOpen><SidebarGroup>
+            <SidebarGroupLabel className="flex items-center justify-between">
+              <CollapsibleTrigger className="flex min-w-0 items-center gap-1 truncate"><ChevronDown className="size-3.5" />{project.name}</CollapsibleTrigger>
+              <button type="button" aria-label={`在${project.name}中新建定时任务`} onClick={() => openCreate(project.id)}><Plus className="size-4" /></button>
+            </SidebarGroupLabel>
+            <CollapsibleContent><SidebarGroupContent><SidebarMenu>
+              <TaskRows tasks={orderedTasks.filter((task) => task.projectId === project.id)} activeTaskId={activeTaskId} onSelect={setSelectedTaskId} />
+            </SidebarMenu>
+              {!tasks.data?.some((task) => task.projectId === project.id) && <p className="px-2 py-1 text-xs text-muted-foreground">暂无定时任务</p>}
+            </SidebarGroupContent></CollapsibleContent>
+          </SidebarGroup></Collapsible>)}
         </SidebarContent>
       </Sidebar>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
@@ -137,7 +160,7 @@ export function PaperCalendarPage() {
               : <p role="alert" className="p-5 text-sm text-muted-foreground">会话不存在</p>}
           </div>
         </> : <>
-          <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => setCreateOpen(true)}><Plus className="size-4" />新建定时任务</Button></div>
+          <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => openCreate(null)}><Plus className="size-4" />新建定时任务</Button></div>
           <div className="min-h-0 flex-1"><CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} /></div>
         </>}
       </main>

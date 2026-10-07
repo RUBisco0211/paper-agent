@@ -65,6 +65,7 @@
 | 0049 | product, agent, data, frontend | 定时任务可选全局或项目范围；频率按星期选日 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
 | 0050 | product, frontend, agent | 定时运行可在任务页打开完整会话并继续对话 | 已被 0051 取代 | [0050-scheduled-run-conversations.md](decisions/0050-scheduled-run-conversations.md) |
 | 0051 | product, frontend | 点击运行记录直接打开会话；时间按任务时区显示 | 当前 | [0051-scheduled-run-record-navigation.md](decisions/0051-scheduled-run-record-navigation.md) |
+| 0052 | frontend, product | 定时任务侧栏沿用对话页的分组与条目样式 | 当前 | [0052-scheduled-sidebar-chat-style.md](decisions/0052-scheduled-sidebar-chat-style.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

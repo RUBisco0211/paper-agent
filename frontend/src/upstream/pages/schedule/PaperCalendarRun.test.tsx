@@ -27,6 +27,9 @@ it("shows a run in the scheduled main area when it belongs to the task", async (
   renderRun("/scheduled/task-1/runs/run-1")
   expect(await screen.findByText("运行会话 run-1")).toBeTruthy()
   expect(screen.getByText("定时任务")).toBeTruthy()
+  const task = screen.getByRole("button", { name: "问候" })
+  expect(task.getAttribute("data-sidebar")).toBe("menu-button")
+  expect(task.getAttribute("data-active")).toBe("true")
 })
 
 it("opens a scheduled conversation when its run record is clicked", async () => {
