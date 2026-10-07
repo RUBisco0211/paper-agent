@@ -221,13 +221,13 @@ export function CalendarTabPage({ events, onEventClick, currentDate, onMonthChan
 					})}
 				</h2>
 				<div className="flex items-center gap-2">
-					<Button variant="outline" size="sm" onClick={goToToday}>
+					<Button variant="ghost" size="sm" onClick={goToToday}>
 						{t('schedule.today')}
 					</Button>
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button variant="outline" size="icon-sm" onClick={goToPrevYear}>
+								<Button variant="ghost" size="icon-sm" aria-label={t('schedule.previousYear')} onClick={goToPrevYear}>
 									<ChevronsLeft className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
@@ -239,7 +239,7 @@ export function CalendarTabPage({ events, onEventClick, currentDate, onMonthChan
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button variant="outline" size="icon-sm" onClick={goToPrevMonth}>
+								<Button variant="ghost" size="icon-sm" aria-label={t('schedule.previousMonth')} onClick={goToPrevMonth}>
 									<ChevronLeft className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
@@ -251,7 +251,7 @@ export function CalendarTabPage({ events, onEventClick, currentDate, onMonthChan
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button variant="outline" size="icon-sm" onClick={goToNextMonth}>
+								<Button variant="ghost" size="icon-sm" aria-label={t('schedule.nextMonth')} onClick={goToNextMonth}>
 									<ChevronRight className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
@@ -263,7 +263,7 @@ export function CalendarTabPage({ events, onEventClick, currentDate, onMonthChan
 					<TooltipProvider>
 						<Tooltip>
 							<TooltipTrigger asChild>
-								<Button variant="outline" size="icon-sm" onClick={goToNextYear}>
+								<Button variant="ghost" size="icon-sm" aria-label={t('schedule.nextYear')} onClick={goToNextYear}>
 									<ChevronsRight className="h-4 w-4" />
 								</Button>
 							</TooltipTrigger>
