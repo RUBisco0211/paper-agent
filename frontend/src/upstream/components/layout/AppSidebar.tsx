@@ -1,4 +1,4 @@
-import { BookOpen, CalendarDays, KeyRound, LogOut, MessageSquareText } from "lucide-react"
+import { BookOpen, Clock3, KeyRound, LogOut, MessageSquareText } from "lucide-react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/lib/auth/provider"
@@ -9,7 +9,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 const routes = [
   { to: "/chat", label: "对话", icon: MessageSquareText },
   { to: "/library", label: "文献库", icon: BookOpen },
-  { to: "/calendar", label: "日历", icon: CalendarDays },
+  { to: "/scheduled", label: "定时任务", icon: Clock3 },
   { to: "/settings", label: "模型设置", icon: KeyRound },
 ]
 

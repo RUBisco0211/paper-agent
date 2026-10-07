@@ -61,6 +61,7 @@
 | 0045 | frontend, product | 对话页采用 web_ui 双层导航、项目文献侧栏和日历容器 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
 | 0046 | product, frontend, data | 定时任务必须归属项目；日历按项目显示任务 | 当前 | [0046-schedules-belong-to-projects.md](decisions/0046-schedules-belong-to-projects.md) |
 | 0047 | product, agent, data, frontend | 项目自定义 prompt 用 AgentScope 定时触发；每次独立运行，任务页聚合结果 | 当前 | [0047-project-scheduled-agent-runs.md](decisions/0047-project-scheduled-agent-runs.md) |
+| 0048 | frontend, product | 定时任务统一使用时钟入口与 `/scheduled`，默认月视图 | 当前 | [0048-scheduled-task-navigation.md](decisions/0048-scheduled-task-navigation.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

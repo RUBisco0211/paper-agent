@@ -12,8 +12,9 @@ vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { projects: { list:
 ], total: 2 }) } } }) }))
 vi.mock("./calendar-tab-page", () => ({ CalendarTabPage: () => <div>日历网格</div> }))
 
-it("groups the calendar task sidebar by project when no tasks exist", async () => {
+it("shows the scheduled task page and groups tasks by project when no tasks exist", async () => {
   render(<QueryClientProvider client={createQueryClient()}><PaperCalendarPage /></QueryClientProvider>)
+  expect(screen.getByText("定时任务")).toBeTruthy()
   expect(await screen.findByText("甲项目")).toBeTruthy()
   expect(screen.getByText("乙项目")).toBeTruthy()
   expect(screen.getAllByText("暂无定时任务")).toHaveLength(2)

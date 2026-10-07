@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { CronExpressionParser } from "cron-parser"
-import { CalendarDays, Plus } from "lucide-react"
+import { Clock3, Plus } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { useApi } from "@/lib/api/provider"
@@ -96,7 +96,7 @@ export function PaperCalendarPage() {
   return <SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full w-full">
       <Sidebar collapsible="none" className="border-r">
-        <SidebarHeader className="px-4 py-5 font-semibold">日历</SidebarHeader>
+        <SidebarHeader className="px-4 py-5 font-semibold">定时任务</SidebarHeader>
         <SidebarContent>
           {projects.isPending && <p className="px-4 text-sm text-muted-foreground">加载中…</p>}
           {projects.isError && <p role="alert" className="px-4 text-sm text-destructive">无法读取项目</p>}
@@ -104,9 +104,10 @@ export function PaperCalendarPage() {
           {projects.isSuccess && projects.data.length === 0 && <p className="px-4 text-sm text-muted-foreground">暂无项目</p>}
           {projects.data?.map((project) => <SidebarGroup key={project.id}>
             <SidebarGroupContent>
-              <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><CalendarDays className="size-4" /><span className="min-w-0 flex-1 truncate">{project.name}</span><Button size="icon-sm" variant="ghost" aria-label={`为${project.name}新建定时任务`} onClick={() => setCreateProjectId(project.id)}><Plus /></Button></div>
+              <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><Clock3 className="size-4" /><span className="min-w-0 flex-1 truncate">{project.name}</span></div>
               {tasks.data?.filter((task) => task.projectId === project.id).map((task) => <button key={task.schedule.id} type="button" className="block w-full truncate px-8 py-1 text-left text-sm hover:bg-accent" onClick={() => setSelectedTaskId(task.schedule.id)}>{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</button>)}
               {!tasks.data?.some((task) => task.projectId === project.id) && <p className="px-8 py-1 text-xs text-muted-foreground">暂无定时任务</p>}
+              <Button variant="ghost" size="sm" className="mt-1 w-full justify-start px-8" onClick={() => setCreateProjectId(project.id)}><Plus className="size-4" />新建定时任务</Button>
             </SidebarGroupContent>
           </SidebarGroup>)}
         </SidebarContent>
