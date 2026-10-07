@@ -67,6 +67,7 @@
 | 0051 | product, frontend | 点击运行记录直接打开会话；时间按任务时区显示 | 当前 | [0051-scheduled-run-record-navigation.md](decisions/0051-scheduled-run-record-navigation.md) |
 | 0052 | frontend, product | 定时任务侧栏沿用对话页的分组与条目样式 | 当前 | [0052-scheduled-sidebar-chat-style.md](decisions/0052-scheduled-sidebar-chat-style.md) |
 | 0053 | frontend, product | 授权 PDF 用 PDF.js 在页面内渲染并支持引用页定位、翻页与缩放 | 当前 | [0053-embedded-pdf-rendering.md](decisions/0053-embedded-pdf-rendering.md) |
+| 0054 | frontend, product | 删除定时任务等不可撤销操作统一使用站内确认弹窗 | 当前 | [0054-destructive-confirmation-dialogs.md](decisions/0054-destructive-confirmation-dialogs.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

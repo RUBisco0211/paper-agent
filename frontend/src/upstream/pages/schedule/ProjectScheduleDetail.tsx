@@ -4,6 +4,10 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import type { ProjectSchedule } from "@/lib/project-schedules"
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { scheduleApi } from "@upstream/api/schedule"
 import { Button } from "@upstream/components/ui/button"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
@@ -34,6 +38,7 @@ export function ProjectScheduleDetail({
 }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const scheduleId = task?.schedule.id ?? ""
@@ -63,11 +68,11 @@ export function ProjectScheduleDetail({
 
   async function remove() {
     if (!task) return
-    if (!window.confirm("删除定时任务及全部运行记录？此操作不可撤销。")) return
     setBusy(true)
     setError("")
     try {
       await onDelete(task.schedule.id)
+      setConfirmDelete(false)
       onClose()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "删除失败，请重试")
@@ -88,7 +93,7 @@ export function ProjectScheduleDetail({
             <div className="flex shrink-0 items-center gap-1">
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={task.schedule.data.enabled ? "暂停任务" : "启用任务"} disabled={busy} onClick={() => void changeEnabled()}>{task.schedule.data.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}</Button></TooltipTrigger><TooltipContent>{task.schedule.data.enabled ? "暂停任务" : "启用任务"}</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="刷新结果" disabled={runs.isFetching} onClick={() => void runs.refetch()}><RefreshCw className="size-4" /></Button></TooltipTrigger><TooltipContent>刷新结果</TooltipContent></Tooltip>
-              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="删除任务" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void remove()}><Trash2 className="size-4" /></Button></TooltipTrigger><TooltipContent>删除任务</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="删除任务" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 className="size-4" /></Button></TooltipTrigger><TooltipContent>删除任务</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><SheetClose asChild><Button variant="ghost" size="icon-sm" aria-label="关闭"><X className="size-4" /></Button></SheetClose></TooltipTrigger><TooltipContent>关闭</TooltipContent></Tooltip>
             </div>
           </TooltipProvider>
@@ -106,5 +111,18 @@ export function ProjectScheduleDetail({
         </div>
       </SheetContent>
     </Sheet>
+    <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>删除定时任务「{task.schedule.data.name}」？</AlertDialogTitle>
+          <AlertDialogDescription>定时任务及全部运行记录会被删除，此操作不可撤销。</AlertDialogDescription>
+        </AlertDialogHeader>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+          <AlertDialogAction disabled={busy} onClick={(event) => { event.preventDefault(); void remove() }}>删除</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </>
 }
