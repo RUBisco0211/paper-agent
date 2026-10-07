@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 
 import { useApi } from "@/lib/api/provider"
 import { describeError } from "@/lib/errors"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from "@upstream/components/ui/skeleton"
 
 /**
  * Renders the authorized PDF.

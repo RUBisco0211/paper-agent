@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge"
+import { Badge } from "@upstream/components/ui/badge"
 import type { Capabilities, ProcessingState } from "@/lib/api"
 
 type Status = "done" | "failed" | "pending" | "idle"
@@ -34,11 +34,11 @@ const LABEL: Record<Status, string> = {
   idle: "待补全文",
 }
 
-const VARIANT: Record<Status, "success" | "destructive" | "warning" | "outline"> = {
-  done: "success",
-  failed: "destructive",
-  pending: "warning",
-  idle: "outline",
+const STYLE: Record<Status, string> = {
+  done: "border-success/30 bg-success/10 text-success",
+  failed: "border-destructive/30 bg-destructive/10 text-destructive",
+  pending: "border-warning/30 bg-warning/10 text-warning",
+  idle: "",
 }
 
 export function PaperStatusBadge({
@@ -49,7 +49,7 @@ export function PaperStatusBadge({
   processing: ProcessingState
 }) {
   const status = paperStatus(capabilities, processing)
-  return <Badge variant={VARIANT[status]}>{LABEL[status]}</Badge>
+  return <Badge variant="outline" className={STYLE[status]}>{LABEL[status]}</Badge>
 }
 
 const STAGE_LABELS: Record<string, string> = {

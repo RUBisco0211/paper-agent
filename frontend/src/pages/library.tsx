@@ -3,21 +3,20 @@ import { BookOpen, FileUp, RefreshCw, Search } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@upstream/components/ui/alert"
+import { Badge } from "@upstream/components/ui/badge"
+import { Button } from "@upstream/components/ui/button"
 import {
   Empty,
   EmptyContent,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "@/components/ui/empty"
-import { Spinner } from "@/components/ui/spinner"
-import { Input } from "@/components/ui/input"
-import { Skeleton } from "@/components/ui/skeleton"
+} from "@upstream/components/ui/empty"
+import { Spinner } from "@upstream/components/ui/spinner"
+import { Input } from "@upstream/components/ui/input"
+import { Skeleton } from "@upstream/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -25,7 +24,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@upstream/components/ui/table"
 import { ImportDialog } from "@/components/papers/import-dialog"
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { PaperStatusBadge } from "@/components/papers/paper-status"
@@ -74,12 +73,22 @@ export function LibraryPage() {
 
   return (
     <>
-      <PageHeader
-        title="文献库"
-        actions={
-          <>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b px-6 py-3">
+        <h1 className="sr-only">文献库</h1>
+        <div className="relative w-full max-w-sm">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            className="pl-9"
+            aria-label="搜索文献"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              setOffset(0)
+            }}
+          />
+        </div>
+        <div className="flex items-center gap-2">
             <Button
-              variant="outline"
               onClick={() => fileInput.current?.click()}
               disabled={upload.isPending}
             >
@@ -97,15 +106,14 @@ export function LibraryPage() {
             />
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="刷新"
               onClick={() => void papers.refetch()}
             >
               <RefreshCw />
             </Button>
-          </>
-        }
-      />
+        </div>
+      </header>
       <input
         ref={fileInput}
         type="file"
@@ -121,19 +129,6 @@ export function LibraryPage() {
       />
 
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <div className="relative max-w-sm">
-          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-          <Input
-            className="pl-9"
-            aria-label="搜索文献"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value)
-              setOffset(0)
-            }}
-          />
-        </div>
-
         {papers.isError ? (
           <Alert variant="destructive">
             <AlertTitle>加载失败</AlertTitle>
@@ -165,9 +160,9 @@ export function LibraryPage() {
             ) : null}
           </Empty>
         ) : (
-          <div className="rounded-md border">
+          <div className="border-y">
             <Table>
-              <TableHeader>
+              <TableHeader className="bg-muted/30">
                 <TableRow>
                   <TableHead>标题</TableHead>
                   <TableHead>来源</TableHead>

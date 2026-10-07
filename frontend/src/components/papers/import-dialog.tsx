@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@upstream/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -10,11 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Label } from "@/components/ui/label"
-import { Spinner } from "@/components/ui/spinner"
+} from "@upstream/components/ui/dialog"
+import { Input } from "@upstream/components/ui/input"
+import { Field, FieldGroup, FieldLabel } from "@upstream/components/ui/field"
+import { Label } from "@upstream/components/ui/label"
+import { Spinner } from "@upstream/components/ui/spinner"
 import {
   Select,
   SelectContent,
@@ -22,7 +22,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@upstream/components/ui/select"
 import type { PaperImport } from "@/lib/api"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifySuccess } from "@/lib/errors"

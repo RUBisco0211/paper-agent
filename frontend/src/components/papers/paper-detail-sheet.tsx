@@ -10,22 +10,22 @@ import {
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
+import { Alert, AlertDescription, AlertTitle } from "@upstream/components/ui/alert"
+import { Badge } from "@upstream/components/ui/badge"
+import { Button } from "@upstream/components/ui/button"
+import { Input } from "@upstream/components/ui/input"
+import { Label } from "@upstream/components/ui/label"
+import { Separator } from "@upstream/components/ui/separator"
 import {
   Sheet,
   SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/sheet"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
-import { Textarea } from "@/components/ui/textarea"
+} from "@upstream/components/ui/sheet"
+import { Skeleton } from "@upstream/components/ui/skeleton"
+import { Spinner } from "@upstream/components/ui/spinner"
+import { Textarea } from "@upstream/components/ui/textarea"
 import {
   Table,
   TableBody,
@@ -33,7 +33,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from "@upstream/components/ui/table"
 import { AddToProjectMenu } from "@/components/papers/add-to-project-menu"
 import { PaperStatusBadge, stageLabel } from "@/components/papers/paper-status"
 import { PdfViewer } from "@/components/papers/pdf-viewer"
@@ -179,7 +179,7 @@ export function PaperDetailSheet({
 
   return (
     <Sheet open={Boolean(paperId)} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full gap-0 overflow-hidden sm:max-w-4xl">
+      <SheetContent side="right" className="gap-0 overflow-hidden data-[side=right]:w-full data-[side=right]:sm:max-w-4xl">
         <SheetHeader className="border-border/60 border-b">
           <SheetTitle className="pr-8">{paper?.title ?? "文献详情"}</SheetTitle>
           <SheetDescription>
@@ -215,8 +215,8 @@ export function PaperDetailSheet({
               </div>
 
               {paper.processing.status === "failed" && paper.processing.job_id ? (
-                <Alert variant="warning">
-                  <TriangleAlert />
+                <Alert className="border-warning/30 bg-warning/5">
+                  <TriangleAlert className="text-warning" />
                   <AlertTitle>处理未完成</AlertTitle>
                   <AlertDescription className="flex flex-col gap-2">
                     <span>
@@ -274,9 +274,9 @@ export function PaperDetailSheet({
               ) : null}
 
               {job.data ? (
-                <div className="rounded-md border">
+                <div className="border-y">
                   <Table>
-                    <TableHeader>
+                    <TableHeader className="bg-muted/30">
                       <TableRow>
                         <TableHead>阶段</TableHead>
                         <TableHead>状态</TableHead>
@@ -288,17 +288,11 @@ export function PaperDetailSheet({
                         <TableRow key={stage.stage}>
                           <TableCell>{stageLabel(stage.stage)}</TableCell>
                           <TableCell>
-                            <Badge
-                              variant={
-                                stage.status === "failed"
-                                  ? "destructive"
-                                  : stage.status === "succeeded"
-                                    ? "success"
-                                    : stage.status === "skipped"
-                                      ? "outline"
-                                      : "warning"
-                              }
-                            >
+                            <Badge variant="outline" className={
+                              stage.status === "failed" ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                : stage.status === "succeeded" ? "border-success/30 bg-success/10 text-success"
+                                  : stage.status === "skipped" ? "" : "border-warning/30 bg-warning/10 text-warning"
+                            }>
                               {STATUS_LABEL[stage.status] ?? stage.status}
                             </Badge>
                           </TableCell>

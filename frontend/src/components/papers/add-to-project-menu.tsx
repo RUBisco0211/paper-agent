@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { FolderPlus } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@upstream/components/ui/button"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from "@upstream/components/ui/dropdown-menu"
 import { useApi } from "@/lib/api/provider"
 import { notifyError, notifySuccess } from "@/lib/errors"
 import { queryKeys } from "@/app/query"
