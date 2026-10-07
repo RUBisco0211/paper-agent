@@ -45,6 +45,7 @@ function monthEvents(tasks: Awaited<ReturnType<typeof listProjectSchedules>>, cu
 export function PaperCalendarPage() {
   const { api } = useApi()
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [createOpen, setCreateOpen] = useState(false)
   const [createProjectId, setCreateProjectId] = useState<string | null>(null)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const projects = useQuery({
@@ -68,18 +69,18 @@ export function PaperCalendarPage() {
   const models = useQuery({
     queryKey: ["available-chat-models"],
     queryFn: () => availableChatModels(api),
-    enabled: Boolean(createProjectId),
+    enabled: createOpen,
   })
   const events = useMemo(() => monthEvents(tasks.data ?? [], currentDate), [tasks.data, currentDate])
   const selectedTask = tasks.data?.find((task) => task.schedule.id === selectedTaskId) ?? null
-  const createProject = projects.data?.find((project) => project.id === createProjectId)
+  const selectedProjectId = createProjectId ?? projects.data?.[0]?.id ?? ""
 
   async function create(draft: ScheduleDraft) {
-    if (!createProjectId) return
+    if (!selectedProjectId) throw new Error("请先选择项目")
     const listed = await agentApi.list()
     const agentId = listed.agents[0]?.id ?? (await agentApi.create({ name: "文献助手" })).agent_id
     const scheduleId = await createProjectSchedule(api, {
-      projectId: createProjectId,
+      projectId: selectedProjectId,
       agentId,
       ...draft,
     })
@@ -107,16 +108,16 @@ export function PaperCalendarPage() {
               <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><Clock3 className="size-4" /><span className="min-w-0 flex-1 truncate">{project.name}</span></div>
               {tasks.data?.filter((task) => task.projectId === project.id).map((task) => <button key={task.schedule.id} type="button" className="block w-full truncate px-8 py-1 text-left text-sm hover:bg-accent" onClick={() => setSelectedTaskId(task.schedule.id)}>{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</button>)}
               {!tasks.data?.some((task) => task.projectId === project.id) && <p className="px-8 py-1 text-xs text-muted-foreground">暂无定时任务</p>}
-              <Button variant="ghost" size="sm" className="mt-1 w-full justify-start px-8" onClick={() => setCreateProjectId(project.id)}><Plus className="size-4" />新建定时任务</Button>
             </SidebarGroupContent>
           </SidebarGroup>)}
         </SidebarContent>
       </Sidebar>
-      <main className="min-w-0 flex-1 overflow-hidden bg-background">
-        <CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} />
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => setCreateOpen(true)}><Plus className="size-4" />新建定时任务</Button></div>
+        <div className="min-h-0 flex-1"><CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} /></div>
       </main>
     </div>
-    <ProjectScheduleDialog projectName={createProject?.name ?? ""} models={models.data ?? []} open={Boolean(createProjectId)} onOpenChange={(open) => !open && setCreateProjectId(null)} onCreate={create} />
+    <ProjectScheduleDialog projects={projects.data ?? []} projectId={selectedProjectId} onProjectChange={setCreateProjectId} models={models.data ?? []} open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateProjectId(null) }} onCreate={create} />
     <ProjectScheduleDetail task={selectedTask} onClose={() => setSelectedTaskId(null)} onDelete={remove} />
   </SidebarProvider>
 }

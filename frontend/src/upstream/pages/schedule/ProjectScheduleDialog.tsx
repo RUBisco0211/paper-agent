@@ -16,13 +16,17 @@ export interface ScheduleDraft {
 }
 
 export function ProjectScheduleDialog({
-  projectName,
+  projects,
+  projectId,
+  onProjectChange,
   models,
   open,
   onOpenChange,
   onCreate,
 }: {
-  projectName: string
+  projects: Array<{ id: string; name: string }>
+  projectId: string
+  onProjectChange: (projectId: string) => void
   models: ChatModelConfig[]
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -65,8 +69,10 @@ export function ProjectScheduleDialog({
 
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="sm:max-w-lg">
-      <DialogHeader><DialogTitle>新建定时任务 · {projectName}</DialogTitle></DialogHeader>
+      <DialogHeader><DialogTitle>新建定时任务</DialogTitle></DialogHeader>
       <div className="grid gap-4">
+        <label className="grid gap-1 text-sm">项目<Select value={projectId || undefined} onValueChange={onProjectChange}><SelectTrigger><SelectValue placeholder="选择项目" /></SelectTrigger><SelectContent>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label>
+        {projects.length === 0 && <p className="text-sm text-muted-foreground">请先创建项目</p>}
         <label className="grid gap-1 text-sm">名称<Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} /></label>
         <label className="grid gap-1 text-sm">任务提示词<Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-28" /></label>
         <div className="grid grid-cols-2 gap-3">
@@ -79,7 +85,7 @@ export function ProjectScheduleDialog({
         {models.length === 0 && <p className="text-sm text-muted-foreground">请先在模型设置中保存凭据</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>
-      <DialogFooter><Button disabled={busy || !name.trim() || !prompt.trim() || !models.length || !timezone.trim()} onClick={() => void submit()}>创建任务</Button></DialogFooter>
+      <DialogFooter><Button disabled={busy || !projectId || !name.trim() || !prompt.trim() || !models.length || !timezone.trim()} onClick={() => void submit()}>创建任务</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }
