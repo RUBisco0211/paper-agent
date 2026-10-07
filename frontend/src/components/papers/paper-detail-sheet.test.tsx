@@ -43,6 +43,36 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe("PaperDetailSheet", () => {
+  it("shows processing as ordered steps with the active stage and failure detail", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })
+      if (String(input).endsWith("/v1/ingestion-jobs/j1")) return json({
+        id: "j1", paper_id: "p1", status: "running", stages: [
+          { stage: "chunking", status: "pending" },
+          { stage: "embedding", status: "pending" },
+          { stage: "metadata", status: "failed", error_code: "metadata_not_found" },
+          { stage: "fulltext", status: "running" },
+        ],
+      })
+      return json({ ...PAPER, processing: { job_id: "j1", status: "running", current_stage: "fulltext", error_code: null } })
+    })
+    render(<QueryClientProvider client={createQueryClient()}>
+      <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+        <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
+      </ApiProvider>
+    </QueryClientProvider>)
+    const steps = await screen.findByRole("list", { name: "处理进度" })
+    expect(Array.from(steps.querySelectorAll("li")).map((item) => item.textContent)).toEqual([
+      expect.stringContaining("元数据"),
+      expect.stringContaining("正文解析"),
+      expect.stringContaining("分块"),
+      expect.stringContaining("向量化"),
+    ])
+    expect(steps.textContent).toContain("没有查询到该标识符")
+    expect(steps.textContent).toContain("进行中")
+    expect(screen.queryByRole("table")).toBeNull()
+  })
+
   it("starts a single-paper session from a paper", async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {

@@ -1,11 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  Check,
+  Circle,
   FileUp,
+  LoaderCircle,
   MessageSquarePlus,
+  Minus,
   RefreshCw,
   Sparkles,
   TriangleAlert,
   Undo2,
+  X,
 } from "lucide-react"
 import { useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -26,14 +31,6 @@ import {
 import { Skeleton } from "@upstream/components/ui/skeleton"
 import { Spinner } from "@upstream/components/ui/spinner"
 import { Textarea } from "@upstream/components/ui/textarea"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@upstream/components/ui/table"
 import { AddToProjectMenu } from "@/components/papers/add-to-project-menu"
 import { PaperStatusBadge, stageLabel } from "@/components/papers/paper-status"
 import { PdfViewer } from "@/components/papers/pdf-viewer"
@@ -60,6 +57,8 @@ const STATUS_LABEL: Record<string, string> = {
   failed: "失败",
   skipped: "已跳过",
 }
+
+const STAGE_ORDER = ["metadata", "fulltext", "chunking", "embedding"]
 
 export function PaperDetailSheet({
   paperId,
@@ -274,37 +273,44 @@ export function PaperDetailSheet({
               ) : null}
 
               {job.data ? (
-                <div className="border-y">
-                  <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow>
-                        <TableHead>阶段</TableHead>
-                        <TableHead>状态</TableHead>
-                        <TableHead>说明</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {job.data.stages.map((stage) => (
-                        <TableRow key={stage.stage}>
-                          <TableCell>{stageLabel(stage.stage)}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={
-                              stage.status === "failed" ? "border-destructive/30 bg-destructive/10 text-destructive"
-                                : stage.status === "succeeded" ? "border-success/30 bg-success/10 text-success"
-                                  : stage.status === "skipped" ? "" : "border-warning/30 bg-warning/10 text-warning"
-                            }>
-                              {STATUS_LABEL[stage.status] ?? stage.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-xs">
-                            {STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
-                              (stage.status === "failed" ? "处理失败，可重试" : "—")}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+                <section className="border-y py-4" aria-label="处理进度">
+                  <h3 className="mb-4 text-sm font-medium">处理进度</h3>
+                  <ol className="space-y-0" aria-label="处理进度">
+                    {[...job.data.stages]
+                      .sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage))
+                      .map((stage, index, stages) => {
+                        const failed = stage.status === "failed"
+                        const active = stage.status === "running"
+                        const complete = stage.status === "succeeded"
+                        const skipped = stage.status === "skipped"
+                        const Icon = failed ? X : active ? LoaderCircle : complete ? Check : skipped ? Minus : Circle
+                        const explanation = STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
+                          (failed ? "处理失败，可重试" : null)
+                        return <li key={stage.stage} className="flex gap-3">
+                          <div className="flex w-6 shrink-0 flex-col items-center">
+                            <span className={`flex size-6 items-center justify-center rounded-full border ${
+                              failed ? "border-destructive bg-destructive/10 text-destructive"
+                                : complete ? "border-success bg-success text-white"
+                                  : active ? "border-primary bg-primary/10 text-primary"
+                                    : "border-border text-muted-foreground"
+                            }`}>
+                              <Icon aria-hidden="true" className={`size-3.5 ${active ? "animate-spin" : ""}`} />
+                            </span>
+                            {index < stages.length - 1 && <span aria-hidden="true" className={`my-1 min-h-6 w-px flex-1 ${complete ? "bg-success/60" : "bg-border"}`} />}
+                          </div>
+                          <div className={`min-w-0 flex-1 ${index < stages.length - 1 ? "pb-4" : ""}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className={`text-sm font-medium ${failed ? "text-destructive" : ""}`}>{stageLabel(stage.stage)}</span>
+                              <span className={`text-xs ${failed ? "text-destructive" : active ? "text-primary" : "text-muted-foreground"}`}>
+                                {STATUS_LABEL[stage.status] ?? stage.status}
+                              </span>
+                            </div>
+                            {explanation && <p className="text-muted-foreground mt-1 text-xs">{explanation}</p>}
+                          </div>
+                        </li>
+                      })}
+                  </ol>
+                </section>
               ) : null}
 
               <Separator />

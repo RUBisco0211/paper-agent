@@ -71,6 +71,7 @@
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |
 | 0056 | ingest, storage, citation | 单 worker 有界并发；生产 S3 兼容存储；MinerU 版本清单与引用来源范围 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
 | 0057 | frontend, library, ingest | 文献在主区域阅读，右侧按 MinerU 原始 block type 导航与定位 | 当前 | [0057-paper-reading-mineru-blocks.md](decisions/0057-paper-reading-mineru-blocks.md) |
+| 0058 | frontend, product | 文献处理进度按阶段顺序显示为步骤视图 | 当前 | [0058-ingestion-progress-stepper.md](decisions/0058-ingestion-progress-stepper.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`
