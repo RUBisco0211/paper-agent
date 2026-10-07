@@ -68,6 +68,29 @@ def test_paper_blocks_are_filtered_and_private(
     key = mineru_job_artifact_key(paper.file_hash, "test", "blocks_index.json")
     payload = json.dumps(index).encode()
     storage.put_bytes(key, payload)
+    content_key = mineru_job_artifact_key(paper.file_hash, "test", "content_list.json")
+    content_payload = json.dumps(
+        [
+            {"type": "text", "text": "Body", "page_idx": 0},
+            {"type": "table", "table_body": "Result", "page_idx": 1},
+            {
+                "type": "image",
+                "img_path": "images/figure-1.png",
+                "img_caption": ["Figure 1"],
+                "page_idx": 1,
+            },
+            {
+                "type": "equation",
+                "text": r"E = mc^2",
+                "text_format": "latex",
+                "page_idx": 1,
+            },
+        ]
+    ).encode()
+    storage.put_bytes(content_key, content_payload)
+    image_key = mineru_job_artifact_key(paper.file_hash, "test", "images/figure-1.png")
+    image_payload = b"\x89PNG\r\n\x1a\npreview"
+    storage.put_bytes(image_key, image_payload)
     manifest_key = mineru_job_artifact_key(paper.file_hash, "test", "manifest.json")
     storage.put_bytes(
         manifest_key,
@@ -78,7 +101,15 @@ def test_paper_blocks_are_filtered_and_private(
                     "blocks_index.json": {
                         "key": key,
                         "sha256": hashlib.sha256(payload).hexdigest(),
-                    }
+                    },
+                    "content_list.json": {
+                        "key": content_key,
+                        "sha256": hashlib.sha256(content_payload).hexdigest(),
+                    },
+                    "images/figure-1.png": {
+                        "key": image_key,
+                        "sha256": hashlib.sha256(image_payload).hexdigest(),
+                    },
                 },
             }
         ).encode(),
@@ -93,7 +124,7 @@ def test_paper_blocks_are_filtered_and_private(
         headers=auth_headers(owner["access_token"]),
     )
     assert response.status_code == 200, response.text
-    assert response.json()["types"] == ["text", "table"]
+    assert response.json()["types"] == ["text", "table", "image", "equation"]
     assert [item["id"] for item in response.json()["items"]] == [1]
     direct = client.get(
         f"{api_prefix}/papers/{entry_id}/blocks/1",
@@ -101,6 +132,33 @@ def test_paper_blocks_are_filtered_and_private(
     )
     assert direct.status_code == 200
     assert direct.json()["page"] == 2
+    image_block = client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks/2",
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert image_block.json()["has_image"] is True
+    image = client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks/2/image",
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert image.status_code == 200
+    assert image.content == image_payload
+    assert image.headers["content-type"] == "image/png"
+    assert (
+        client.get(
+            f"{api_prefix}/papers/{entry_id}/blocks/2/image",
+            headers=auth_headers(stranger["access_token"]),
+        ).status_code
+        == 404
+    )
+    storage.put_bytes(image_key, b"tampered")
+    assert (
+        client.get(
+            f"{api_prefix}/papers/{entry_id}/blocks/2/image",
+            headers=auth_headers(owner["access_token"]),
+        ).status_code
+        == 502
+    )
     assert (
         client.get(
             f"{api_prefix}/papers/{entry_id}/blocks/1",

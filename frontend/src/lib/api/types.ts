@@ -136,6 +136,8 @@ export interface PaperBlock {
   type: string
   page: number
   text: string
+  formula?: string | null
+  has_image?: boolean
   bbox: number[] | null
   page_size: number[] | null
   coordinate_system: "normalized" | "page" | null

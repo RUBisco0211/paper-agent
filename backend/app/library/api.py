@@ -2,7 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, File, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from ..auth.depends import CurrentUser
 from ..ingestion.domain import IngestionJob
@@ -61,6 +61,28 @@ def read_paper_block(
             user_paper_id=paper_id,
             block_id=block_id,
         )
+    )
+
+
+@router.get("/{paper_id}/blocks/{block_id}/image", response_class=Response)
+def read_paper_block_image(
+    paper_id: UUID,
+    block_id: int,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+) -> Response:
+    payload, media_type = service.get_block_image(
+        user_id=user.id,
+        user_paper_id=paper_id,
+        block_id=block_id,
+    )
+    return Response(
+        payload,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, max-age=0, must-revalidate",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

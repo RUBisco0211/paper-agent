@@ -52,6 +52,8 @@ class PaperBlockRead(BaseModel):
     type: str
     page: int
     text: str
+    formula: str | None = None
+    has_image: bool = False
     bbox: list[float] | None = None
     page_size: list[float] | None = None
     coordinate_system: str | None = None

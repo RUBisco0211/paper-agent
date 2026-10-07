@@ -72,6 +72,7 @@
 | 0056 | ingest, storage, citation | 单 worker 有界并发；生产 S3 兼容存储；MinerU 版本清单与引用来源范围 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
 | 0057 | frontend, library, ingest | 文献在主区域阅读，右侧按 MinerU 原始 block type 导航与定位 | 当前 | [0057-paper-reading-mineru-blocks.md](decisions/0057-paper-reading-mineru-blocks.md) |
 | 0058 | frontend, product | 文献处理进度按阶段顺序显示为步骤视图 | 当前 | [0058-ingestion-progress-stepper.md](decisions/0058-ingestion-progress-stepper.md) |
+| 0059 | frontend, library, product | 文献块显示图片与公式预览，PDF 连续滚动并按可见页绘制 | 当前 | [0059-paper-block-previews-continuous-pdf.md](decisions/0059-paper-block-previews-continuous-pdf.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

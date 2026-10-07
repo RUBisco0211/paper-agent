@@ -12,7 +12,7 @@ from ..ingestion.domain import IngestionJob
 from ..platform.config import settings as app_settings
 from ..platform.errors import AppError, ConflictError, ErrorCode, NotFoundError
 from ..platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
-from ..processing.blocks import build_block_index
+from ..processing.blocks import build_block_index, normalize_image_path
 from ..processing.pdf import ensure_pdf_magic, inspect_pdf
 from ..processing.text import detect_identifiers
 from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
@@ -145,15 +145,16 @@ class PaperLibraryService:
                     raise ValueError("artifact hash mismatch")
                 files = manifest["files"]
                 part = files.get("blocks_index.json") or files["content_list.json"]
-                raw = self._storage.read_bytes(part["key"])
-                if hashlib.sha256(raw).hexdigest() != part["sha256"]:
-                    raise ValueError("artifact checksum mismatch")
+                raw = self._read_artifact_part(part)
                 payload = json.loads(raw)
                 index = (
                     payload
                     if "blocks_index.json" in files
                     else build_block_index(payload)
                 )
+                if index.get("schema_version", 0) < 2 and "content_list.json" in files:
+                    original = self._read_artifact_part(files["content_list.json"])
+                    index = build_block_index(json.loads(original))
             else:
                 raw = self._storage.read_text(
                     mineru_artifact_key(paper.file_hash, "content_list.json")
@@ -192,6 +193,51 @@ class PaperLibraryService:
             if item["id"] == block_id:
                 return item
         raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+
+    def get_block_image(
+        self, *, user_id: UUID, user_paper_id: UUID, block_id: int
+    ) -> tuple[bytes, str]:
+        block = self.get_block(
+            user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
+        )
+        image_path = normalize_image_path(block.get("image_path"))
+        if image_path is None:
+            raise NotFoundError("片段没有图片预览", code=ErrorCode.PAPER_NOT_FOUND)
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        manifest_key = entry.paper.artifact_manifest_key if entry.paper else None
+        if not manifest_key:
+            raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        try:
+            manifest = json.loads(self._storage.read_text(manifest_key))
+            if manifest.get("file_hash") != entry.paper.file_hash:
+                raise ValueError("artifact hash mismatch")
+            files = manifest["files"]
+            if image_path in files:
+                matches = [files[image_path]]
+            else:
+                matches = [
+                    part
+                    for name, part in files.items()
+                    if name.endswith(f"/{image_path}")
+                ]
+            if len(matches) != 1:
+                raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
+            payload = self._read_artifact_part(matches[0])
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献图片不可读取",
+                code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+        suffix = image_path.rsplit(".", 1)[-1].lower()
+        media_type = "image/jpeg" if suffix in {"jpg", "jpeg"} else f"image/{suffix}"
+        return payload, media_type
+
+    def _read_artifact_part(self, part: dict) -> bytes:
+        raw = self._storage.read_bytes(part["key"])
+        if hashlib.sha256(raw).hexdigest() != part["sha256"]:
+            raise ValueError("artifact checksum mismatch")
+        return raw
 
     def upload_pdf(
         self,

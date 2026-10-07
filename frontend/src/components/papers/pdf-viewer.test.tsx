@@ -15,7 +15,8 @@ const pdf = vi.hoisted(() => {
 })
 
 vi.mock("pdfjs-dist", () => ({ getDocument: pdf.getDocument, GlobalWorkerOptions: { workerSrc: "" } }))
-vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { library: { pdfBlob: async () => new Blob(["%PDF-test"], { type: "application/pdf" }) } } }) }))
+const api = vi.hoisted(() => ({ library: { pdfBlob: async () => new Blob(["%PDF-test"], { type: "application/pdf" }) } }))
+vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api }) }))
 
 beforeEach(() => {
   pdf.getDocument.mockClear()
@@ -28,8 +29,15 @@ it("renders the cited PDF page in a canvas when the PDF is available", async () 
   render(<PdfViewer paperId="paper-1" page={2} />)
   expect(await screen.findByText("2 / 3")).toBeTruthy()
   expect(pdf.getPage).toHaveBeenCalledWith(2)
-  expect(screen.getByRole("img", { name: "文献原文" })).toBeTruthy()
+  expect(screen.getAllByRole("img", { name: "文献原文" })[1]).toBeTruthy()
   expect(screen.queryByTitle("文献原文")).toBeNull()
+})
+
+it("lays out all PDF pages in one vertical scroll area", async () => {
+  render(<PdfViewer paperId="paper-1" />)
+  expect(await screen.findByRole("region", { name: "PDF 页面" })).toBeTruthy()
+  expect(await screen.findAllByRole("img", { name: /文献原文/ })).toHaveLength(3)
+  expect(pdf.getPage).toHaveBeenCalledWith(3)
 })
 
 it("navigates and zooms within the PDF when controls are used", async () => {

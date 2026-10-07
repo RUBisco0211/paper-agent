@@ -42,6 +42,12 @@ export function libraryEndpoints(client: ApiClient) {
     block: (paperId: Uuid, blockId: number) =>
       client.request<PaperBlock>(`${PAPERS}/${paperId}/blocks/${blockId}`),
 
+    blockImageBlob: async (paperId: Uuid, blockId: number, options: { signal?: AbortSignal } = {}) => {
+      const response = await client.raw(`${PAPERS}/${paperId}/blocks/${blockId}/image`, options)
+      if (!response.ok) throw await toError(response)
+      return response.blob()
+    },
+
     /** Fetched as a blob so the caller can render it in an embedded viewer. */
     pdfBlob: async (paperId: Uuid, options: { signal?: AbortSignal } = {}) => {
       const response = await client.raw(`${PAPERS}/${paperId}/pdf`, {
