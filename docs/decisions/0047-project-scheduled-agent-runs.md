@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-06
 - TAGS: product, agent, data, frontend
-- STATUS: 当前
+- STATUS: 已被 0049 取代
 - SUPERSEDES: 0017 中待定的结果投递形态；细化 0046
 
 ## DECISION

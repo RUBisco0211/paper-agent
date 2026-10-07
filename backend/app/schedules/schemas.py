@@ -5,12 +5,12 @@ from pydantic import BaseModel, Field
 
 class ScheduleBindingCreate(BaseModel):
     schedule_id: str = Field(min_length=1, max_length=64)
-    project_id: UUID
+    project_id: UUID | None = None
 
 
 class ScheduleBindingRead(BaseModel):
     schedule_id: str
-    project_id: UUID
+    project_id: UUID | None
 
 
 class ScheduleSessionEnsure(BaseModel):

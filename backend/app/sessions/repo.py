@@ -123,7 +123,7 @@ class SessionBindingRepository:
         *,
         session_id: UUID,
         user_id: UUID,
-        project_id: UUID,
+        project_id: UUID | None,
         schedule_id: str,
     ) -> SessionBindingRecord:
         self._session.execute(

@@ -10,6 +10,7 @@ import { Button } from "@upstream/components/ui/button"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
 import { BoundCitationSheet } from "@upstream/pages/chat/BoundCitationSheet"
 import { parseCronExpression } from "./schedule-utils"
+import { describeScheduleFrequency } from "./schedule-frequency"
 
 export function ProjectScheduleDetail({
   task,
@@ -46,7 +47,7 @@ export function ProjectScheduleDetail({
 
   if (!task) return null
   const parsed = parseCronExpression(task.schedule.data.cron_expression, task.schedule.data.started_at)
-  const cadence = parsed.frequency === "daily" ? "每天" : parsed.frequency === "weekly" ? "每周" : "按计划"
+  const cadence = describeScheduleFrequency(task.schedule.data.cron_expression)
 
   async function changeEnabled() {
     if (!task) return

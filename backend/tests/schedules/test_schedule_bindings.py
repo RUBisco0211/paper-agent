@@ -88,3 +88,43 @@ def test_schedule_binding_rejects_other_users_project_and_unregistered_run(
         },
     )
     assert unregistered.status_code == 404
+
+
+def test_global_schedule_binds_a_run_to_the_users_library_scope(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "agent_internal_key", "test-internal-key")
+    owner = register_user()
+    other = register_user(email="scheduled-other@example.com")
+    schedule_id = str(uuid4())
+    created = client.post(
+        f"{api_prefix}/schedule-bindings",
+        headers=auth_headers(owner["access_token"]),
+        json={"schedule_id": schedule_id, "project_id": None},
+    )
+    assert created.status_code == 201
+    assert created.json()["project_id"] is None
+
+    payload = {
+        "schedule_id": schedule_id,
+        "session_id": str(uuid4()),
+        "user_id": owner["user"]["id"],
+    }
+    prepared = client.post(
+        f"{api_prefix}/internal/schedule-sessions",
+        headers={"X-Agent-Internal-Key": "test-internal-key"},
+        json=payload,
+    )
+    assert prepared.status_code == 200
+    assert prepared.json()["project_id"] is None
+
+    payload["user_id"] = other["user"]["id"]
+    denied = client.post(
+        f"{api_prefix}/internal/schedule-sessions",
+        headers={"X-Agent-Internal-Key": "test-internal-key"},
+        json=payload,
+    )
+    assert denied.status_code == 404

@@ -16,10 +16,10 @@ class ScheduleBindingRecord(Base, CreatedAtMixin):
         nullable=False,
         index=True,
     )
-    project_id: Mapped[UUID] = mapped_column(
+    project_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -56,7 +56,7 @@ class ScheduleBindingRepository:
         )
 
     def add(
-        self, schedule_id: str, user_id: UUID, project_id: UUID
+        self, schedule_id: str, user_id: UUID, project_id: UUID | None
     ) -> ScheduleBindingRecord:
         record = ScheduleBindingRecord(
             schedule_id=schedule_id,

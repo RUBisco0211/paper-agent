@@ -13,6 +13,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHead
 import { CalendarTabPage } from "./calendar-tab-page"
 import { ProjectScheduleDetail } from "./ProjectScheduleDetail"
 import { ProjectScheduleDialog, type ScheduleDraft } from "./ProjectScheduleDialog"
+import { calendarCronExpression } from "./schedule-frequency"
 
 function monthEvents(tasks: Awaited<ReturnType<typeof listProjectSchedules>>, currentDate: Date): ScheduleEvent[] {
   const start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1)
@@ -21,7 +22,7 @@ function monthEvents(tasks: Awaited<ReturnType<typeof listProjectSchedules>>, cu
     if (!schedule.data.enabled) return []
     const events: ScheduleEvent[] = []
     try {
-      const interval = CronExpressionParser.parse(schedule.data.cron_expression, {
+      const interval = CronExpressionParser.parse(calendarCronExpression(schedule.data.cron_expression), {
         currentDate: start, endDate: end, tz: schedule.data.timezone,
       })
       while (interval.hasNext() && events.length < 64) {
@@ -73,14 +74,13 @@ export function PaperCalendarPage() {
   })
   const events = useMemo(() => monthEvents(tasks.data ?? [], currentDate), [tasks.data, currentDate])
   const selectedTask = tasks.data?.find((task) => task.schedule.id === selectedTaskId) ?? null
-  const selectedProjectId = createProjectId ?? projects.data?.[0]?.id ?? ""
+  const selectedProjectId = createProjectId ?? ""
 
   async function create(draft: ScheduleDraft) {
-    if (!selectedProjectId) throw new Error("请先选择项目")
     const listed = await agentApi.list()
     const agentId = listed.agents[0]?.id ?? (await agentApi.create({ name: "文献助手" })).agent_id
     const scheduleId = await createProjectSchedule(api, {
-      projectId: selectedProjectId,
+      projectId: selectedProjectId || null,
       agentId,
       ...draft,
     })
@@ -99,6 +99,10 @@ export function PaperCalendarPage() {
       <Sidebar collapsible="none" className="border-r">
         <SidebarHeader className="px-4 py-5 font-semibold">定时任务</SidebarHeader>
         <SidebarContent>
+          <SidebarGroup><SidebarGroupContent>
+            <div className="flex items-center gap-2 px-2 py-1.5 text-sm font-medium"><Clock3 className="size-4" /><span>全局</span></div>
+            {tasks.data?.filter((task) => task.projectId === null).map((task) => <button key={task.schedule.id} type="button" className="block w-full truncate px-8 py-1 text-left text-sm hover:bg-accent" onClick={() => setSelectedTaskId(task.schedule.id)}>{task.schedule.data.name}{task.schedule.data.enabled ? "" : " · 已暂停"}</button>)}
+          </SidebarGroupContent></SidebarGroup>
           {projects.isPending && <p className="px-4 text-sm text-muted-foreground">加载中…</p>}
           {projects.isError && <p role="alert" className="px-4 text-sm text-destructive">无法读取项目</p>}
           {tasks.isError && <p role="alert" className="px-4 text-sm text-destructive">无法读取定时任务</p>}

@@ -22,11 +22,12 @@ class ScheduleBindingService:
         *,
         schedule_id: str,
         user_id: UUID,
-        project_id: UUID,
+        project_id: UUID | None,
     ) -> ScheduleBindingRecord:
-        project = self._projects.get_project(project_id)
-        if project is None or project.user_id != user_id:
-            raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
+        if project_id is not None:
+            project = self._projects.get_project(project_id)
+            if project is None or project.user_id != user_id:
+                raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
         if self._schedules.get(schedule_id) is not None:
             raise ConflictError("定时任务已绑定", code=ErrorCode.CONFLICT)
         record = self._schedules.add(schedule_id, user_id, project_id)
@@ -53,9 +54,10 @@ class ScheduleBindingService:
         task = self._schedules.get(schedule_id)
         if task is None or task.user_id != user_id:
             raise NotFoundError("定时任务不存在", code=ErrorCode.NOT_FOUND)
-        project = self._projects.get_project(task.project_id)
-        if project is None or project.user_id != user_id:
-            raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
+        if task.project_id is not None:
+            project = self._projects.get_project(task.project_id)
+            if project is None or project.user_id != user_id:
+                raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
         binding = self._sessions.add_scheduled_if_absent(
             session_id=session_id,
             user_id=user_id,

@@ -4,12 +4,12 @@ import type { ChatModelConfig, ScheduleRecord } from "@upstream/api/types"
 
 export interface ProjectSchedule {
   schedule: ScheduleRecord
-  projectId: string
+  projectId: string | null
 }
 
 interface ScheduleBinding {
   schedule_id: string
-  project_id: string
+  project_id: string | null
 }
 
 const BINDINGS = "/v1/schedule-bindings"
@@ -22,14 +22,14 @@ export async function listProjectSchedules(api: Api): Promise<ProjectSchedule[]>
   const byId = new Map(bindings.map((binding) => [binding.schedule_id, binding.project_id]))
   return scheduleResult.schedules.flatMap((schedule) => {
     const projectId = byId.get(schedule.id)
-    return projectId ? [{ schedule, projectId }] : []
+    return byId.has(schedule.id) ? [{ schedule, projectId: projectId ?? null }] : []
   })
 }
 
 export async function createProjectSchedule(
   api: Api,
   input: {
-    projectId: string
+    projectId: string | null
     name: string
     prompt: string
     cronExpression: string

@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-06
 - TAGS: product, frontend, data
-- STATUS: 当前
+- STATUS: 已被 0049 取代
 - SUPERSEDES: 0017 中待定的定时检索范围
 
 ## DECISION
