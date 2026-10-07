@@ -8,28 +8,20 @@ import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
+} from "@upstream/components/ui/dialog"
+import { Button as DialogButton } from "@upstream/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Field, FieldGroup, FieldLabel } from "@upstream/components/ui/field"
+import { Input } from "@upstream/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Spinner } from "@/components/ui/spinner"
+import { Spinner } from "@upstream/components/ui/spinner"
 import { CitationSheet } from "@/components/chat/citation-sheet"
 import { Composer } from "@/components/chat/composer"
 import { MessageThread, type ActiveTool } from "@/components/chat/message-thread"
@@ -340,29 +332,29 @@ export function SessionWorkspacePage() {
               </Field>
             </FieldGroup>
             <DialogFooter>
-              <Button type="submit" disabled={rename.isPending || !title.trim()}>
+              <DialogButton type="submit" disabled={rename.isPending || !title.trim()}>
                 {rename.isPending ? <Spinner data-icon="inline-start" /> : null}
                 保存
-              </Button>
+              </DialogButton>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除该会话？</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除该会话？</DialogTitle>
+            <DialogDescription>
               会话内容会被删除，文献库和项目不受影响。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => remove.mutate()}>删除</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogButton variant="outline" onClick={() => setConfirmDelete(false)}>取消</DialogButton>
+            <DialogButton variant="destructive" onClick={() => remove.mutate()}>删除</DialogButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

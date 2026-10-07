@@ -4,12 +4,9 @@ import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import type { ProjectSchedule } from "@/lib/project-schedules"
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { scheduleApi } from "@upstream/api/schedule"
 import { Button } from "@upstream/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@upstream/components/ui/dialog"
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@upstream/components/ui/tooltip"
 import { parseCronExpression } from "./schedule-utils"
@@ -111,18 +108,18 @@ export function ProjectScheduleDetail({
         </div>
       </SheetContent>
     </Sheet>
-    <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>删除定时任务「{task.schedule.data.name}」？</AlertDialogTitle>
-          <AlertDialogDescription>定时任务及全部运行记录会被删除，此操作不可撤销。</AlertDialogDescription>
-        </AlertDialogHeader>
+    <Dialog open={confirmDelete} onOpenChange={(open) => { if (!busy) setConfirmDelete(open) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>删除定时任务</DialogTitle>
+          <DialogDescription>删除“{task.schedule.data.name}”及全部运行记录？此操作无法撤销。</DialogDescription>
+        </DialogHeader>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
-          <AlertDialogAction disabled={busy} onClick={(event) => { event.preventDefault(); void remove() }}>删除</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmDelete(false)}>取消</Button>
+          <Button type="button" variant="destructive" disabled={busy} onClick={() => void remove()}>{busy ? "删除中…" : "删除"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>
 }

@@ -11,7 +11,7 @@ import { ProjectScheduleDetail } from "./ProjectScheduleDetail"
 
 vi.mock("@upstream/api/schedule", () => ({ scheduleApi: { listSessions: async () => ({ sessions: [], total: 0 }) } }))
 
-it("shows the app confirmation dialog before deleting a scheduled task", async () => {
+it("shows the web UI confirmation dialog before deleting a scheduled task", async () => {
   const user = userEvent.setup()
   const confirm = vi.spyOn(window, "confirm").mockReturnValue(false)
   const onDelete = vi.fn(async () => {})
@@ -35,8 +35,10 @@ it("shows the app confirmation dialog before deleting a scheduled task", async (
   </MemoryRouter></QueryClientProvider>)
 
   await user.click(screen.getByRole("button", { name: "删除任务" }))
-  expect(screen.getByRole("alertdialog")).toBeTruthy()
-  expect(screen.getByText("定时任务及全部运行记录会被删除，此操作不可撤销。")).toBeTruthy()
+  const dialog = screen.getAllByRole("dialog").find((item) => item.getAttribute("data-slot") === "dialog-content")
+  expect(dialog).toBeTruthy()
+  expect(dialog?.querySelector('[data-slot="dialog-footer"]')).toBeTruthy()
+  expect(screen.getByText("删除“问候”及全部运行记录？此操作无法撤销。")).toBeTruthy()
   expect(confirm).not.toHaveBeenCalled()
   await user.click(screen.getByRole("button", { name: "取消" }))
   expect(onDelete).not.toHaveBeenCalled()

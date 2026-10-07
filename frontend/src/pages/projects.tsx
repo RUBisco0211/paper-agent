@@ -7,16 +7,7 @@ import { PageHeader } from "@/app/app-shell"
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+import { Button as DialogButton } from "@upstream/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -30,9 +21,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+  DialogDescription,
+} from "@upstream/components/ui/dialog"
+import { Input } from "@upstream/components/ui/input"
+import { Label } from "@upstream/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -201,30 +193,30 @@ export function ProjectsPage() {
               />
             </div>
             <DialogFooter>
-              <Button type="submit" disabled={rename.isPending || !newName.trim()}>
+              <DialogButton type="submit" disabled={rename.isPending || !newName.trim()}>
                 保存
-              </Button>
+              </DialogButton>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除项目「{deleting?.name}」？</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除项目「{deleting?.name}」？</DialogTitle>
+            <DialogDescription>
               项目中的会话会一并删除，文献库不受影响。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && remove.mutate(deleting.id)}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogButton variant="outline" onClick={() => setDeleting(null)}>取消</DialogButton>
+            <DialogButton variant="destructive" onClick={() => deleting && remove.mutate(deleting.id)}>
               删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </DialogButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-07
 - TAGS: frontend, product
-- STATUS: 当前
+- STATUS: 已被 0055 取代
 - SUPERSEDES: —
 
 ## DECISION

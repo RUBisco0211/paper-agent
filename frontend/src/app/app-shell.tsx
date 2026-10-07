@@ -16,15 +16,14 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
 
 import { queryKeys } from "@/app/query"
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@upstream/components/ui/dialog"
+import { Button as DialogButton } from "@upstream/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   Collapsible,
@@ -311,44 +310,44 @@ export function AppShell() {
         </div>
       </SidebarInset>
 
-      <AlertDialog
+      <Dialog
         open={Boolean(deletingProject)}
         onOpenChange={(open) => !open && setDeletingProject(null)}
       >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除项目「{deletingProject?.name}」？</AlertDialogTitle>
-            <AlertDialogDescription>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除项目「{deletingProject?.name}」？</DialogTitle>
+            <DialogDescription>
               项目中的会话会一并删除，文献库不受影响。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogButton variant="outline" onClick={() => setDeletingProject(null)}>取消</DialogButton>
+            <DialogButton variant="destructive"
               onClick={() => deletingProject && void handleDeleteProject(deletingProject.id)}
             >
               删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </DialogButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <AlertDialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>删除会话「{deleting?.title ?? "未命名"}」？</AlertDialogTitle>
-            <AlertDialogDescription>
+      <Dialog open={Boolean(deleting)} onOpenChange={(open) => !open && setDeleting(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除会话「{deleting?.title ?? "未命名"}」？</DialogTitle>
+            <DialogDescription>
               会话内容会被删除，文献库和项目不受影响。
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && void handleDelete(deleting)}>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogButton variant="outline" onClick={() => setDeleting(null)}>取消</DialogButton>
+            <DialogButton variant="destructive" onClick={() => deleting && void handleDelete(deleting)}>
               删除
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </DialogButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   )
 

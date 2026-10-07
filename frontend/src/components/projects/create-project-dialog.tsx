@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useState } from "react"
 
-import { Button } from "@/components/ui/button"
+import { Button } from "@upstream/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -9,11 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Spinner } from "@/components/ui/spinner"
-import { Textarea } from "@/components/ui/textarea"
+} from "@upstream/components/ui/dialog"
+import { Input } from "@upstream/components/ui/input"
+import { Field, FieldGroup, FieldLabel } from "@upstream/components/ui/field"
+import { Spinner } from "@upstream/components/ui/spinner"
+import { Textarea } from "@upstream/components/ui/textarea"
 import { useApi } from "@/lib/api/provider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 
