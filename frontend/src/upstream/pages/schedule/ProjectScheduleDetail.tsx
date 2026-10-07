@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import type { ProjectSchedule } from "@/lib/project-schedules"
@@ -7,7 +8,8 @@ import { sessionApi } from "@upstream/api/session"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { Button } from "@upstream/components/ui/button"
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@upstream/components/ui/tooltip"
 import { BoundCitationSheet } from "@upstream/pages/chat/BoundCitationSheet"
 import { parseCronExpression } from "./schedule-utils"
 import { describeScheduleFrequency } from "./schedule-frequency"
@@ -80,16 +82,21 @@ export function ProjectScheduleDetail({
 
   return <>
     <Sheet open={Boolean(task)} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
-        <SheetHeader>
-          <SheetTitle>{task.schedule.data.name}</SheetTitle>
-          <SheetDescription>{cadence} {parsed.time} · {task.schedule.data.timezone}</SheetDescription>
+      <SheetContent side="right" showCloseButton={false} className="overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-4xl">
+        <SheetHeader className="flex-row items-start justify-between gap-4 border-b">
+          <div className="min-w-0 flex-1">
+            <SheetTitle className="truncate text-xl">{task.schedule.data.name}</SheetTitle>
+            <SheetDescription>{cadence} {parsed.time} · {task.schedule.data.timezone}</SheetDescription>
+          </div>
+          <TooltipProvider>
+            <div className="flex shrink-0 items-center gap-1">
+              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={task.schedule.data.enabled ? "暂停任务" : "启用任务"} disabled={busy} onClick={() => void changeEnabled()}>{task.schedule.data.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}</Button></TooltipTrigger><TooltipContent>{task.schedule.data.enabled ? "暂停任务" : "启用任务"}</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="刷新结果" disabled={runs.isFetching || messages.isFetching} onClick={() => { void runs.refetch(); if (runId) void messages.refetch() }}><RefreshCw className="size-4" /></Button></TooltipTrigger><TooltipContent>刷新结果</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="删除任务" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void remove()}><Trash2 className="size-4" /></Button></TooltipTrigger><TooltipContent>删除任务</TooltipContent></Tooltip>
+              <Tooltip><TooltipTrigger asChild><SheetClose asChild><Button variant="ghost" size="icon-sm" aria-label="关闭"><X className="size-4" /></Button></SheetClose></TooltipTrigger><TooltipContent>关闭</TooltipContent></Tooltip>
+            </div>
+          </TooltipProvider>
         </SheetHeader>
-        <div className="flex flex-wrap gap-2 px-4">
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => void changeEnabled()}>{task.schedule.data.enabled ? "暂停" : "启用"}</Button>
-          <Button variant="outline" size="sm" onClick={() => void runs.refetch()}>刷新结果</Button>
-          <Button variant="destructive" size="sm" disabled={busy} onClick={() => void remove()}>删除任务</Button>
-        </div>
         {error && <p role="alert" className="px-4 text-sm text-destructive">{error}</p>}
         <p className="mx-4 whitespace-pre-wrap border-l-2 pl-3 text-sm">{task.schedule.data.description}</p>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
