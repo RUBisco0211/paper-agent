@@ -243,3 +243,17 @@ svg.lucide {
 		@apply font-sans;
 	}
 }
+
+/* Keep Streamdown tables to one scrollable border in conversation messages. */
+.cn-markdown [data-streamdown='table-wrapper'] {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	padding: 0;
+}
+
+.cn-markdown [data-streamdown='table'] th,
+.cn-markdown [data-streamdown='table'] td {
+	padding: 0.5rem 0.75rem;
+	vertical-align: top;
+}

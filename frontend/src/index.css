@@ -131,20 +131,6 @@
   }
 }
 
-/* Streamdown adds a second card around every table; keep one scrollable border. */
-.cn-markdown [data-streamdown="table-wrapper"] {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-}
-
-.cn-markdown [data-streamdown="table"] th,
-.cn-markdown [data-streamdown="table"] td {
-  padding: 0.5rem 0.75rem;
-  vertical-align: top;
-}
-
 /* 上游 shadcn 组件依赖的工具类。
    项目不是通过 preset 初始化的，因此这些工具类需要在主题里定义。 */
 
