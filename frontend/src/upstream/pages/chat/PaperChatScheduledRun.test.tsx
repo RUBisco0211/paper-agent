@@ -24,6 +24,8 @@ it("allows a follow up message in a scheduled run when its session is loaded", a
     config: { name: "问候", chat_model_config: { type: "deepseek_credential", credential_id: "credential-1", model: "deepseek-chat", parameters: {} } },
   }
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><PaperChatPage scheduledRun={run as SessionRecord} scheduledScope="全局" /></MemoryRouter></QueryClientProvider>)
+  expect(screen.getAllByRole("banner")).toHaveLength(1)
+  expect(screen.getByRole("link", { name: "返回月视图" })).toBeTruthy()
   await user.click(screen.getByRole("button", { name: "发送" }))
   expect(send).toHaveBeenCalledWith([{ type: "text", text: "继续提问" }])
 })

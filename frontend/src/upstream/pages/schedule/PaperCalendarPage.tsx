@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { CronExpressionParser } from "cron-parser"
-import { ArrowLeft, Clock3, Plus } from "lucide-react"
+import { Clock3, Plus } from "lucide-react"
 import { useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, sameSessionId } from "@/lib/agent-sessions"
@@ -130,7 +130,6 @@ export function PaperCalendarPage() {
       </Sidebar>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
         {sessionId ? <>
-          <div className="border-b px-4 py-3"><Button asChild variant="ghost" size="sm"><Link to="/scheduled"><ArrowLeft className="size-4" />返回月视图</Link></Button></div>
           <div className="min-h-0 flex-1">
             {tasks.isPending || (routeTask && routeRuns.isPending) ? <p className="p-5 text-sm text-muted-foreground">加载中…</p>
               : tasks.isError || routeRuns.isError ? <p role="alert" className="p-5 text-sm text-destructive">无法读取会话</p>

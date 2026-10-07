@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { ArrowLeft } from "lucide-react"
 import { useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-sessions"
@@ -8,6 +9,7 @@ import { reasoningEffortsForModel } from "./chat-view"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { TextInput } from "@upstream/components/chat/TextInput"
+import { Button } from "@upstream/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@upstream/components/ui/select"
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
@@ -97,8 +99,11 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     <CitationProvider onOpen={setCitationId}>
       <main className="flex h-full min-h-0 flex-col">
         <header className="flex items-center justify-between gap-4 border-b bg-background px-5 py-3">
-          <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
+          <div className="flex min-w-0 items-center gap-2">
+            {scheduledRun && <Button asChild variant="ghost" size="icon-sm"><Link to="/scheduled" aria-label="返回月视图"><ArrowLeft className="size-4" /></Link></Button>}
+            <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
             <p className="text-xs text-muted-foreground">{scheduledScope ?? (binding?.scope === "project" ? project.data?.name ?? "项目" : "全局")}</p>
+            </div>
           </div>
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
