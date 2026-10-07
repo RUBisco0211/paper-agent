@@ -14,11 +14,14 @@ import {
   MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
 } from "@upstream/components/ui/message-scroller"
 import { sessionApi } from "@upstream/api/session"
+import type { SessionRecord } from "@upstream/api/types"
 import { useMessages } from "@upstream/hooks/useMessages"
 import { BoundCitationSheet } from "./BoundCitationSheet"
 
-export function PaperChatPage() {
-  const { agentId = "", sessionId = "" } = useParams()
+export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?: SessionRecord; scheduledScope?: string } = {}) {
+  const params = useParams()
+  const agentId = scheduledRun?.agent_id ?? params.agentId ?? ""
+  const sessionId = scheduledRun?.id ?? params.sessionId ?? ""
   const { api } = useApi()
   const queryClient = useQueryClient()
   const [citationId, setCitationId] = useState<string | null>(null)
@@ -29,11 +32,12 @@ export function PaperChatPage() {
   const sessions = useQuery({
     queryKey: ["agent-sessions", agentId],
     queryFn: () => sessionApi.list(agentId),
-    enabled: Boolean(agentId),
+    enabled: Boolean(agentId && !scheduledRun),
   })
   const bindings = useQuery({
     queryKey: ["session-bindings"],
     queryFn: () => listBindings(api),
+    enabled: !scheduledRun,
   })
   const models = useQuery({
     queryKey: ["available-chat-models"],
@@ -50,7 +54,7 @@ export function PaperChatPage() {
     queryFn: () => api.projects.detail(binding!.project_id!),
     enabled: Boolean(binding?.project_id),
   })
-  const current = view?.session.config.chat_model_config
+  const current = (scheduledRun ?? view?.session)?.config.chat_model_config
   const selectedModel = current ? `${current.credential_id}:${current.model}` : ""
   const availableEfforts = current ? reasoningEffortsForModel(catalog.data?.providers ?? [], current.type, current.model) : []
   const selectedEffort = typeof current?.parameters.reasoning_effort === "string" ? current.parameters.reasoning_effort : "default"
@@ -63,6 +67,7 @@ export function PaperChatPage() {
     try {
       await sessionApi.update(sessionId, agentId, { chat_model_config: next })
       await queryClient.invalidateQueries({ queryKey: ["agent-sessions", agentId] })
+      if (scheduledRun) await queryClient.invalidateQueries({ queryKey: ["schedule-runs", scheduledRun.source_schedule_id] })
     } catch (cause) {
       setModelError(cause instanceof Error ? cause.message : "切换模型失败")
     } finally {
@@ -80,6 +85,7 @@ export function PaperChatPage() {
     try {
       await sessionApi.update(sessionId, agentId, { chat_model_config: { ...current, parameters } })
       await queryClient.invalidateQueries({ queryKey: ["agent-sessions", agentId] })
+      if (scheduledRun) await queryClient.invalidateQueries({ queryKey: ["schedule-runs", scheduledRun.source_schedule_id] })
     } catch (cause) {
       setModelError(cause instanceof Error ? cause.message : "切换思考强度失败")
     } finally {
@@ -91,8 +97,8 @@ export function PaperChatPage() {
     <CitationProvider onOpen={setCitationId}>
       <main className="flex h-full min-h-0 flex-col">
         <header className="flex items-center justify-between gap-4 border-b bg-background px-5 py-3">
-          <div className="min-w-0"><h1 className="truncate font-medium">{view?.session.config.name || "新会话"}</h1>
-            <p className="text-xs text-muted-foreground">{binding?.scope === "project" ? project.data?.name ?? "项目" : "全局"}</p>
+          <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
+            <p className="text-xs text-muted-foreground">{scheduledScope ?? (binding?.scope === "project" ? project.data?.name ?? "项目" : "全局")}</p>
           </div>
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
@@ -124,7 +130,7 @@ export function PaperChatPage() {
               </Select>}
             </div>}
             onSend={(blocks) => void send(blocks)}
-            disabled={loading || !binding || !current || changingModel}
+            disabled={loading || (!binding && !scheduledRun) || !current || changingModel}
             allowedInputTypes={[]}
             fileProcessor={async () => null}
             phase={phase}

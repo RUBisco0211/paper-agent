@@ -213,8 +213,8 @@ export interface SessionListResponse {
 /**
  * Response body for `GET /schedule/{id}/sessions`. Returns plain
  * `SessionRecord[]` (no team / is_running enrichment) because
- * scheduled-execution sessions are listed for audit purposes only,
- * not for opening in the chat UI.
+ * scheduled-execution sessions are also used to open an individual
+ * run in the scheduled-task conversation view.
  */
 export interface ScheduleSessionsResponse {
 	sessions: SessionRecord[];

@@ -63,6 +63,7 @@
 | 0047 | product, agent, data, frontend | 项目自定义 prompt 用 AgentScope 定时触发；每次独立运行，任务页聚合结果 | 已被 0049 取代 | [0047-project-scheduled-agent-runs.md](decisions/0047-project-scheduled-agent-runs.md) |
 | 0048 | frontend, product | 定时任务统一使用时钟入口与 `/scheduled`，默认月视图 | 当前 | [0048-scheduled-task-navigation.md](decisions/0048-scheduled-task-navigation.md) |
 | 0049 | product, agent, data, frontend | 定时任务可选全局或项目范围；频率按星期选日 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
+| 0050 | product, frontend, agent | 定时运行可在任务页打开完整会话并继续对话 | 当前 | [0050-scheduled-run-conversations.md](decisions/0050-scheduled-run-conversations.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

@@ -1,14 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
 import { CronExpressionParser } from "cron-parser"
-import { Clock3, Plus } from "lucide-react"
+import { ArrowLeft, Clock3, Plus } from "lucide-react"
 import { useMemo, useState } from "react"
+import { Link, useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
-import { availableChatModels } from "@/lib/agent-sessions"
+import { availableChatModels, sameSessionId } from "@/lib/agent-sessions"
 import { createProjectSchedule, deleteProjectSchedule, listProjectSchedules } from "@/lib/project-schedules"
 import { agentApi } from "@upstream/api/agent"
-import type { ScheduleEvent } from "./event"
+import { scheduleApi } from "@upstream/api/schedule"
 import { Button } from "@upstream/components/ui/button"
+import { PaperChatPage } from "@upstream/pages/chat/PaperChatPage"
+import type { ScheduleEvent } from "./event"
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarProvider } from "@upstream/components/ui/sidebar"
 import { CalendarTabPage } from "./calendar-tab-page"
 import { ProjectScheduleDetail } from "./ProjectScheduleDetail"
@@ -44,6 +47,7 @@ function monthEvents(tasks: Awaited<ReturnType<typeof listProjectSchedules>>, cu
 }
 
 export function PaperCalendarPage() {
+  const { scheduleId, sessionId } = useParams()
   const { api } = useApi()
   const [currentDate, setCurrentDate] = useState(new Date())
   const [createOpen, setCreateOpen] = useState(false)
@@ -67,6 +71,14 @@ export function PaperCalendarPage() {
     queryKey: ["project-schedules"],
     queryFn: () => listProjectSchedules(api),
   })
+  const routeTask = tasks.data?.find((task) => task.schedule.id === scheduleId)
+  const routeRuns = useQuery({
+    queryKey: ["schedule-runs", scheduleId],
+    queryFn: () => scheduleApi.listSessions(scheduleId!),
+    enabled: Boolean(scheduleId && routeTask),
+  })
+  const routeRun = routeRuns.data?.sessions.find((run) => sameSessionId(run.id, sessionId ?? "") && run.source_schedule_id === scheduleId)
+  const routeProject = projects.data?.find((project) => project.id === routeTask?.projectId)
   const models = useQuery({
     queryKey: ["available-chat-models"],
     queryFn: () => availableChatModels(api),
@@ -117,8 +129,18 @@ export function PaperCalendarPage() {
         </SidebarContent>
       </Sidebar>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => setCreateOpen(true)}><Plus className="size-4" />新建定时任务</Button></div>
-        <div className="min-h-0 flex-1"><CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} /></div>
+        {sessionId ? <>
+          <div className="border-b px-4 py-3"><Button asChild variant="ghost" size="sm"><Link to="/scheduled"><ArrowLeft className="size-4" />返回月视图</Link></Button></div>
+          <div className="min-h-0 flex-1">
+            {tasks.isPending || (routeTask && routeRuns.isPending) ? <p className="p-5 text-sm text-muted-foreground">加载中…</p>
+              : tasks.isError || routeRuns.isError ? <p role="alert" className="p-5 text-sm text-destructive">无法读取会话</p>
+              : routeRun && routeTask ? <PaperChatPage scheduledRun={routeRun} scheduledScope={routeTask.projectId ? routeProject?.name ?? "项目" : "全局"} />
+              : <p role="alert" className="p-5 text-sm text-muted-foreground">会话不存在</p>}
+          </div>
+        </> : <>
+          <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => setCreateOpen(true)}><Plus className="size-4" />新建定时任务</Button></div>
+          <div className="min-h-0 flex-1"><CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} /></div>
+        </>}
       </main>
     </div>
     <ProjectScheduleDialog projects={projects.data ?? []} projectId={selectedProjectId} onProjectChange={setCreateProjectId} models={models.data ?? []} open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setCreateProjectId(null) }} onCreate={create} />

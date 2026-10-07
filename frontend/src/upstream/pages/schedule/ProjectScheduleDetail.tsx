@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
+import { ExternalLink, Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 
 import type { ProjectSchedule } from "@/lib/project-schedules"
 import { scheduleApi } from "@upstream/api/schedule"
@@ -92,6 +93,7 @@ export function ProjectScheduleDetail({
             <div className="flex shrink-0 items-center gap-1">
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={task.schedule.data.enabled ? "暂停任务" : "启用任务"} disabled={busy} onClick={() => void changeEnabled()}>{task.schedule.data.enabled ? <Pause className="size-4" /> : <Play className="size-4" />}</Button></TooltipTrigger><TooltipContent>{task.schedule.data.enabled ? "暂停任务" : "启用任务"}</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="刷新结果" disabled={runs.isFetching || messages.isFetching} onClick={() => { void runs.refetch(); if (runId) void messages.refetch() }}><RefreshCw className="size-4" /></Button></TooltipTrigger><TooltipContent>刷新结果</TooltipContent></Tooltip>
+              {runId && <Tooltip><TooltipTrigger asChild><Button asChild variant="ghost" size="icon-sm"><Link to={`/scheduled/${task.schedule.id}/runs/${runId}`} aria-label="打开会话" onClick={onClose}><ExternalLink className="size-4" /></Link></Button></TooltipTrigger><TooltipContent>打开会话</TooltipContent></Tooltip>}
               <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="删除任务" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void remove()}><Trash2 className="size-4" /></Button></TooltipTrigger><TooltipContent>删除任务</TooltipContent></Tooltip>
               <Tooltip><TooltipTrigger asChild><SheetClose asChild><Button variant="ghost" size="icon-sm" aria-label="关闭"><X className="size-4" /></Button></SheetClose></TooltipTrigger><TooltipContent>关闭</TooltipContent></Tooltip>
             </div>
@@ -109,7 +111,7 @@ export function ProjectScheduleDetail({
           </div>
           {messages.isPending && runId && <p className="text-sm text-muted-foreground">加载结果中…</p>}
           {messages.isError && <p role="alert" className="text-sm text-destructive">无法读取此次结果</p>}
-          {messages.data && <CitationProvider onOpen={setCitationId}><div className="space-y-4">{messages.data.messages.filter((message) => message.role === "assistant").map((message) => <ASMessageBubble key={message.id} message={message} onUserConfirm={() => setError("定时任务无法等待人工确认")} />)}</div></CitationProvider>}
+          {messages.data && <CitationProvider onOpen={setCitationId}><div className="mx-auto max-w-3xl space-y-4">{messages.data.messages.filter((message) => message.role === "assistant").map((message) => <ASMessageBubble key={message.id} message={message} onUserConfirm={() => setError("定时任务无法等待人工确认")} />)}</div></CitationProvider>}
         </div>
       </SheetContent>
     </Sheet>
