@@ -28,10 +28,19 @@ function blockLabel(type: string): string {
 
 function formulaMarkup(formula: string): string | null {
   try {
-    return katex.renderToString(formula, { displayMode: true, throwOnError: true, trust: false })
+    return katex.renderToString(normalizeFormula(formula), { displayMode: true, throwOnError: true, trust: false })
   } catch {
     return null
   }
+}
+
+function normalizeFormula(formula: string): string {
+  const text = formula.trim()
+  if (text.startsWith("$$") && text.endsWith("$$")) return text.slice(2, -2).trim()
+  if (text.startsWith("\\[") && text.endsWith("\\]")) return text.slice(2, -2).trim()
+  if (text.startsWith("\\(") && text.endsWith("\\)")) return text.slice(2, -2).trim()
+  if (text.startsWith("$") && text.endsWith("$")) return text.slice(1, -1).trim()
+  return text
 }
 
 function BlockImagePreview({ paperId, block }: { paperId: string; block: PaperBlock }) {
@@ -127,7 +136,7 @@ export function PaperReadingPage() {
 
   async function copyBlock(block: PaperBlock) {
     try {
-      await navigator.clipboard.writeText(block.formula || block.text)
+      await navigator.clipboard.writeText(block.formula ? normalizeFormula(block.formula) : block.text)
       notifySuccess("已复制")
     } catch (error) {
       notifyError(error, "复制失败")
@@ -165,9 +174,9 @@ export function PaperReadingPage() {
                 <button type="button" onClick={() => selectBlock(block)} className="w-full px-3 py-2 text-left">
                   <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
                   <span className="mt-1 block">
-                    {block.has_image && (block.type === "image" || (isFormula && !markup)) && <BlockImagePreview paperId={paperId} block={block} />}
+                    {block.has_image && (block.type === "image" || (isFormula && !block.formula)) && <BlockImagePreview paperId={paperId} block={block} />}
                     {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
-                    {block.text && (!markup || block.type === "image") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{block.text}</span>}
+                    {block.text && (!markup || block.type === "image") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
                     {!block.text && !markup && !block.has_image && <span className="text-muted-foreground text-sm">{blockLabel(block.type)}</span>}
                   </span>
                 </button>

@@ -257,3 +257,50 @@ svg.lucide {
 	padding: 0.5rem 0.75rem;
 	vertical-align: top;
 }
+
+/* PDF.js text layer follows its canvas so document text can be selected. */
+.paper-pdf-text-layer {
+	color-scheme: only light;
+	position: absolute;
+	inset: 0;
+	overflow: clip;
+	line-height: 1;
+	text-align: initial;
+	letter-spacing: normal;
+	word-spacing: normal;
+	-webkit-text-size-adjust: none;
+	forced-color-adjust: none;
+	transform-origin: 0 0;
+	user-select: text;
+	--min-font-size: 1;
+	--text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+	--min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.paper-pdf-text-layer :is(span, br) {
+	position: absolute;
+	color: transparent;
+	white-space: pre;
+	cursor: text;
+	transform-origin: 0 0;
+	user-select: text;
+}
+
+.paper-pdf-text-layer > :not(.markedContent),
+.paper-pdf-text-layer .markedContent span:not(.markedContent) {
+	z-index: 1;
+	--font-height: 0;
+	--scale-x: 1;
+	--rotate: 0deg;
+	font-size: calc(var(--text-scale-factor) * var(--font-height));
+	transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.paper-pdf-text-layer .markedContent {
+	display: contents;
+}
+
+.paper-pdf-text-layer ::selection {
+	background: color-mix(in srgb, Highlight 40%, transparent);
+	color: transparent;
+}

@@ -19,11 +19,53 @@ from app.library.depends import (
 )
 from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
 from app.library.service import PaperLibraryService
-from app.platform.storage import ObjectStorage, mineru_job_artifact_key
+from app.platform.storage import (
+    ObjectStorage,
+    mineru_artifact_key,
+    mineru_job_artifact_key,
+)
 from app.scholar.metadata import MetadataResolver
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
+
+
+def test_legacy_paper_image_can_be_previewed_from_its_own_storage_prefix(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+    storage: ObjectStorage,
+) -> None:
+    owner = register_user(email="legacy-image-owner@example.com")
+    entry_id = UUID(
+        _upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"][
+            "id"
+        ]
+    )
+    paper = db_session.get(
+        PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id
+    )
+    paper.has_fulltext = True
+    db_session.commit()
+    storage.put_bytes(
+        mineru_artifact_key(paper.file_hash, "content_list.json"),
+        json.dumps(
+            [{"type": "image", "page_idx": 0, "img_path": "images/figure.png"}]
+        ).encode(),
+    )
+    payload = b"\x89PNG\r\n\x1a\nlegacy"
+    storage.put_bytes(
+        mineru_artifact_key(paper.file_hash, "images/images/figure.png"), payload
+    )
+
+    response = client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks/0/image",
+        headers=auth_headers(owner["access_token"]),
+    )
+    assert response.status_code == 200
+    assert response.content == payload
 
 
 def test_paper_blocks_are_filtered_and_private(

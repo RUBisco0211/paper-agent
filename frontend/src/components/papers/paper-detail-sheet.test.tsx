@@ -43,6 +43,29 @@ function json(body: unknown, status = 200): Response {
 }
 
 describe("PaperDetailSheet", () => {
+  it("shows completed steps with a visible check and one section divider", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })
+      if (String(input).endsWith("/v1/ingestion-jobs/j1")) return json({
+        id: "j1", paper_id: "p1", status: "succeeded", stages: [
+          "metadata", "fulltext", "chunking", "embedding",
+        ].map((stage) => ({ stage, status: "succeeded" })),
+      })
+      return json({ ...PAPER, processing: { job_id: "j1", status: "succeeded", current_stage: null, error_code: null } })
+    })
+    render(<QueryClientProvider client={createQueryClient()}>
+      <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+        <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
+      </ApiProvider>
+    </QueryClientProvider>)
+    const section = await screen.findByRole("region", { name: "处理进度" })
+    expect(section.className).not.toContain("border-y")
+    expect(section.nextElementSibling?.getAttribute("data-slot")).not.toBe("separator")
+    const firstIcon = section.querySelector("li > div > span")
+    expect(firstIcon?.className).toContain("bg-primary")
+    expect(firstIcon?.querySelector("svg.lucide-check")).toBeTruthy()
+  })
+
   it("shows processing as ordered steps with the active stage and failure detail", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
       if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { expect, it, vi } from "vitest"
@@ -80,4 +80,28 @@ it("previews images and equations and offers copy actions without a redundant he
   await user.click(await screen.findByRole("button", { name: "复制公式" }))
   expect(await navigator.clipboard.readText()).toBe("E = mc^2")
   expect(document.querySelector(".katex")).toBeTruthy()
+})
+
+it("renders a MinerU display equation without showing its image fallback or raw delimiters", async () => {
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.endsWith("/blocks/4/image")) return new Response(null, { status: 404 })
+    if (url.includes("/blocks")) return new Response(JSON.stringify({
+      types: ["equation"], items: [{ id: 4, type: "equation", page: 4,
+        text: "$$ E = mc^2 $$", formula: "$$ E = mc^2 $$", has_image: true }],
+      total: 1, offset: 0, limit: 50,
+    }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  await screen.findByRole("tab", { name: "公式" })
+  await waitFor(() => expect(document.querySelector(".katex")).toBeTruthy())
+  expect(screen.queryByText("图片预览不可用")).toBeNull()
+  expect(screen.queryByText(/\$\$ E = mc\^2 \$\$/)).toBeNull()
 })

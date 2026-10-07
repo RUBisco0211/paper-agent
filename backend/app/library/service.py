@@ -206,6 +206,12 @@ class PaperLibraryService:
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         manifest_key = entry.paper.artifact_manifest_key if entry.paper else None
         if not manifest_key:
+            for relative_path in (f"images/{image_path}", image_path):
+                key = mineru_artifact_key(entry.paper.file_hash, relative_path)
+                if self._storage.exists(key):
+                    return self._storage.read_bytes(key), self._image_media_type(
+                        image_path
+                    )
             raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
         try:
             manifest = json.loads(self._storage.read_text(manifest_key))
@@ -229,9 +235,12 @@ class PaperLibraryService:
                 code=ErrorCode.INGESTION_ARTIFACT_INVALID,
                 status_code=502,
             ) from exc
+        return payload, self._image_media_type(image_path)
+
+    @staticmethod
+    def _image_media_type(image_path: str) -> str:
         suffix = image_path.rsplit(".", 1)[-1].lower()
-        media_type = "image/jpeg" if suffix in {"jpg", "jpeg"} else f"image/{suffix}"
-        return payload, media_type
+        return "image/jpeg" if suffix in {"jpg", "jpeg"} else f"image/{suffix}"
 
     def _read_artifact_part(self, part: dict) -> bytes:
         raw = self._storage.read_bytes(part["key"])

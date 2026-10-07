@@ -20,7 +20,6 @@ import { Badge } from "@upstream/components/ui/badge"
 import { Button } from "@upstream/components/ui/button"
 import { Input } from "@upstream/components/ui/input"
 import { Label } from "@upstream/components/ui/label"
-import { Separator } from "@upstream/components/ui/separator"
 import {
   Sheet,
   SheetContent,
@@ -273,8 +272,8 @@ export function PaperDetailSheet({
               ) : null}
 
               {job.data ? (
-                <section className="border-y py-4" aria-label="处理进度">
-                  <h3 className="mb-4 text-sm font-medium">处理进度</h3>
+                <section className="border-t pt-4" aria-label="处理进度">
+                  <h3 className="mb-3 text-sm font-medium">处理进度</h3>
                   <ol className="space-y-0" aria-label="处理进度">
                     {[...job.data.stages]
                       .sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage))
@@ -290,16 +289,16 @@ export function PaperDetailSheet({
                           <div className="flex w-6 shrink-0 flex-col items-center">
                             <span className={`flex size-6 items-center justify-center rounded-full border ${
                               failed ? "border-destructive bg-destructive/10 text-destructive"
-                                : complete ? "border-success bg-success text-white"
+                                : complete ? "border-primary bg-primary text-primary-foreground"
                                   : active ? "border-primary bg-primary/10 text-primary"
                                     : "border-border text-muted-foreground"
                             }`}>
                               <Icon aria-hidden="true" className={`size-3.5 ${active ? "animate-spin" : ""}`} />
                             </span>
-                            {index < stages.length - 1 && <span aria-hidden="true" className={`my-1 min-h-6 w-px flex-1 ${complete ? "bg-success/60" : "bg-border"}`} />}
+                            {index < stages.length - 1 && <span aria-hidden="true" className={`my-1 min-h-3 w-px flex-1 ${complete ? "bg-primary/50" : "bg-border"}`} />}
                           </div>
-                          <div className={`min-w-0 flex-1 ${index < stages.length - 1 ? "pb-4" : ""}`}>
-                            <div className="flex items-center justify-between gap-3">
+                          <div className={`min-w-0 flex-1 ${index < stages.length - 1 ? "pb-2" : ""}`}>
+                            <div className="flex items-center gap-3">
                               <span className={`text-sm font-medium ${failed ? "text-destructive" : ""}`}>{stageLabel(stage.stage)}</span>
                               <span className={`text-xs ${failed ? "text-destructive" : active ? "text-primary" : "text-muted-foreground"}`}>
                                 {STATUS_LABEL[stage.status] ?? stage.status}
@@ -312,8 +311,6 @@ export function PaperDetailSheet({
                   </ol>
                 </section>
               ) : null}
-
-              <Separator />
 
               <section className="flex flex-col gap-2">
                 <div className="flex items-center justify-between">
