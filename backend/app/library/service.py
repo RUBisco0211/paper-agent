@@ -469,6 +469,32 @@ class PaperLibraryService:
         )
 
     # Queries ---------------------------------------------------------------
+    def pdf_cache_version(self, *, user_id: UUID, user_paper_id: UUID) -> str:
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if entry.paper is None:
+            raise AppError(
+                "该条目还没有可用的 PDF",
+                code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                status_code=404,
+            )
+        if not self._storage.exists(paper_pdf_key(entry.paper.file_hash)):
+            raise AppError(
+                "PDF 文件已不可用",
+                code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                status_code=404,
+            )
+        return entry.paper.file_hash
+
+    def artifact_cache_version(
+        self, *, user_id: UUID, user_paper_id: UUID
+    ) -> str | None:
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.has_fulltext:
+            return None
+        version = paper.artifact_manifest_key or paper.updated_at.isoformat()
+        return f"{paper.file_hash}:{version}"
+
     def get_pdf_stream(self, *, user_id: UUID, user_paper_id: UUID) -> BinaryIO:
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
         if entry.paper is None:

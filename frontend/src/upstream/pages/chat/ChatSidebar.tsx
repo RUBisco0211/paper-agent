@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
+import { BookOpen, ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
@@ -189,6 +189,7 @@ export function ChatSidebar() {
                 <CollapsibleTrigger className="flex min-w-0 items-center gap-1 truncate"><ChevronDown className="size-3.5" />{project.name}</CollapsibleTrigger>
                 <span className="flex items-center gap-1">
                   <button type="button" aria-label={`在${project.name}中新建会话`} disabled={creating} onClick={() => void create(project.id)}><Plus className="size-4" /></button>
+                  <button type="button" aria-label={`管理${project.name}文献`} title={`管理${project.name}文献`} onClick={() => navigate(`/chat/project/${project.id}`)}><BookOpen className="size-4" /></button>
                   <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={`${project.name}操作`}><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start">
                       <DropdownMenuItem onSelect={() => { setProjectToRename(project); setProjectName(project.name); setError("") }}><Pencil />重命名</DropdownMenuItem>
@@ -199,7 +200,6 @@ export function ChatSidebar() {
               </SidebarGroupLabel>
               <CollapsibleContent><SidebarGroupContent><SidebarMenu>
                 <SessionRows sessions={all.filter((item) => item.binding.project_id === project.id)} onRename={beginRename} onDelete={setDeleting} />
-                <SidebarMenuItem><SidebarMenuButton asChild><NavLink to={`/chat/project/${project.id}`}>项目文献</NavLink></SidebarMenuButton></SidebarMenuItem>
               </SidebarMenu></SidebarGroupContent></CollapsibleContent>
             </SidebarGroup>
           </Collapsible>

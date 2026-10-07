@@ -76,6 +76,8 @@
 | 0060 | frontend, library, product | PDF 叠加可选文本层并提供复制菜单；旧 MinerU 图片路径回退，公式优先渲染源码 | 当前 | [0060-paper-text-selection-and-legacy-previews.md](decisions/0060-paper-text-selection-and-legacy-previews.md) |
 | 0061 | frontend, library | 文献阅读双栏统一工具栏高度，分块侧栏可拖拽，PDF 支持滚轮及键盘快捷操作 | 当前 | [0061-paper-reading-controls.md](decisions/0061-paper-reading-controls.md) |
 | 0062 | frontend, library | 文献信息抽屉不再重复渲染 PDF；阅读页并行加载，图片和图表共用大图查看器 | 当前 | [0062-paper-preview-and-loading.md](decisions/0062-paper-preview-and-loading.md) |
+| 0063 | api, library, cache | 授权 PDF 与不可变解析产物采用私有 HTTP 条件缓存，替换或重解析时换版 | 当前 | [0063-private-paper-http-cache.md](decisions/0063-private-paper-http-cache.md) |
+| 0064 | frontend, chat | 项目文献入口放在项目行操作区，会话顶栏控制可调宽度的文献侧栏 | 当前 | [0064-chat-project-paper-sidebar.md](decisions/0064-chat-project-paper-sidebar.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

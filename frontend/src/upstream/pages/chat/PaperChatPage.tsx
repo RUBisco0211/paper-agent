@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { useState } from "react"
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-sessions"
@@ -28,6 +28,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
+  const papersPanel = useOutletContext<{ papersOpen: boolean; togglePapers: () => void; projectId: string | null } | undefined>()
   const [changingModel, setChangingModel] = useState(false)
   const [modelError, setModelError] = useState("")
   const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm } =
@@ -119,13 +120,14 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   return (
     <CitationProvider onOpen={(id) => void openCitation(id)}>
       <main className="flex h-full min-h-0 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b bg-background px-5 py-3">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-2">
             {scheduledRun && <Button asChild variant="ghost" size="icon-sm"><Link to="/scheduled" aria-label="返回月视图"><ArrowLeft className="size-4" /></Link></Button>}
             <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
             <p className="text-xs text-muted-foreground">{scheduledScope ?? (binding?.scope === "project" ? project.data?.name ?? "项目" : "全局")}</p>
             </div>
           </div>
+          {!scheduledRun && papersPanel?.projectId && <Button variant="ghost" size="icon-sm" aria-label={papersPanel.papersOpen ? "收起项目文献" : "展开项目文献"} onClick={papersPanel.togglePapers}>{papersPanel.papersOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>}
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
         {error && <p role="alert" className="px-5 pt-2 text-sm text-destructive">回答失败，请重试</p>}

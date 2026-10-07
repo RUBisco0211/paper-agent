@@ -135,6 +135,45 @@ def test_attach_pdf_binds_entry_to_shared_paper(
     assert downloaded.status_code == 200
 
 
+def test_pdf_cache_revalidates_when_the_file_changes(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    create_entry,
+) -> None:
+    owner = register_user(email="cache-owner@example.com")["access_token"]
+    stranger = register_user(email="cache-stranger@example.com")["access_token"]
+    paper_id = create_entry(owner, doi=None)
+    url = f"{api_prefix}/papers/{paper_id}/pdf"
+    first = client.post(
+        url,
+        headers=auth_headers(owner),
+        files={"file": ("first.pdf", make_pdf(), "application/pdf")},
+    )
+    assert first.status_code == 202
+    downloaded = client.get(url, headers=auth_headers(owner))
+    assert downloaded.status_code == 200
+    etag = downloaded.headers["etag"]
+    assert downloaded.headers["cache-control"] == "private, no-cache"
+    cached = client.get(url, headers={**auth_headers(owner), "If-None-Match": etag})
+    assert cached.status_code == 304
+    assert cached.content == b""
+    assert client.get(url, headers={**auth_headers(stranger), "If-None-Match": etag}).status_code == 404
+
+    from tests.conftest import build_pdf_with_text
+
+    second = client.post(
+        url,
+        headers=auth_headers(owner),
+        files={"file": ("second.pdf", build_pdf_with_text("Another version"), "application/pdf")},
+    )
+    assert second.status_code == 202
+    changed = client.get(url, headers={**auth_headers(owner), "If-None-Match": etag})
+    assert changed.status_code == 200
+    assert changed.headers["etag"] != etag
+
+
 def test_attach_pdf_reports_identifier_conflict(
     client: TestClient,
     api_prefix: str,

@@ -68,6 +68,34 @@ def test_legacy_paper_image_can_be_previewed_from_its_own_storage_prefix(
     assert response.content == payload
 
 
+def test_legacy_block_image_revalidates_when_it_is_still_available(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+    storage: ObjectStorage,
+) -> None:
+    owner = register_user(email="legacy-cache@example.com")
+    entry_id = UUID(_upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"]["id"])
+    paper = db_session.get(PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id)
+    paper.has_fulltext = True
+    db_session.commit()
+    content_key = mineru_artifact_key(paper.file_hash, "content_list.json")
+    image_key = mineru_artifact_key(paper.file_hash, "images/figure.png")
+    storage.put_bytes(content_key, json.dumps([{"type": "image", "page_idx": 0, "img_path": "figure.png"}]).encode())
+    storage.put_bytes(image_key, b"\x89PNG\r\n\x1a\npreview")
+    url = f"{api_prefix}/papers/{entry_id}/blocks/0/image"
+    first = client.get(url, headers=auth_headers(owner["access_token"]))
+    assert first.status_code == 200
+    etag = first.headers["etag"]
+    repeated = client.get(url, headers={**auth_headers(owner["access_token"]), "If-None-Match": etag})
+    assert repeated.status_code == 304
+    storage.delete(image_key)
+    missing = client.get(url, headers={**auth_headers(owner["access_token"]), "If-None-Match": etag})
+    assert missing.status_code == 404
+
+
 def test_paper_blocks_are_filtered_and_private(
     client: TestClient,
     api_prefix: str,
@@ -168,12 +196,32 @@ def test_paper_blocks_are_filtered_and_private(
     assert response.status_code == 200, response.text
     assert response.json()["types"] == ["text", "table", "image", "equation"]
     assert [item["id"] for item in response.json()["items"]] == [1]
+    blocks_url = f"{api_prefix}/papers/{entry_id}/blocks"
+    assert client.get(
+        blocks_url,
+        params={"type": "table"},
+        headers={**auth_headers(owner["access_token"]), "If-None-Match": response.headers["etag"]},
+    ).status_code == 304
+    assert client.get(
+        blocks_url,
+        params={"type": "text"},
+        headers={**auth_headers(owner["access_token"]), "If-None-Match": response.headers["etag"]},
+    ).status_code == 200
+    assert client.get(
+        blocks_url,
+        params={"type": "table"},
+        headers={**auth_headers(stranger["access_token"]), "If-None-Match": response.headers["etag"]},
+    ).status_code == 404
     direct = client.get(
         f"{api_prefix}/papers/{entry_id}/blocks/1",
         headers=auth_headers(owner["access_token"]),
     )
     assert direct.status_code == 200
     assert direct.json()["page"] == 2
+    assert client.get(
+        f"{api_prefix}/papers/{entry_id}/blocks/1",
+        headers={**auth_headers(owner["access_token"]), "If-None-Match": direct.headers["etag"]},
+    ).status_code == 304
     image_block = client.get(
         f"{api_prefix}/papers/{entry_id}/blocks/2",
         headers=auth_headers(owner["access_token"]),

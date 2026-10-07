@@ -1,7 +1,8 @@
+import hashlib
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, UploadFile, status
+from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 
 from ..auth.depends import CurrentUser
@@ -26,6 +27,21 @@ from .schemas import (
 from .service import PaperInfoUpdate
 
 router = APIRouter(prefix="/papers", tags=["library"])
+CACHE_CONTROL = "private, no-cache"
+
+
+def _cache_tag(*parts: object) -> str:
+    digest = hashlib.sha256("\x00".join(map(str, parts)).encode()).hexdigest()
+    return f'"{digest}"'
+
+
+def _cache_headers(etag: str) -> dict[str, str]:
+    return {"Cache-Control": CACHE_CONTROL, "ETag": etag}
+
+
+def _matches_cache(request: Request, etag: str) -> bool:
+    supplied = request.headers.get("If-None-Match", "")
+    return any(tag.strip().removeprefix("W/") in {etag, "*"} for tag in supplied.split(","))
 
 
 @router.get("/{paper_id}/blocks", response_model=PaperBlocksResponse)
@@ -33,11 +49,13 @@ def list_paper_blocks(
     paper_id: UUID,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
+    request: Request,
+    response: Response,
     block_type: Annotated[str | None, Query(alias="type")] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-) -> PaperBlocksResponse:
-    return PaperBlocksResponse.model_validate(
+) -> PaperBlocksResponse | Response:
+    result = PaperBlocksResponse.model_validate(
         service.list_blocks(
             user_id=user.id,
             user_paper_id=paper_id,
@@ -46,6 +64,13 @@ def list_paper_blocks(
             limit=limit,
         )
     )
+    version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    if version is not None:
+        etag = _cache_tag("blocks-v1", version, block_type, offset, limit)
+        if _matches_cache(request, etag):
+            return Response(status_code=304, headers=_cache_headers(etag))
+        response.headers.update(_cache_headers(etag))
+    return result
 
 
 @router.get("/{paper_id}/blocks/{block_id}", response_model=PaperBlockRead)
@@ -54,14 +79,23 @@ def read_paper_block(
     block_id: int,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
-) -> PaperBlockRead:
-    return PaperBlockRead.model_validate(
+    request: Request,
+    response: Response,
+) -> PaperBlockRead | Response:
+    result = PaperBlockRead.model_validate(
         service.get_block(
             user_id=user.id,
             user_paper_id=paper_id,
             block_id=block_id,
         )
     )
+    version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    if version is not None:
+        etag = _cache_tag("block-v1", version, block_id)
+        if _matches_cache(request, etag):
+            return Response(status_code=304, headers=_cache_headers(etag))
+        response.headers.update(_cache_headers(etag))
+    return result
 
 
 @router.get("/{paper_id}/blocks/{block_id}/image", response_class=Response)
@@ -70,19 +104,22 @@ def read_paper_block_image(
     block_id: int,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
+    request: Request,
 ) -> Response:
     payload, media_type = service.get_block_image(
         user_id=user.id,
         user_paper_id=paper_id,
         block_id=block_id,
     )
+    version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    etag = _cache_tag("block-image-v1", version, block_id)
+    headers = {**_cache_headers(etag), "X-Content-Type-Options": "nosniff"}
+    if _matches_cache(request, etag):
+        return Response(status_code=304, headers=headers)
     return Response(
         payload,
         media_type=media_type,
-        headers={
-            "Cache-Control": "private, max-age=0, must-revalidate",
-            "X-Content-Type-Options": "nosniff",
-        },
+        headers=headers,
     )
 
 
@@ -177,8 +214,13 @@ def read_paper_pdf(
     paper_id: UUID,
     user: CurrentUser,
     service: PaperLibraryServiceDep,
-) -> StreamingResponse:
+    request: Request,
+) -> Response:
     entry = _entry_or_404(service, user_id=user.id, user_paper_id=paper_id)
+    version = service.pdf_cache_version(user_id=user.id, user_paper_id=paper_id)
+    etag = _cache_tag("pdf-v1", version)
+    if _matches_cache(request, etag):
+        return Response(status_code=304, headers=_cache_headers(etag))
     stream = service.get_pdf_stream(user_id=user.id, user_paper_id=paper_id)
     filename = f"{entry.user_paper.id}.pdf"
     return StreamingResponse(
@@ -186,7 +228,7 @@ def read_paper_pdf(
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
-            "Cache-Control": "private, max-age=0, must-revalidate",
+            **_cache_headers(etag),
         },
     )
 
