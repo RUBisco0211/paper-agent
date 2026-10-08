@@ -6,7 +6,7 @@ from pathlib import Path
 from agentscope.app import create_app
 from agentscope.app.deps import get_current_user_id
 from agentscope.app.message_bus import InMemoryMessageBus
-from agentscope.app.workspace_manager import LocalWorkspaceManager
+from agentscope.app.workspace_manager import IsolationPolicy, LocalWorkspaceManager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import make_url
@@ -36,10 +36,15 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
         await prepare_schedule_scope(storage, user_id, agent_id, session_id)
         return await build_retrieval_tools(user_id, agent_id, session_id)
 
+    # AgentScope requires a workspace binding. Its local manager still uses an
+    # agent-level filesystem path; PaperAgent exposes no filesystem tools, and
+    # project artifacts must never use that path as their storage boundary.
     app = create_app(
         storage=storage,
         message_bus=InMemoryMessageBus(),
-        workspace_manager=LocalWorkspaceManager(str(workspace_root)),
+        workspace_manager=LocalWorkspaceManager(
+            str(workspace_root), isolation=IsolationPolicy.PER_SESSION,
+        ),
         title="Paper Agent AgentScope Service",
         extra_agent_tools=scoped_paper_tools,
         custom_agent_cls=PaperAgent,

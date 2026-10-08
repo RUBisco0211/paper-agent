@@ -12,6 +12,54 @@ from app.platform.config import settings
 from app.platform.security import create_access_token
 
 
+def test_new_sessions_have_distinct_internal_workspaces_when_they_share_an_agent(
+    tmp_path: Path,
+) -> None:
+    database_url = make_url(settings.resolved_test_database_url).set(
+        database="paper_agent_scope_test",
+    )
+    admin_engine = create_engine(database_url.set(database="postgres"))
+    try:
+        with admin_engine.connect().execution_options(
+            isolation_level="AUTOCOMMIT",
+        ) as connection:
+            exists = connection.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": database_url.database},
+            ).scalar()
+            if not exists:
+                connection.execute(text('CREATE DATABASE "paper_agent_scope_test"'))
+    finally:
+        admin_engine.dispose()
+
+    app = create_agent_service_app(
+        database_url.render_as_string(hide_password=False), tmp_path,
+    )
+    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    headers = {"Authorization": f"Bearer {token}"}
+    with TestClient(app) as client:
+        agent = client.post("/agent/", json={"name": "Reader"}, headers=headers)
+        assert agent.status_code == 201
+        agent_id = agent.json()["agent_id"]
+        first = client.post(
+            "/sessions/", json={"agent_id": agent_id}, headers=headers,
+        )
+        second = client.post(
+            "/sessions/", json={"agent_id": agent_id}, headers=headers,
+        )
+        assert first.status_code == second.status_code == 201
+        sessions = client.get(
+            "/sessions/", params={"agent_id": agent_id}, headers=headers,
+        ).json()["sessions"]
+        workspaces = {
+            view["session"]["id"]: view["session"]["config"]["workspace_id"]
+            for view in sessions
+        }
+        assert workspaces[first.json()["session_id"]] != workspaces[
+            second.json()["session_id"]
+        ]
+
+
 def test_agent_service_preserves_sessions_when_the_process_restarts(
     tmp_path: Path,
 ) -> None:
