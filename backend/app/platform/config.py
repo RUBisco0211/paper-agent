@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     embedding_query_prefix: str | None = None
     embedding_document_prefix: str | None = None
     crossref_api_url: str = "https://api.crossref.org"
+    openalex_api_key: SecretStr = SecretStr("")
     arxiv_api_url: str = "https://export.arxiv.org/api/query"
     arxiv_pdf_url: str = "https://arxiv.org/pdf"
     zotero_recognizer_url: str | None = None

@@ -118,7 +118,20 @@ async def build_retrieval_tools(
             },
         )
 
+    async def discover_papers(query: str, limit: int = 8) -> dict:
+        """Find external paper candidates; results have no registered citation IDs."""
+        return await request(
+            "POST",
+            "discover-papers",
+            json={
+                "user_id": user_id,
+                "session_id": session_id,
+                "query": query,
+                "limit": max(1, min(limit, 10)),
+            },
+        )
+
     return [
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
-        for func in (list_papers, search_papers, get_paper_excerpt)
+        for func in (list_papers, search_papers, get_paper_excerpt, discover_papers)
     ]

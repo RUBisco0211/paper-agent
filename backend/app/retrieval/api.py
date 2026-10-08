@@ -9,6 +9,7 @@ from .depends import (
     AgentInternalAuth,
     BoundPaperServiceDep,
     BoundSearchServiceDep,
+    DiscoveryServiceDep,
     SearchServiceDep,
 )
 from .domain import SearchOutcome
@@ -19,12 +20,28 @@ from .schemas import (
     BoundSearchRequest,
     BoundSearchResponse,
     ChannelRead,
+    DiscoveryRequest,
+    DiscoveryResponse,
     EvidenceRead,
     SearchRequest,
     SearchResponse,
 )
 
 router = APIRouter(tags=["retrieval"])
+
+
+@router.post("/internal/discover-papers", response_model=DiscoveryResponse)
+def discover_papers(
+    payload: DiscoveryRequest,
+    _auth: AgentInternalAuth,
+    service: DiscoveryServiceDep,
+) -> DiscoveryResponse:
+    return DiscoveryResponse(papers=service.search(
+        user_id=payload.user_id,
+        session_id=payload.session_id,
+        query=payload.query,
+        limit=payload.limit,
+    ))
 
 
 @router.get("/internal/papers", response_model=BoundListResponse)

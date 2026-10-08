@@ -9,11 +9,17 @@ from ..library.repo import PaperRepository
 from ..platform.config import settings
 from ..platform.database import SessionDep
 from ..platform.errors import ErrorCode, UnauthorizedError
+from ..platform.openalex import OpenAlexAdapter
 from ..projects.repo import ProjectRepository
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import EmbeddingAdapter
 from .repo import ChunkRepository
-from .service import BoundPaperService, BoundSearchService, SearchService
+from .service import (
+    BoundPaperService,
+    BoundSearchService,
+    DiscoveryService,
+    SearchService,
+)
 
 
 def get_chunk_repository(session: SessionDep) -> ChunkRepository:
@@ -76,6 +82,22 @@ def require_agent_internal_key(
 
 
 AgentInternalAuth = Annotated[None, Depends(require_agent_internal_key)]
+
+
+def get_openalex_adapter() -> OpenAlexAdapter:
+    return OpenAlexAdapter()
+
+
+OpenAlexAdapterDep = Annotated[OpenAlexAdapter, Depends(get_openalex_adapter)]
+
+
+def get_discovery_service(
+    bindings: SessionBindingServiceDep, provider: OpenAlexAdapterDep
+) -> DiscoveryService:
+    return DiscoveryService(bindings, provider)
+
+
+DiscoveryServiceDep = Annotated[DiscoveryService, Depends(get_discovery_service)]
 
 
 def get_bound_search_service(

@@ -5,9 +5,8 @@ from agentscope.tool import Toolkit
 
 from .retrieval_tools import PaperReadTool
 
-
 PAPER_TOOL_NAMES = frozenset(
-    {"list_papers", "search_papers", "get_paper_excerpt"},
+    {"list_papers", "search_papers", "get_paper_excerpt", "discover_papers"},
 )
 
 

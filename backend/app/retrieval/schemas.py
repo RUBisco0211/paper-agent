@@ -49,6 +49,17 @@ class BoundSearchRequest(BaseModel):
     limit: int = Field(default=8, ge=1, le=20)
 
 
+class DiscoveryRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    query: str = Field(min_length=1, max_length=300)
+    limit: int = Field(default=8, ge=1, le=10)
+
+
+class DiscoveryResponse(BaseModel):
+    papers: list[dict]
+
+
 class BoundEvidenceRead(EvidenceRead):
     citation_id: str
 

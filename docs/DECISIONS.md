@@ -54,7 +54,7 @@
 | 0038 | security, agent | Credential API Key 在 AgentScope SQL 存储适配层加密且响应脱敏 | 当前 | [0038-encrypted-agentscope-credentials.md](decisions/0038-encrypted-agentscope-credentials.md) |
 | 0039 | security, agent | 单个服务端主密钥按用户派生对称密钥，主密钥独立持久保存 | 当前 | [0039-per-user-derived-credential-keys.md](decisions/0039-per-user-derived-credential-keys.md) |
 | 0040 | api, security, frontend | 用户读取会话绑定与已登记引用，前端按 session_id 拼接 | 当前 | [0040-bound-session-read-apis.md](decisions/0040-bound-session-read-apis.md) |
-| 0041 | agent, security | Agent 运行时只开放三个文献只读工具，现有 search_papers 承担 RAG 检索 | 当前 | [0041-agent-tool-allowlist.md](decisions/0041-agent-tool-allowlist.md) |
+| 0041 | agent, security | Agent 运行时只开放三个文献只读工具，现有 search_papers 承担 RAG 检索 | 已被 0069 取代 | [0041-agent-tool-allowlist.md](decisions/0041-agent-tool-allowlist.md) |
 | 0042 | agent, product, ingest | 入读流程完成后增加基于 MinerU Markdown 的有界原文读取工具 | 当前 | [0042-bounded-paper-original-read.md](decisions/0042-bounded-paper-original-read.md) |
 | 0043 | api, security, frontend | 删除会话先删 AgentScope，再删业务绑定与引用，并允许重试 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
 | 0044 | ingest, product, agent | 独立 worker 启动恢复中断任务；删除项目前清理 AgentScope 会话与绑定 | worker 部分已被 0056 取代 | [0044-r7-worker-and-project-lifecycle.md](decisions/0044-r7-worker-and-project-lifecycle.md) |
@@ -82,6 +82,7 @@
 | 0066 | frontend, library | 分块只由定位按钮跳转，定位与复制有提示，点击 PDF 空白处取消高亮 | 当前 | [0066-paper-block-locate-action.md](decisions/0066-paper-block-locate-action.md) |
 | 0067 | frontend, chat | 会话左侧消息刻度复用 MessageScroller 定位与可见状态，悬停预览、点击跳转 | 当前 | [0067-conversation-navigation-rail.md](decisions/0067-conversation-navigation-rail.md) |
 | 0068 | agent, product, storage | AgentScope workspace 仅为运行时字段；新会话 ID 按会话隔离，项目 artifact 以业务项目归属并存对象存储 | 当前 | [0068-workspace-is-not-project-artifact-storage.md](decisions/0068-workspace-is-not-project-artifact-storage.md) |
+| 0069 | agent, retrieval | 增加 OpenAlex 库外文献发现，只返回候选元数据且不登记 Citation | 当前 | [0069-openalex-paper-discovery.md](decisions/0069-openalex-paper-discovery.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

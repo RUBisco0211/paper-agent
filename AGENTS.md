@@ -14,7 +14,7 @@ Paper Agent 管理个人论文库、项目范围与基于论文证据的 Agent �
 - 规模：单机 Docker Compose，个人自用，并发 <10，论文库千篇量级
 - 用户：研究者本人在浏览器里完成入库 → 组织范围 → 问答 → 打开原文核对引用
 - 硬约束：单机部署（PostgreSQL 16 + pgvector；生产用 S3 兼容对象存储，开发/测试可用本地适配器）；**无 Redis / Celery**（解析走独立 worker 进程，由 DB 协调）；LLM API Key 由 Credential 系统持有、不进日志
-- **明确不做**：多实例部署；会话分支（框架 `messages` 为 upsert 语义）；历史编辑；跨会话历史合并；精确区域高亮与图表交互；标题/关键词联网搜论文；GROBID；多解析器回退；Agent 写工具；HITL 权限确认与沙箱；MCP/Skill 市场、channels、TTS
+- **明确不做**：多实例部署；会话分支（框架 `messages` 为 upsert 语义）；历史编辑；跨会话历史合并；精确区域高亮与图表交互；GROBID；多解析器回退；Agent 写工具；HITL 权限确认与沙箱；MCP/Skill 市场、channels、TTS
 - **已扩展**：Cron 定时任务支持全局或项目范围与一周内选日（0049）。
 - **后置（MVP 之后，非否决）**：Agent Team（0006）、rerank（0011）、历史导出（0009）。这些**不是不做**，评估时不要当成已否决。
 

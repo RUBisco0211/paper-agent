@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-06
 - TAGS: agent, security
-- STATUS: 当前
+- STATUS: 已被 0069 取代
 - SUPERSEDES: —
 
 ## DECISION

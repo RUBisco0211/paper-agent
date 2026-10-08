@@ -9,7 +9,7 @@ from ..library.repo import PaperRepository
 from ..library.service import PaperLibraryService
 from ..platform.errors import ErrorCode, NotFoundError
 from ..projects.repo import ProjectRepository
-from ..retrieval.ports import EmbeddingAdapter
+from ..retrieval.ports import EmbeddingAdapter, PaperDiscoveryAdapter
 from ..sessions.service import SessionBindingService
 from .domain import (
     ChannelReport,
@@ -22,6 +22,20 @@ from .domain import (
 from .repo import ChunkRepository
 
 logger = structlog.get_logger(__name__)
+
+
+class DiscoveryService:
+    def __init__(
+        self, bindings: SessionBindingService, provider: PaperDiscoveryAdapter
+    ) -> None:
+        self._bindings = bindings
+        self._provider = provider
+
+    def search(
+        self, *, user_id: UUID, session_id: UUID, query: str, limit: int
+    ) -> list[dict]:
+        self._bindings.require(session_id=session_id, user_id=user_id)
+        return self._provider.search(query, limit)
 
 
 class BoundSearchService:
