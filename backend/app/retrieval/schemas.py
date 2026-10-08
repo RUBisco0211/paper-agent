@@ -56,6 +56,11 @@ class DiscoveryRequest(BaseModel):
     limit: int = Field(default=8, ge=1, le=10)
 
 
+class ManualDiscoveryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=300)
+    limit: int = Field(default=10, ge=1, le=20)
+
+
 class DiscoveryResponse(BaseModel):
     papers: list[dict]
     failed_sources: list[str] = Field(default_factory=list)

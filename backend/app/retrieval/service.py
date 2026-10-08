@@ -33,6 +33,10 @@ class DiscoveryService:
         self._bindings = bindings
         self._provider = provider
 
+    def search_manual(self, *, query: str, limit: int) -> dict:
+        result = self._provider.search(query, limit)
+        return {"papers": result.papers, "failed_sources": result.failed_sources}
+
     def search(
         self, *, user_id: UUID, session_id: UUID, query: str, limit: int
     ) -> dict:

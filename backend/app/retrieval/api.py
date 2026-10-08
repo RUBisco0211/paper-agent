@@ -23,11 +23,23 @@ from .schemas import (
     DiscoveryRequest,
     DiscoveryResponse,
     EvidenceRead,
+    ManualDiscoveryRequest,
     SearchRequest,
     SearchResponse,
 )
 
 router = APIRouter(tags=["retrieval"])
+
+
+@router.post("/discover-papers", response_model=DiscoveryResponse)
+def discover_papers_manually(
+    payload: ManualDiscoveryRequest,
+    _user: CurrentUser,
+    service: DiscoveryServiceDep,
+) -> DiscoveryResponse:
+    return DiscoveryResponse(
+        **service.search_manual(query=payload.query, limit=payload.limit)
+    )
 
 
 @router.post("/internal/discover-papers", response_model=DiscoveryResponse)

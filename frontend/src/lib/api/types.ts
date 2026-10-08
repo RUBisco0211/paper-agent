@@ -8,6 +8,22 @@
 
 export type Uuid = string
 
+export interface ExternalPaperCandidate {
+  source_id: string
+  title: string
+  doi?: string | null
+  pdf_url?: string | null
+  url?: string | null
+  year?: number | null
+  authors?: string[]
+  sources?: string[]
+}
+
+export interface ExternalDiscoveryResponse {
+  papers: ExternalPaperCandidate[]
+  failed_sources: string[]
+}
+
 // --- Common ---------------------------------------------------------------
 export interface Page<T> {
   items: T[]

@@ -3,6 +3,7 @@ import { Navigate, createBrowserRouter, RouterProvider, useParams } from "react-
 import { RequireAuth } from "@/app/require-auth"
 import { AgentUiProvider } from "@/lib/agent-ui"
 import { LibraryPage } from "@/pages/library"
+import { DiscoverPage } from "@/pages/discover"
 import { PaperReadingPage } from "@/pages/paper-reading"
 import { LoginPage } from "@/pages/login"
 import { RegisterPage } from "@/pages/register"
@@ -21,6 +22,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/library" replace /> },
       { path: "/library", element: <SectionLayout title="文献库" section="全部文献"><LibraryPage /></SectionLayout> },
+      { path: "/discover", element: <SectionLayout title="在线检索" section="搜索文献"><DiscoverPage /></SectionLayout> },
       { path: "/library/:paperId", element: <SectionLayout title="文献库" section="全部文献"><PaperReadingPage /></SectionLayout> },
       { path: "/projects", element: <Navigate to="/chat" replace /> },
       { path: "/projects/:projectId", element: <LegacyProjectRedirect /> },

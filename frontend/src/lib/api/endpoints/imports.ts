@@ -1,5 +1,5 @@
 import type { ApiClient } from "../client"
-import type { ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "../types"
+import type { ExternalDiscoveryResponse, ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "../types"
 
 export function importEndpoints(client: ApiClient) {
   return {
@@ -25,6 +25,10 @@ export function importEndpoints(client: ApiClient) {
 
 export function retrievalEndpoints(client: ApiClient) {
   return {
+    discover: (query: string, limit = 10) =>
+      client.request<ExternalDiscoveryResponse>("/v1/discover-papers", {
+        method: "POST", json: { query, limit },
+      }),
     search: (input: SearchInput) =>
       client.request<SearchResponse>("/v1/search", {
         method: "POST",
