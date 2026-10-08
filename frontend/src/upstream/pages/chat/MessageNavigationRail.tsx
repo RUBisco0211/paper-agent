@@ -57,7 +57,7 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
               onClick={() => scrollToMessage(message.id, { align: "start", behavior: "smooth" })}
               className={`group flex h-6 w-full shrink-0 flex-row-reverse items-center gap-2 rounded-lg px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ${open && highlighted ? "bg-muted" : ""}`}
             >
-              <span aria-hidden="true" className={`h-0.5 w-4 shrink-0 rounded-full ${highlighted ? "bg-foreground" : "bg-muted-foreground/35"}`} />
+              <span aria-hidden="true" className={`h-0.5 w-2 shrink-0 rounded-full ${highlighted ? "bg-foreground" : "bg-muted-foreground/35"}`} />
               {open && <span className={`min-w-0 flex-1 truncate text-right ${highlighted ? "text-foreground" : "text-muted-foreground"}`}>{messagePreview(message)}</span>}
             </button>
           )
