@@ -2,6 +2,9 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, expect, it, vi } from "vitest"
+import { QueryClientProvider } from "@tanstack/react-query"
+import { createQueryClient } from "@/app/query"
+import type { ReactElement } from "react"
 
 import { PdfViewer } from "./pdf-viewer"
 
@@ -30,26 +33,42 @@ vi.mock("pdfjs-dist", () => ({
     cancel() {}
   },
 }))
-const api = vi.hoisted(() => ({ library: { pdfBlob: async () => new Blob(["%PDF-test"], { type: "application/pdf" }) } }))
+const api = vi.hoisted(() => ({ library: { pdfBlob: vi.fn(async () => new Blob(["%PDF-test"], { type: "application/pdf" })) } }))
 vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api }) }))
+
+const queryClient = createQueryClient()
+function renderPdf(viewer: ReactElement) {
+  return render(<QueryClientProvider client={queryClient}>{viewer}</QueryClientProvider>)
+}
 
 beforeEach(() => {
   pdf.getDocument.mockClear()
   pdf.getPage.mockClear()
   pdf.render.mockClear()
+  api.library.pdfBlob.mockClear()
+  queryClient.clear()
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({} as CanvasRenderingContext2D)
 })
 
 it("renders the cited PDF page in a canvas when the PDF is available", async () => {
-  render(<PdfViewer paperId="paper-1" page={2} />)
+  renderPdf(<PdfViewer paperId="paper-1" page={2} />)
   expect(await screen.findByText("2 / 3")).toBeTruthy()
   expect(pdf.getPage).toHaveBeenCalledWith(2)
   expect(screen.getAllByRole("img", { name: "文献原文" })[1]).toBeTruthy()
   expect(screen.queryByTitle("文献原文")).toBeNull()
 })
 
+it("reuses the PDF bytes when the same paper is reopened", async () => {
+  const first = renderPdf(<PdfViewer paperId="paper-1" />)
+  await screen.findByText("1 / 3")
+  first.unmount()
+  renderPdf(<PdfViewer paperId="paper-1" />)
+  await screen.findByText("1 / 3")
+  expect(api.library.pdfBlob).toHaveBeenCalledTimes(1)
+})
+
 it("lays out all PDF pages in one vertical scroll area", async () => {
-  render(<PdfViewer paperId="paper-1" />)
+  renderPdf(<PdfViewer paperId="paper-1" />)
   expect(await screen.findByRole("region", { name: "PDF 页面" })).toBeTruthy()
   expect(await screen.findAllByRole("img", { name: /文献原文/ })).toHaveLength(3)
   expect(pdf.getPage).toHaveBeenCalledWith(3)
@@ -57,7 +76,7 @@ it("lays out all PDF pages in one vertical scroll area", async () => {
 
 it("navigates and zooms within the PDF when controls are used", async () => {
   const user = userEvent.setup()
-  render(<PdfViewer paperId="paper-1" page={2} />)
+  renderPdf(<PdfViewer paperId="paper-1" page={2} />)
   await screen.findByText("2 / 3")
   await user.click(screen.getByRole("button", { name: "下一页" }))
   expect(await screen.findByText("3 / 3")).toBeTruthy()
@@ -68,7 +87,7 @@ it("navigates and zooms within the PDF when controls are used", async () => {
 })
 
 it("marks a normalized MinerU block on a portrait PDF page", async () => {
-  render(<PdfViewer paperId="paper-1" target={{
+  renderPdf(<PdfViewer paperId="paper-1" target={{
     page: 2, bbox: [100, 200, 500, 300], pageSize: [1000, 1000], coordinateSystem: "normalized",
   }} />)
   const region = await screen.findByLabelText("所选片段位置")
@@ -78,7 +97,7 @@ it("marks a normalized MinerU block on a portrait PDF page", async () => {
 
 it("lets the user select PDF text and copy it from the context menu", async () => {
   const user = userEvent.setup()
-  render(<PdfViewer paperId="paper-1" />)
+  renderPdf(<PdfViewer paperId="paper-1" />)
   const text = (await screen.findAllByText("Selectable PDF text"))[0]
   vi.spyOn(window, "getSelection").mockReturnValue({
     toString: () => "Selectable PDF text",
@@ -91,7 +110,7 @@ it("lets the user select PDF text and copy it from the context menu", async () =
 })
 
 it("zooms with a modifier wheel and scrolls horizontally with shift wheel", async () => {
-  render(<PdfViewer paperId="paper-1" />)
+  renderPdf(<PdfViewer paperId="paper-1" />)
   const region = await screen.findByRole("region", { name: "PDF 页面" })
   fireEvent.wheel(region, { ctrlKey: true, deltaY: -100 })
   expect(await screen.findByText("125%")).toBeTruthy()

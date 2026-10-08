@@ -98,6 +98,7 @@ export function PaperDetailSheet({
     void queryClient.invalidateQueries({ queryKey: ["papers"] })
     void queryClient.invalidateQueries({ queryKey: queryKeys.paper(paperId ?? "none") })
     void queryClient.invalidateQueries({ queryKey: ["ingestion-job"] })
+    void queryClient.invalidateQueries({ queryKey: ["paper-pdf", paperId] })
   }
 
   const attachPdf = useMutation({

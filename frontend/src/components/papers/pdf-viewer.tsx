@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { ChevronLeft, ChevronRight, Copy, Minus, Plus } from "lucide-react"
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy, type PDFDocumentLoadingTask } from "pdfjs-dist"
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
@@ -29,6 +30,13 @@ export function PdfViewer({
   className?: string
 }) {
   const { api } = useApi()
+  const pdfBytes = useQuery({
+    queryKey: ["paper-pdf", paperId],
+    queryFn: ({ signal }) => api.library.pdfBlob(paperId, { signal }),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    enabled: Boolean(paperId),
+  })
   const scrollRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [document, setDocument] = useState<PDFDocumentProxy | null>(null)
@@ -54,7 +62,6 @@ export function PdfViewer({
   }, [document])
 
   useEffect(() => {
-    const controller = new AbortController()
     let disposed = false
     let loadingTask: PDFDocumentLoadingTask | null = null
     void (async () => {
@@ -62,7 +69,8 @@ export function PdfViewer({
         setDocument(null)
         setError(null)
         pageRefs.current.clear()
-        const blob = await api.library.pdfBlob(paperId, { signal: controller.signal })
+        const blob = pdfBytes.data
+        if (!blob) return
         if (disposed) return
         loadingTask = getDocument({ data: new Uint8Array(await blob.arrayBuffer()) })
         const loaded = await loadingTask.promise
@@ -73,10 +81,9 @@ export function PdfViewer({
     })()
     return () => {
       disposed = true
-      controller.abort()
       if (loadingTask) void loadingTask.destroy()
     }
-  }, [api, paperId])
+  }, [paperId, pdfBytes.data])
 
   useEffect(() => {
     if (!document) return
@@ -144,7 +151,7 @@ export function PdfViewer({
     }
   }
 
-  if (error) return <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-sm">{error}</div>
+  if (error || pdfBytes.isError) return <div className="text-muted-foreground flex h-full items-center justify-center p-6 text-sm">{error ?? describeError(pdfBytes.error)}</div>
   if (!document) return <div className="flex h-full flex-col gap-2 p-6"><Skeleton className="h-6 w-40" /><Skeleton className="h-full w-full" /></div>
 
   return <div className={className ?? "flex h-full w-full min-h-0 flex-col"}>
@@ -198,7 +205,7 @@ function PdfPageCanvas({ document, number, scale, target, rootRef, pageRef }: {
     if (!element || typeof IntersectionObserver === "undefined") return
     const observer = new IntersectionObserver(
       ([entry]) => setVisible(entry.isIntersecting),
-      { root: rootRef.current, rootMargin: "800px" },
+      { root: rootRef.current, rootMargin: "200px" },
     )
     observer.observe(element)
     return () => observer.disconnect()
