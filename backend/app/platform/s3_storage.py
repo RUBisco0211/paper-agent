@@ -266,7 +266,7 @@ def _storage_error(exc: Exception) -> AppError:
     return AppError(
         "对象存储不可用",
         status_code=503,
-        code=ErrorCode.SERVICE_UNAVAILABLE,
+        code=ErrorCode.PROVIDER_UNAVAILABLE,
     )
 
 

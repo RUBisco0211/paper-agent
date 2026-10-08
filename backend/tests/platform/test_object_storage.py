@@ -9,10 +9,12 @@ from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
 from app.main import check_storage
 from app.platform.config import settings
+from app.platform.errors import AppError, ErrorCode
 from app.platform.s3_storage import MULTIPART_THRESHOLD, S3ObjectStorage
 from app.platform.storage import LocalObjectStorage, mineru_artifact_key, paper_pdf_key
 
@@ -69,6 +71,23 @@ def test_bucket_is_created_when_missing(tmp_path: Path) -> None:
         )
         storage.put_bytes("a.txt", b"ok")
         assert storage.read_bytes("a.txt") == b"ok"
+
+
+def test_s3_storage_returns_503_when_endpoint_is_unreachable(monkeypatch) -> None:
+    with mock_aws():
+        storage = S3ObjectStorage(
+            bucket="outage-check", endpoint_url="", access_key="k", secret_key="s"
+        )
+
+        def disconnected(**_kwargs):
+            raise EndpointConnectionError(endpoint_url="http://storage.invalid")
+
+        monkeypatch.setattr(storage._client, "get_object", disconnected)
+        with pytest.raises(AppError) as error:
+            storage.read_bytes("papers/missing.pdf")
+
+    assert error.value.status_code == 503
+    assert error.value.code == ErrorCode.PROVIDER_UNAVAILABLE
 
 
 def test_put_read_and_delete_roundtrip(storage) -> None:
