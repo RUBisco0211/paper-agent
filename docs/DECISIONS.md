@@ -80,6 +80,7 @@
 | 0064 | frontend, chat | 项目文献入口放在项目行操作区，会话顶栏控制可调宽度的文献侧栏 | 当前 | [0064-chat-project-paper-sidebar.md](decisions/0064-chat-project-paper-sidebar.md) |
 | 0065 | frontend, library, cache | 阅读页短时复用已授权 PDF 字节，替换文件后失效，并减少视口外预绘制 | 当前 | [0065-paper-reader-warm-cache.md](decisions/0065-paper-reader-warm-cache.md) |
 | 0066 | frontend, library | 分块只由定位按钮跳转，定位与复制有提示，点击 PDF 空白处取消高亮 | 当前 | [0066-paper-block-locate-action.md](decisions/0066-paper-block-locate-action.md) |
+| 0067 | frontend, chat | 会话左侧消息刻度复用 MessageScroller 定位与可见状态，悬停预览、点击跳转 | 当前 | [0067-conversation-navigation-rail.md](decisions/0067-conversation-navigation-rail.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

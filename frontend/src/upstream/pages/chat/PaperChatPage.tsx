@@ -6,6 +6,7 @@ import { Link, useLocation, useNavigate, useOutletContext, useParams } from "rea
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-sessions"
 import { reasoningEffortsForModel } from "./chat-view"
+import { MessageNavigationRail } from "./MessageNavigationRail"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { TextInput } from "@upstream/components/chat/TextInput"
@@ -135,13 +136,13 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         {historyInterrupted && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">上次回答已中断，请重新提问</p>}
         <div className="min-h-0 flex-1">
           <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-            <MessageScroller><MessageScrollerViewport><MessageScrollerContent className="mx-auto max-w-3xl p-5">
+            <MessageScroller><MessageScrollerViewport className="md:pl-11"><MessageScrollerContent className="mx-auto max-w-3xl p-5">
               {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : msgs.length === 0 ? <p className="py-16 text-center text-xl">向文献提问</p> : msgs.map((message) => (
                 <MessageScrollerItem key={message.id} messageId={message.id}>
                   <ASMessageBubble message={message} onUserConfirm={onUserConfirm} />
                 </MessageScrollerItem>
               ))}
-            </MessageScrollerContent></MessageScrollerViewport><MessageScrollerButton /></MessageScroller>
+            </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /><MessageScrollerButton /></MessageScroller>
           </MessageScrollerProvider>
         </div>
         <div className="mx-auto w-full max-w-3xl p-4">
