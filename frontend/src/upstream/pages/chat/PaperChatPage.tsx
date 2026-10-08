@@ -136,7 +136,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         {historyInterrupted && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">上次回答已中断，请重新提问</p>}
         <div className="min-h-0 flex-1">
           <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-            <MessageScroller><MessageScrollerViewport><MessageScrollerContent className="mx-auto max-w-3xl p-5">
+            <MessageScroller><MessageScrollerViewport className="no-scrollbar ![scrollbar-width:none] ![scrollbar-gutter:auto]"><MessageScrollerContent className="mx-auto max-w-3xl p-5">
               {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : msgs.length === 0 ? <p className="py-16 text-center text-xl">向文献提问</p> : msgs.map((message) => (
                 <MessageScrollerItem key={message.id} messageId={message.id}>
                   <ASMessageBubble message={message} onUserConfirm={onUserConfirm} />

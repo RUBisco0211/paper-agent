@@ -26,6 +26,7 @@ it("allows a follow up message in a scheduled run when its session is loaded", a
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><PaperChatPage scheduledRun={run as SessionRecord} scheduledScope="全局" /></MemoryRouter></QueryClientProvider>)
   expect(screen.getAllByRole("banner")).toHaveLength(1)
   expect(screen.getByRole("link", { name: "返回月视图" })).toBeTruthy()
+  expect(document.querySelector('[data-slot="message-scroller-viewport"]')?.className).toContain("no-scrollbar")
   await user.click(screen.getByRole("button", { name: "发送" }))
   expect(send).toHaveBeenCalledWith([{ type: "text", text: "继续提问" }])
 })
