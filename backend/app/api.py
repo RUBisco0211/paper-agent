@@ -8,6 +8,7 @@ and no import cycle can form.
 from fastapi import APIRouter
 
 from .auth.api import router as auth_router
+from .imports.api import internal_router as imports_internal_router
 from .imports.api import router as imports_router
 from .ingestion.api import router as ingestion_router
 from .library.api import router as library_router
@@ -24,6 +25,7 @@ def build_api_router() -> APIRouter:
     router = APIRouter(prefix=settings.api_prefix)
     router.include_router(auth_router)
     router.include_router(imports_router)
+    router.include_router(imports_internal_router)
     router.include_router(library_router)
     router.include_router(ingestion_router)
     router.include_router(projects_router)

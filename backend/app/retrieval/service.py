@@ -7,9 +7,11 @@ from ..evidence.citations import build_citation_id
 from ..evidence.ranking import apply_budgets, reciprocal_rank_fusion
 from ..library.repo import PaperRepository
 from ..library.service import PaperLibraryService
-from ..platform.errors import ErrorCode, NotFoundError
+from ..platform.errors import AppError, ErrorCode, NotFoundError
+from ..platform.security import create_candidate_token
 from ..projects.repo import ProjectRepository
 from ..retrieval.ports import EmbeddingAdapter, PaperDiscoveryAdapter
+from ..scholar.identifiers import parse_identifier
 from ..sessions.service import SessionBindingService
 from .domain import (
     ChannelReport,
@@ -35,7 +37,22 @@ class DiscoveryService:
         self, *, user_id: UUID, session_id: UUID, query: str, limit: int
     ) -> list[dict]:
         self._bindings.require(session_id=session_id, user_id=user_id)
-        return self._provider.search(query, limit)
+        candidates = self._provider.search(query, limit)
+        for candidate in candidates:
+            identifier = candidate.get("doi")
+            try:
+                if not isinstance(identifier, str):
+                    continue
+                parse_identifier(identifier)
+            except AppError:
+                continue
+            candidate["candidate_token"] = create_candidate_token(
+                user_id=str(user_id),
+                session_id=str(session_id),
+                openalex_id=str(candidate["openalex_id"]),
+                identifier=identifier,
+            )
+        return candidates
 
 
 class BoundSearchService:

@@ -21,6 +21,43 @@ _password_hasher = PasswordHasher()
 
 ACCESS_TOKEN_TYPE = "access"
 JWT_ISSUER = "paper-agent"
+IMPORT_CANDIDATE_TOKEN_TYPE = "import_candidate"
+
+
+def create_candidate_token(
+    *, user_id: str, session_id: str, openalex_id: str, identifier: str
+) -> str:
+    expires = datetime.now(UTC) + timedelta(minutes=30)
+    return jwt.encode(
+        {
+            "typ": IMPORT_CANDIDATE_TOKEN_TYPE,
+            "iss": JWT_ISSUER,
+            "uid": user_id,
+            "sid": session_id,
+            "oid": openalex_id,
+            "identifier": identifier,
+            "exp": int(expires.timestamp()),
+        },
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def read_candidate_token(token: str) -> dict:
+    try:
+        claims = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            issuer=JWT_ISSUER,
+        )
+        if claims.get("typ") != IMPORT_CANDIDATE_TOKEN_TYPE:
+            raise ValueError("wrong token type")
+        return claims
+    except (jwt.PyJWTError, ValueError) as exc:
+        from .errors import ForbiddenError
+
+        raise ForbiddenError("候选文献授权已失效") from exc
 
 
 @dataclass(frozen=True, slots=True)

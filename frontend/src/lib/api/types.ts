@@ -390,6 +390,18 @@ export interface PaperImport {
   finished_at?: string | null
 }
 
+export interface ImportQueueItem {
+  id: Uuid
+  kind: "import" | "processing"
+  identifier?: string | null
+  title?: string | null
+  paper_id?: Uuid | null
+  status: string
+  stage?: IngestionStage | null
+  created_at: string
+  error_code?: string | null
+}
+
 
 /** 界面上展示的中文标签（内部枚举不外露）。 */
 export const PAPER_SOURCE_LABEL: Record<PaperSource, string> = {

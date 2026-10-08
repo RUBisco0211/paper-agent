@@ -1,7 +1,9 @@
-import { BookOpen, Clock3, KeyRound, LogOut, MessageSquareText } from "lucide-react"
+import { BookOpen, Clock3, KeyRound, ListChecks, LoaderCircle, LogOut, MessageSquareText } from "lucide-react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/lib/auth/provider"
+import { useImportQueue } from "@/lib/import-queue-context"
+import { ImportQueuePanel } from "@upstream/pages/imports/ImportQueuePanel"
 import { Avatar, AvatarFallback } from "@upstream/components/ui/avatar"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@upstream/components/ui/dropdown-menu"
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@upstream/components/ui/sidebar"
@@ -17,6 +19,7 @@ export function AppSidebar() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const { setOpen, active } = useImportQueue()
 
   return <Sidebar collapsible="none" className="w-16 border-r [&_[data-slot=sidebar-container]]:w-16 [&_[data-slot=sidebar-inner]]:w-16">
     <SidebarHeader className="items-center px-2 pt-4">
@@ -31,7 +34,9 @@ export function AppSidebar() {
         </SidebarMenuItem>)}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
     </SidebarContent>
-    <SidebarFooter className="items-center px-2 pb-4"><SidebarMenu><SidebarMenuItem>
+    <SidebarFooter className="items-center px-2 pb-4"><SidebarMenu>
+      <SidebarMenuItem><SidebarMenuButton tooltip={{ children: "入库队列", hidden: false }} aria-label="入库队列" className="mx-auto size-8! justify-center p-0!" onClick={() => setOpen(true)}>{active ? <LoaderCircle className="animate-spin" /> : <ListChecks />}</SidebarMenuButton></SidebarMenuItem>
+      <SidebarMenuItem>
       <DropdownMenu><DropdownMenuTrigger asChild><SidebarMenuButton size="lg" aria-label="账户" className="mx-auto size-8! justify-center p-0!">
         <Avatar className="size-7"><AvatarFallback>{(user?.display_name || user?.email || "?").slice(0, 1).toUpperCase()}</AvatarFallback></Avatar>
       </SidebarMenuButton></DropdownMenuTrigger>
@@ -42,5 +47,6 @@ export function AppSidebar() {
         </DropdownMenuContent>
       </DropdownMenu>
     </SidebarMenuItem></SidebarMenu></SidebarFooter>
+    <ImportQueuePanel />
   </Sidebar>
 }

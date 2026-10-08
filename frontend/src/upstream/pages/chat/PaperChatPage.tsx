@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, PanelRightClose, PanelRightOpen } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useOutletContext, useParams } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
@@ -9,6 +9,7 @@ import { reasoningEffortsForModel } from "./chat-view"
 import { MessageNavigationRail } from "./MessageNavigationRail"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
+import { DiscoveryImportContext } from "@upstream/components/chat/tool-renderers/PaperDiscoveryRenderer"
 import { TextInput } from "@upstream/components/chat/TextInput"
 import { Button } from "@upstream/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@upstream/components/ui/select"
@@ -20,12 +21,16 @@ import { sessionApi } from "@upstream/api/session"
 import type { SessionRecord } from "@upstream/api/types"
 import { useMessages } from "@upstream/hooks/useMessages"
 import { notifyError } from "@/lib/errors"
+import { useImportQueue } from "@/lib/import-queue-context"
+import { toast } from "sonner"
 
 export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?: SessionRecord; scheduledScope?: string } = {}) {
   const params = useParams()
   const agentId = scheduledRun?.agent_id ?? params.agentId ?? ""
   const sessionId = scheduledRun?.id ?? params.sessionId ?? ""
   const { api } = useApi()
+  const { setOpen: setImportQueueOpen } = useImportQueue()
+  const seenImportCalls = useRef<Set<string> | null>(null)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
@@ -63,6 +68,24 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const selectedModel = current ? `${current.credential_id}:${current.model}` : ""
   const availableEfforts = current ? reasoningEffortsForModel(catalog.data?.providers ?? [], current.type, current.model) : []
   const selectedEffort = typeof current?.parameters.reasoning_effort === "string" ? current.parameters.reasoning_effort : "default"
+
+  useEffect(() => {
+    if (loading) return
+    const calls = msgs.flatMap((message) => message.content.filter((block) => block.type === "tool_call" && block.name === "import_selected_papers"))
+    const ids = new Set(calls.map((call) => call.id))
+    if (seenImportCalls.current === null) { seenImportCalls.current = ids; return }
+    if (calls.some((call) => !seenImportCalls.current!.has(call.id))) {
+      toast.info("文献已加入入库队列")
+      setImportQueueOpen(true)
+    }
+    seenImportCalls.current = ids
+  }, [loading, msgs, setImportQueueOpen])
+
+  async function importSelected(tokens: string[]) {
+    await api.imports.approve(sessionId, tokens)
+    const now = new Date().toISOString()
+    await send([{ id: crypto.randomUUID(), type: "text", text: "请调用 import_selected_papers 导入我刚刚确认的文献，并汇报每篇结果。", created_at: now, finished_at: now }])
+  }
 
   async function openCitation(citationId: string) {
     try {
@@ -119,7 +142,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }
 
   return (
-    <CitationProvider onOpen={(id) => void openCitation(id)}>
+    <DiscoveryImportContext.Provider value={importSelected}><CitationProvider onOpen={(id) => void openCitation(id)}>
       <main className="flex h-full min-h-0 flex-col">
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-2">
@@ -167,6 +190,6 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
           />
         </div>
       </main>
-    </CitationProvider>
+    </CitationProvider></DiscoveryImportContext.Provider>
   )
 }

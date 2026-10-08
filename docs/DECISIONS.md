@@ -83,6 +83,7 @@
 | 0067 | frontend, chat | 会话左侧消息刻度复用 MessageScroller 定位与可见状态，悬停预览、点击跳转 | 当前 | [0067-conversation-navigation-rail.md](decisions/0067-conversation-navigation-rail.md) |
 | 0068 | agent, product, storage | AgentScope workspace 仅为运行时字段；新会话 ID 按会话隔离，项目 artifact 以业务项目归属并存对象存储 | 当前 | [0068-workspace-is-not-project-artifact-storage.md](decisions/0068-workspace-is-not-project-artifact-storage.md) |
 | 0069 | agent, retrieval | 增加 OpenAlex 库外文献发现，只返回候选元数据且不登记 Citation | 当前 | [0069-openalex-paper-discovery.md](decisions/0069-openalex-paper-discovery.md) |
+| 0070 | agent, security, ingest, frontend | 用户确认 OpenAlex 候选后批量入库；统一队列显示导入与处理阶段 | 当前 | [0070-approved-batch-paper-import.md](decisions/0070-approved-batch-paper-import.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

@@ -1,0 +1,47 @@
+import { createContext, useContext, useState } from "react"
+import { Button } from "@upstream/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@upstream/components/ui/dialog"
+import { getResultText } from "./_shared"
+import type { ToolCallWithResult, ToolRenderer } from "./types"
+
+type Candidate = { openalex_id: string; title: string; doi?: string | null; year?: number | null; candidate_token?: string }
+export const DiscoveryImportContext = createContext<((tokens: string[]) => Promise<void>) | null>(null)
+
+function candidatesOf(pair: ToolCallWithResult): Candidate[] {
+  try {
+    const data: unknown = JSON.parse(getResultText(pair.result))
+    if (!data || typeof data !== "object" || !("papers" in data) || !Array.isArray(data.papers)) return []
+    return data.papers.filter((item): item is Candidate => Boolean(item && typeof item.openalex_id === "string" && typeof item.title === "string"))
+  } catch { return [] }
+}
+
+function DiscoveryResults({ pair }: { pair: ToolCallWithResult }) {
+  const candidates = candidatesOf(pair)
+  const onImport = useContext(DiscoveryImportContext)
+  const [selected, setSelected] = useState<string[]>([])
+  const [confirm, setConfirm] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState("")
+  if (pair.result?.state === "error") return <p className="p-3 text-sm text-destructive">在线检索失败，请重试</p>
+  if (!candidates.length) return <p className="p-3 text-sm text-muted-foreground">没有找到相关文献</p>
+  const valid = candidates.filter((item) => item.candidate_token)
+  const tokens = valid.filter((item) => selected.includes(item.openalex_id)).map((item) => item.candidate_token!)
+  return <div className="space-y-2 py-2">
+    {candidates.map((item) => <label key={item.openalex_id} className="flex cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm">
+      <input type="checkbox" className="mt-1" disabled={!item.candidate_token || !onImport} checked={selected.includes(item.openalex_id)} onChange={(event) => setSelected((before) => event.target.checked ? [...before, item.openalex_id] : before.filter((id) => id !== item.openalex_id))} />
+      <span className="min-w-0"><span className="block font-medium">{item.title}</span><span className="text-xs text-muted-foreground">{item.year ?? ""}{item.doi ? ` · ${item.doi}` : " · 暂无可导入标识符"}</span></span>
+    </label>)}
+    {onImport && <Button size="sm" disabled={!tokens.length} onClick={() => setConfirm(true)}>选择入库（{tokens.length}）</Button>}
+    <Dialog open={confirm} onOpenChange={setConfirm}><DialogContent className="sm:max-w-md">
+      <DialogHeader><DialogTitle>导入所选文献</DialogTitle><DialogDescription>Agent 将按已选标识符批量入库，结果显示在入库队列。</DialogDescription></DialogHeader>
+      <p className="text-sm">已选 {tokens.length} 篇文献</p>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <DialogFooter><Button variant="outline" onClick={() => setConfirm(false)}>取消</Button><Button disabled={busy || !onImport} onClick={async () => { if (!onImport) return; setBusy(true); setError(""); try { await onImport(tokens); setConfirm(false) } catch (cause) { setError(cause instanceof Error ? cause.message : "授权失败") } finally { setBusy(false) } }}>确认导入</Button></DialogFooter>
+    </DialogContent></Dialog>
+  </div>
+}
+
+export const PaperDiscoveryRenderer: ToolRenderer = {
+  renderHeader: () => <span>在线检索文献</span>,
+  renderBody: (pair) => pair.result ? <DiscoveryResults pair={pair} /> : null,
+}

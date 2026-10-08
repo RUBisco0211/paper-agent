@@ -6,7 +6,7 @@ from ..library.depends import MetadataResolverDep, PdfFetcherDep
 from ..platform.database import SessionDep, SessionFactoryDep
 from ..platform.storage import StorageDep
 from ..platform.tasks import TaskSchedulerDep
-from .service import ImportService
+from .service import ImportApprovalService, ImportService
 
 
 def get_import_service(
@@ -31,3 +31,14 @@ def get_import_service(
 
 
 ImportServiceDep = Annotated[ImportService, Depends(get_import_service)]
+
+
+def get_import_approval_service(
+    session_factory: SessionFactoryDep, importer: ImportServiceDep
+) -> ImportApprovalService:
+    return ImportApprovalService(session_factory, importer)
+
+
+ImportApprovalServiceDep = Annotated[
+    ImportApprovalService, Depends(get_import_approval_service)
+]

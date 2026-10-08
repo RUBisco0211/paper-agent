@@ -16,6 +16,41 @@ class ImportRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class ImportApprovalRequest(BaseModel):
+    session_id: UUID
+    candidate_tokens: list[str] = Field(min_length=1, max_length=10)
+
+
+class ImportApprovalRead(BaseModel):
+    id: UUID
+    count: int
+
+
+class BoundBatchImportRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+
+
+class BatchImportRead(BaseModel):
+    results: list[dict]
+
+
+class ImportQueueItem(BaseModel):
+    id: str
+    kind: str
+    identifier: str | None = None
+    title: str | None = None
+    paper_id: str | None = None
+    status: str
+    stage: str | None = None
+    created_at: datetime
+    error_code: str | None = None
+
+
+class ImportQueueRead(BaseModel):
+    items: list[ImportQueueItem]
+
+
 class ImportRead(BaseModel):
     """Import progress; ``paper_id`` is the user's own entry id."""
 

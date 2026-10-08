@@ -3,11 +3,12 @@
 from agentscope.agent import Agent
 from agentscope.tool import Toolkit
 
-from .retrieval_tools import PaperReadTool
+from .retrieval_tools import ApprovedImportTool, PaperReadTool
 
-PAPER_TOOL_NAMES = frozenset(
+PAPER_READ_TOOL_NAMES = frozenset(
     {"list_papers", "search_papers", "get_paper_excerpt", "discover_papers"},
 )
+PAPER_TOOL_NAMES = PAPER_READ_TOOL_NAMES | {"import_selected_papers"}
 
 
 class PaperAgent(Agent):
@@ -17,7 +18,12 @@ class PaperAgent(Agent):
             tool
             for group in groups
             for tool in group.tools
-            if isinstance(tool, PaperReadTool) and tool.name in PAPER_TOOL_NAMES
+            if (
+                isinstance(tool, PaperReadTool) and tool.name in PAPER_READ_TOOL_NAMES
+            ) or (
+                isinstance(tool, ApprovedImportTool)
+                and tool.name == "import_selected_papers"
+            )
         ]
         if {tool.name for tool in allowed} != PAPER_TOOL_NAMES:
             raise RuntimeError("Session-bound paper tools are unavailable")

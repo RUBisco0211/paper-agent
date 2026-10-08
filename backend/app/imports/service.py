@@ -6,27 +6,137 @@ PDF download only marks the entry as waiting for full text.
 
 import asyncio
 import tempfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
 import structlog
+from sqlalchemy import select
 
 from ..library.domain import PaperSource
 from ..library.repo import PaperRepository
 from ..library.service import PaperLibraryService
 from ..platform.database import SessionFactory
-from ..platform.errors import AppError, ErrorCode, NotFoundError
+from ..platform.errors import (
+    AppError,
+    ErrorCode,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
+)
+from ..platform.security import read_candidate_token
 from ..platform.storage import ObjectStorage
 from ..platform.tasks import TaskScheduler
 from ..projects.repo import ProjectRepository
 from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
 from ..scholar.metadata import MetadataResolver
 from ..scholar.pdf_fetch import PdfFetcher
+from ..sessions.repo import SessionBindingRepository
+from ..sessions.service import SessionBindingService
 from .domain import ImportStatus, PaperImport
 from .ports import IngestionStarterFactory
-from .repo import ImportRepository
+from .repo import ImportApprovalRecord, ImportRepository
 
 logger = structlog.get_logger(__name__)
+
+
+class ImportApprovalService:
+    def __init__(
+        self, session_factory: SessionFactory, importer: "ImportService"
+    ) -> None:
+        self._session_factory = session_factory
+        self._importer = importer
+
+    def approve(
+        self, *, user_id: UUID, session_id: UUID, candidate_tokens: list[str]
+    ) -> ImportApprovalRecord:
+        if not 1 <= len(candidate_tokens) <= 10:
+            raise ValidationError("请选择 1–10 篇文献")
+        candidates = []
+        seen = set()
+        for token in candidate_tokens:
+            claims = read_candidate_token(token)
+            if claims.get("uid") != str(user_id) or claims.get("sid") != str(
+                session_id
+            ):
+                raise ForbiddenError("候选文献不属于当前会话")
+            identifier = parse_identifier(claims.get("identifier", ""))
+            openalex_id = claims.get("oid")
+            if not isinstance(openalex_id, str) or not openalex_id.startswith(
+                "https://openalex.org/W"
+            ):
+                raise ValidationError("候选文献信息无效")
+            if identifier.value in seen:
+                continue
+            seen.add(identifier.value)
+            candidates.append(
+                {"identifier": identifier.value, "openalex_id": openalex_id}
+            )
+        with self._session_factory() as session:
+            SessionBindingService(
+                SessionBindingRepository(session), ProjectRepository(session)
+            ).require(session_id=session_id, user_id=user_id)
+            record = ImportApprovalRecord(
+                user_id=user_id,
+                session_id=session_id,
+                candidates=candidates,
+                status="pending",
+                expires_at=datetime.now(UTC) + timedelta(minutes=15),
+            )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record
+
+    def consume(self, *, user_id: UUID, session_id: UUID) -> list[dict]:
+        with self._session_factory() as session:
+            binding = SessionBindingService(
+                SessionBindingRepository(session), ProjectRepository(session)
+            ).require(session_id=session_id, user_id=user_id)
+            record = session.scalar(
+                select(ImportApprovalRecord)
+                .where(
+                    ImportApprovalRecord.user_id == user_id,
+                    ImportApprovalRecord.session_id == session_id,
+                )
+                .order_by(
+                    ImportApprovalRecord.created_at.desc(),
+                    ImportApprovalRecord.id.desc(),
+                )
+                .limit(1)
+                .with_for_update()
+            )
+            if record is None or record.expires_at < datetime.now(UTC):
+                raise ForbiddenError("请先在检索结果中确认要入库的文献")
+            if record.status == "started":
+                return record.results or []
+            results = []
+            for candidate in record.candidates:
+                try:
+                    item = self._importer.start(
+                        user_id=user_id,
+                        identifier_text=candidate["identifier"],
+                        project_id=binding.project_id,
+                    )
+                    results.append(
+                        {
+                            "identifier": candidate["identifier"],
+                            "import_id": str(item.id),
+                            "status": str(item.status),
+                        }
+                    )
+                except AppError as exc:
+                    results.append(
+                        {
+                            "identifier": candidate["identifier"],
+                            "error_code": str(exc.code),
+                            "status": "failed",
+                        }
+                    )
+            record.results = results
+            record.status = "started"
+            session.commit()
+            return results
 
 
 class ImportService:
@@ -99,6 +209,59 @@ class ImportService:
         if record is None or record.user_id != user_id:
             raise NotFoundError("导入任务不存在", code=ErrorCode.IMPORT_NOT_FOUND)
         return record
+
+    def queue(self, *, user_id: UUID, limit: int = 100) -> list[dict]:
+        with self._session_factory() as session:
+            imports = ImportRepository(session).list_for_user(
+                user_id=user_id, limit=limit
+            )
+            library = self._build_library_service(session, PaperRepository(session))
+            entries, _ = library.list_entries(user_id=user_id, limit=limit, offset=0)
+            items: list[dict] = []
+            entries_by_id = {entry.user_paper.id: entry for entry in entries}
+            imported_papers = {
+                item.user_paper_id for item in imports if item.user_paper_id
+            }
+            for item in imports:
+                entry = entries_by_id.get(item.user_paper_id)
+                job = entry.latest_job if entry else None
+                items.append(
+                    {
+                        "id": str(item.id),
+                        "kind": "import",
+                        "identifier": item.identifier,
+                        "title": entry.user_paper.title if entry else None,
+                        "paper_id": str(item.user_paper_id)
+                        if item.user_paper_id
+                        else None,
+                        "status": job.status.value if job else item.status.value,
+                        "stage": (
+                            job.current_stage.value
+                            if job and job.current_stage
+                            else None
+                        ),
+                        "created_at": item.created_at.isoformat(),
+                        "error_code": job.error_code if job else item.error_code,
+                    }
+                )
+            for entry in entries:
+                job = entry.latest_job
+                if job is None or entry.user_paper.id in imported_papers:
+                    continue
+                items.append(
+                    {
+                        "id": str(job.id),
+                        "kind": "processing",
+                        "title": entry.user_paper.title,
+                        "paper_id": str(entry.user_paper.id),
+                        "status": job.status.value,
+                        "stage": job.current_stage.value if job.current_stage else None,
+                        "created_at": job.created_at.isoformat(),
+                        "error_code": job.error_code,
+                    }
+                )
+            items.sort(key=lambda item: item["created_at"], reverse=True)
+            return items[:limit]
 
     # Work ------------------------------------------------------------------
     async def _run(self, import_id: UUID) -> None:

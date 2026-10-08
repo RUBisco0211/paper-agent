@@ -15,6 +15,7 @@ import { GrepRenderer } from './GrepRenderer';
 import { ReadRenderer } from './ReadRenderer';
 import { TaskCreateRenderer } from './TaskCreateRenderer';
 import { PaperSearchRenderer } from './PaperSearchRenderer';
+import { PaperDiscoveryRenderer } from './PaperDiscoveryRenderer';
 import type { TFunction, ToolCallWithResult, ToolRenderer } from './types';
 import { WriteRenderer } from './WriteRenderer';
 
@@ -27,6 +28,7 @@ const renderers: Record<string, ToolRenderer> = {
 	Grep: GrepRenderer,
 	TaskCreate: TaskCreateRenderer,
 	search_papers: PaperSearchRenderer,
+	discover_papers: PaperDiscoveryRenderer,
 };
 
 function getRenderer(toolName: string): ToolRenderer {

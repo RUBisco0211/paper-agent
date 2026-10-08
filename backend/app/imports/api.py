@@ -3,10 +3,50 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from ..auth.depends import CurrentUser
-from .depends import ImportServiceDep
-from .schemas import ImportRead, ImportRequest
+from ..retrieval.depends import AgentInternalAuth
+from .depends import ImportApprovalServiceDep, ImportServiceDep
+from .schemas import (
+    BatchImportRead,
+    BoundBatchImportRequest,
+    ImportApprovalRead,
+    ImportApprovalRequest,
+    ImportQueueRead,
+    ImportRead,
+    ImportRequest,
+)
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+internal_router = APIRouter(tags=["imports"])
+
+
+@router.get("/queue", response_model=ImportQueueRead)
+def read_import_queue(user: CurrentUser, service: ImportServiceDep) -> ImportQueueRead:
+    return ImportQueueRead(items=service.queue(user_id=user.id))
+
+
+@router.post("/approvals", response_model=ImportApprovalRead, status_code=201)
+def approve_batch(
+    payload: ImportApprovalRequest,
+    user: CurrentUser,
+    service: ImportApprovalServiceDep,
+) -> ImportApprovalRead:
+    record = service.approve(
+        user_id=user.id,
+        session_id=payload.session_id,
+        candidate_tokens=payload.candidate_tokens,
+    )
+    return ImportApprovalRead(id=record.id, count=len(record.candidates))
+
+
+@internal_router.post("/internal/import-approved", response_model=BatchImportRead)
+def import_approved_batch(
+    payload: BoundBatchImportRequest,
+    _auth: AgentInternalAuth,
+    service: ImportApprovalServiceDep,
+) -> BatchImportRead:
+    return BatchImportRead(results=service.consume(
+        user_id=payload.user_id, session_id=payload.session_id
+    ))
 
 
 @router.post(

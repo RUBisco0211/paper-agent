@@ -15,6 +15,12 @@ class PaperReadTool(FunctionTool):
         return PermissionDecision(behavior=PermissionBehavior.ALLOW)
 
 
+class ApprovedImportTool(FunctionTool):
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        # The business service enforces a previously confirmed, single-use batch.
+        return PermissionDecision(behavior=PermissionBehavior.ALLOW)
+
+
 async def prepare_schedule_scope(
     storage: StorageBase,
     user_id: str,
@@ -131,7 +137,19 @@ async def build_retrieval_tools(
             },
         )
 
+    async def import_selected_papers() -> dict:
+        """Start only the batch explicitly selected and approved in this session."""
+        return await request(
+            "POST",
+            "import-approved",
+            json={"user_id": user_id, "session_id": session_id},
+        )
+
     return [
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
         for func in (list_papers, search_papers, get_paper_excerpt, discover_papers)
+    ] + [
+        ApprovedImportTool(
+            import_selected_papers, is_read_only=False, is_concurrency_safe=False
+        )
     ]

@@ -1,5 +1,5 @@
 import type { ApiClient } from "../client"
-import type { Page, PaperImport, SearchInput, SearchResponse, Uuid } from "../types"
+import type { ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "../types"
 
 export function importEndpoints(client: ApiClient) {
   return {
@@ -15,6 +15,11 @@ export function importEndpoints(client: ApiClient) {
 
     list: (params: { limit?: number } = {}) =>
       client.request<Page<PaperImport>>("/v1/imports", { query: { ...params } }),
+    queue: () => client.request<{ items: ImportQueueItem[] }>("/v1/imports/queue"),
+    approve: (sessionId: Uuid, candidateTokens: string[]) =>
+      client.request<{ id: Uuid; count: number }>("/v1/imports/approvals", {
+        method: "POST", json: { session_id: sessionId, candidate_tokens: candidateTokens },
+      }),
   }
 }
 
