@@ -54,8 +54,8 @@ it("aligns each preview with its original equal length mark when expanded", asyn
   render(<MessageNavigationRail messages={messages} />)
   const first = screen.getByRole("button", { name: "跳转到第 1 条消息" })
   const second = screen.getByRole("button", { name: "跳转到第 2 条消息" })
-  expect(first.querySelector("span")?.className).toContain("w-6")
-  expect(second.querySelector("span")?.className).toContain("w-6")
+  expect(first.querySelector("span")?.className).toContain("w-4")
+  expect(second.querySelector("span")?.className).toContain("w-4")
 
   await user.hover(first)
 
