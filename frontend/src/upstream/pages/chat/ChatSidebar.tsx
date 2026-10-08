@@ -5,7 +5,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog"
-import { createBoundSession, deleteBoundSession, deleteProjectWithSessions, listBoundSessions, type BoundSession } from "@/lib/agent-sessions"
+import { deleteBoundSession, deleteProjectWithSessions, listBoundSessions, type BoundSession } from "@/lib/agent-sessions"
 import { sessionApi } from "@upstream/api/session"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@upstream/components/ui/collapsible"
 import { Button } from "@upstream/components/ui/button"
@@ -49,7 +49,6 @@ export function ChatSidebar() {
   const location = useLocation()
   const { api } = useApi()
   const queryClient = useQueryClient()
-  const [creating, setCreating] = useState(false)
   const [error, setError] = useState("")
   const [renaming, setRenaming] = useState<BoundSession | null>(null)
   const [name, setName] = useState("")
@@ -69,20 +68,6 @@ export function ChatSidebar() {
     queryKey: ["bound-sessions"],
     queryFn: () => listBoundSessions(api),
   })
-
-  async function create(projectId?: string) {
-    setCreating(true)
-    setError("")
-    try {
-      const result = await createBoundSession(api, { projectId })
-      await queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
-      navigate(`/chat/${result.agentId}/${result.sessionId}`)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "创建会话失败")
-    } finally {
-      setCreating(false)
-    }
-  }
 
   function beginRename(session: BoundSession) {
     setRenaming(session)
@@ -178,7 +163,7 @@ export function ChatSidebar() {
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel className="flex items-center justify-between">全局
-            <button type="button" aria-label="新建全局会话" disabled={creating} onClick={() => void create()}><Plus className="size-4" /></button>
+            <button type="button" aria-label="新建全局会话" onClick={() => navigate("/chat/new")}><Plus className="size-4" /></button>
           </SidebarGroupLabel>
           <SidebarGroupContent><SidebarMenu><SessionRows sessions={globalSessions} onRename={beginRename} onDelete={setDeleting} /></SidebarMenu></SidebarGroupContent>
         </SidebarGroup>
@@ -188,7 +173,7 @@ export function ChatSidebar() {
               <SidebarGroupLabel className="flex items-center justify-between">
                 <CollapsibleTrigger className="flex min-w-0 items-center gap-1 truncate"><ChevronDown className="size-3.5" />{project.name}</CollapsibleTrigger>
                 <span className="flex items-center gap-1">
-                  <button type="button" aria-label={`在${project.name}中新建会话`} disabled={creating} onClick={() => void create(project.id)}><Plus className="size-4" /></button>
+                  <button type="button" aria-label={`在${project.name}中新建会话`} onClick={() => navigate(`/chat/project/${project.id}/new`)}><Plus className="size-4" /></button>
                   <button type="button" aria-label={`管理${project.name}文献`} title={`管理${project.name}文献`} onClick={() => navigate(`/chat/project/${project.id}`)}><BookOpen className="size-4" /></button>
                   <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={`${project.name}操作`}><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start">

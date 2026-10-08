@@ -75,9 +75,9 @@ export async function availableChatModels(api: Api): Promise<ChatModelConfig[]> 
 
 export async function createBoundSession(
   api: Api,
-  input: { projectId?: string } = {},
+  input: { projectId?: string; modelConfig?: ChatModelConfig } = {},
 ): Promise<{ agentId: string; sessionId: string }> {
-  const models = await availableChatModels(api)
+  const models = input.modelConfig ? [input.modelConfig] : await availableChatModels(api)
   if (models.length === 0) throw new Error("请先在模型设置中保存凭据")
   const listed = await agentApi.list()
   const agentId = listed.agents[0]?.id ?? (await agentApi.create({ name: "文献助手" })).agent_id

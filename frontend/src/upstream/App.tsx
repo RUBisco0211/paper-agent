@@ -10,6 +10,7 @@ import { AppLayout, SectionLayout } from "@upstream/components/layout/AppLayout"
 import { ModelSettingsPage } from "@upstream/pages/model-settings"
 import { PaperChatPage } from "@upstream/pages/chat/PaperChatPage"
 import { ChatPage } from "@upstream/pages/chat/ChatPage"
+import { NewChatPage } from "@upstream/pages/chat/NewChatPage"
 import { PaperCalendarPage } from "@upstream/pages/schedule/PaperCalendarPage"
 
 const router = createBrowserRouter([
@@ -28,6 +29,8 @@ const router = createBrowserRouter([
       { path: "/scheduled/:scheduleId/runs/:sessionId", element: <PaperCalendarPage /> },
       { path: "/settings", element: <ModelSettingsPage /> },
       { path: "/chat", element: <ChatPage />, children: [
+        { path: "new", element: <NewChatPage /> },
+        { path: "project/:projectId/new", element: <NewChatPage /> },
         { path: "project/:projectId", element: <div className="flex h-full items-center justify-center text-muted-foreground">选择会话或新建会话</div> },
         { path: ":agentId/:sessionId", element: <PaperChatPage /> },
       ] },

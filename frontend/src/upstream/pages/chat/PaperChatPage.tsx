@@ -157,6 +157,8 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
           {!scheduledRun && papersPanel?.projectId && <Button variant="ghost" size="icon-sm" aria-label={papersPanel.papersOpen ? "收起项目文献" : "展开项目文献"} onClick={papersPanel.togglePapers}>{papersPanel.papersOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>}
         </header>
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
+        {!current && !models.isPending && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">请选择模型后发送</p>}
+        {!scheduledRun && !binding && !bindings.isPending && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">会话尚未就绪，请刷新重试</p>}
         {error && <p role="alert" className="px-5 pt-2 text-sm text-destructive">回答失败，请重试</p>}
         {reconnecting && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">重连中…</p>}
         {historyInterrupted && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">上次回答已中断，请重新提问</p>}
@@ -185,7 +187,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
               </Select>}
             </div>}
             onSend={(blocks) => void send(blocks)}
-            disabled={loading || (!binding && !scheduledRun) || !current || changingModel}
+            sendDisabled={loading || changingModel || (!binding && !scheduledRun) || !current}
             allowedInputTypes={[]}
             fileProcessor={async () => null}
             phase={phase}

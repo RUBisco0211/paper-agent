@@ -50,6 +50,7 @@ interface ProcessedFile {
 
 interface TextInputProps {
 	onSend: (blocks: ContentBlock[]) => void;
+	sendDisabled?: boolean;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
 	disabled?: boolean;
@@ -131,6 +132,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 	(
 		{
 			onSend,
+			sendDisabled = false,
 			placeholder,
 			autoComplete,
 			disabled = false,
@@ -218,7 +220,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		};
 
 		const handleSend = () => {
-			if (!value.trim() || disabled || hasProcessing) return;
+			if (!value.trim() || disabled || sendDisabled || hasProcessing) return;
 
 			const blocks: ContentBlock[] = [];
 
@@ -275,7 +277,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			return {
 				icon: ArrowUp,
 				tooltip: t('textInput.send'),
-				disabled: disabled || !value.trim() || hasProcessing,
+				disabled: disabled || sendDisabled || !value.trim() || hasProcessing,
 				onClick: handleSend,
 			};
 		})();
