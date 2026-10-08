@@ -22,11 +22,13 @@ export function PdfViewer({
   paperId,
   page,
   target,
+  onClearTarget,
   className,
 }: {
   paperId: string
   page?: number | null
   target?: PdfTarget
+  onClearTarget?: () => void
   className?: string
 }) {
   const { api } = useApi()
@@ -86,7 +88,7 @@ export function PdfViewer({
   }, [paperId, pdfBytes.data])
 
   useEffect(() => {
-    if (!document) return
+    if (!document || (!target && !page)) return
     const requested = Math.min(Math.max(target?.page ?? page ?? 1, 1), document.numPages)
     setCurrentPage(requested)
     pageRefs.current.get(requested)?.scrollIntoView?.({ block: "start" })
@@ -139,6 +141,13 @@ export function PdfViewer({
     })
   }
 
+  function clearTargetFromBlank(event: MouseEvent<HTMLDivElement>) {
+    if (!target || !onClearTarget || window.getSelection()?.toString().trim()) return
+    const element = event.target
+    if (!(element instanceof HTMLElement)) return
+    if (element === event.currentTarget || element.matches("canvas, .paper-pdf-text-layer, [data-paper-pdf-page]")) onClearTarget()
+  }
+
   async function copySelectedText() {
     if (!contextMenu) return
     try {
@@ -164,7 +173,7 @@ export function PdfViewer({
       <span className="min-w-9 text-center text-xs tabular-nums">{Math.round(scale * 100)}%</span>
       <Button aria-label="放大" title="放大（Ctrl/⌘ + 滚轮）" variant="ghost" size="icon" disabled={scale >= 3} onClick={() => setScale((value) => Math.min(3, value + 0.25))}><Plus /></Button>
     </div>
-    <div ref={scrollRef} role="region" aria-label="PDF 页面" tabIndex={0} onScroll={trackScroll} onKeyDown={handleKeyDown} onContextMenu={showTextMenu} className="bg-muted/30 min-h-0 flex-1 overflow-auto p-3">
+    <div ref={scrollRef} role="region" aria-label="PDF 页面" tabIndex={0} onScroll={trackScroll} onKeyDown={handleKeyDown} onContextMenu={showTextMenu} onClick={clearTargetFromBlank} className="bg-muted/30 min-h-0 flex-1 overflow-auto p-3">
       <div className="flex min-w-full w-max flex-col items-center gap-4">
         {Array.from({ length: document.numPages }, (_, index) => {
           const number = index + 1
@@ -273,7 +282,7 @@ function PdfPageCanvas({ document, number, scale, target, rootRef, pageRef }: {
         height: `${(box[3] - box[1]) / sourceSize[1] * 100}%`,
       } : null
 
-  return <div ref={(element) => { wrapperRef.current = element; pageRef(element) }} className="relative shrink-0 bg-white shadow-sm" style={{ width: size.width, minHeight: size.height }}>
+  return <div data-paper-pdf-page ref={(element) => { wrapperRef.current = element; pageRef(element) }} className="relative shrink-0 bg-white shadow-sm" style={{ width: size.width, minHeight: size.height }}>
     {visible && <canvas ref={canvasRef} role="img" aria-label="文献原文" className="block bg-white" />}
     {visible && <div ref={textLayerRef} className="paper-pdf-text-layer" />}
     {error && <p role="alert" className="p-4 text-sm text-destructive">第 {number} 页无法显示：{error}</p>}

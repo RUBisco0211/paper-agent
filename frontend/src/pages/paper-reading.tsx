@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, Info, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
+import { ArrowLeft, Copy, Info, LocateFixed, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
 import { useEffect, useState } from "react"
 import katex from "katex"
 import "katex/dist/katex.min.css"
@@ -14,6 +14,7 @@ import { Button } from "@upstream/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@upstream/components/ui/dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@upstream/components/ui/resizable"
 import { Tabs, TabsList, TabsTrigger } from "@upstream/components/ui/tabs"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@upstream/components/ui/tooltip"
 
 const BLOCK_LABELS: Record<string, string> = {
   text: "正文", title: "标题", heading: "小标题", table: "表格",
@@ -133,7 +134,7 @@ export function PaperReadingPage() {
     enabled: Boolean(paperId && activeType && panelOpen),
   })
 
-  function selectBlock(block: PaperBlock) {
+  function locateBlock(block: PaperBlock) {
     setSelectedBlock(block.id)
     setTarget({
       page: block.page,
@@ -142,6 +143,16 @@ export function PaperReadingPage() {
       coordinateSystem: block.coordinate_system,
     })
     setSearchParams({ page: String(block.page), block: String(block.id) }, { replace: true })
+  }
+
+  function clearLocatedBlock() {
+    setSelectedBlock(null)
+    setTarget(undefined)
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.delete("block")
+      return next
+    }, { replace: true })
   }
 
   async function copyBlock(block: PaperBlock) {
@@ -166,7 +177,7 @@ export function PaperReadingPage() {
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel minSize="20rem" className="min-h-0 min-w-0">
         <main className="h-full min-w-0 overflow-hidden">
-        {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} />}
+        {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} onClearTarget={clearLocatedBlock} />}
         </main>
       </ResizablePanel>
       {panelOpen && <>
@@ -179,29 +190,32 @@ export function PaperReadingPage() {
               {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
             </TabsList>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <TooltipProvider><div className="min-h-0 flex-1 overflow-y-auto p-2">
             {blocks.isError && <p role="alert" className="p-2 text-sm text-destructive">{describeError(blocks.error)}</p>}
             {blocks.data?.pages.flatMap((page) => page.items).map((block) => {
               const isFormula = block.type === "equation" || block.type === "formula" || block.type === "equation_interline"
               const markup = isFormula && block.formula ? formulaMarkup(block.formula) : null
               const canCopy = (block.type === "text" && Boolean(block.text)) || (isFormula && Boolean(block.formula || block.text))
               return <div key={block.id} className={`relative rounded-md hover:bg-muted ${selectedBlock === block.id ? "bg-muted" : ""}`}>
-                <button type="button" onClick={() => selectBlock(block)} className="w-full px-3 py-2 text-left">
+                <div className="w-full px-3 py-2 pr-16 text-left">
                   <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
                   <span className="mt-1 block">
                     {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
                     {block.text && (!markup || block.type === "image" || block.type === "chart") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
                     {!block.text && !markup && !block.has_image && <span className="text-muted-foreground text-sm">{blockLabel(block.type)}</span>}
                   </span>
-                </button>
+                </div>
                 {block.has_image && (block.type === "image" || block.type === "chart" || (isFormula && !block.formula)) && <div className="px-3 pb-2">
                   <BlockImagePreview paperId={paperId} block={block} onOpen={block.type === "image" || block.type === "chart" ? (source) => { setImageViewer({ source, title: block.type === "chart" ? "图表预览" : "图片预览" }); setImageZoom(1) } : undefined} />
                 </div>}
-                {canCopy && <Button variant="ghost" size="icon-sm" className="absolute right-1 top-1" aria-label={isFormula ? "复制公式" : "复制正文"} title={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button>}
+                <div className="absolute right-1 top-1 flex items-center gap-0.5">
+                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="定位分块" onClick={() => locateBlock(block)}><LocateFixed /></Button></TooltipTrigger><TooltipContent>定位原文</TooltipContent></Tooltip>
+                  {canCopy && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button></TooltipTrigger><TooltipContent>{isFormula ? "复制公式" : "复制正文"}</TooltipContent></Tooltip>}
+                </div>
               </div>
             })}
             {blocks.hasNextPage && <Button className="mt-2 w-full" variant="ghost" size="sm" disabled={blocks.isFetchingNextPage} onClick={() => void blocks.fetchNextPage()}>加载更多</Button>}
-          </div>
+          </div></TooltipProvider>
         </Tabs> : <p className="p-4 text-sm text-muted-foreground">{overview.isError ? describeError(overview.error) : paper.data?.capabilities.has_fulltext ? "暂无原文片段" : "文献尚未完成解析"}</p>}
           </aside>
         </ResizablePanel>

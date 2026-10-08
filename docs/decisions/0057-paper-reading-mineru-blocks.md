@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-07
 - TAGS: frontend, library, ingest
-- STATUS: 当前
+- STATUS: 块点击交互已被 0066 取代，其余仍当前
 - SUPERSEDES: 0033 的文献详情面板入口；0053 的区域高亮范围限制
 
 ## DECISION

@@ -70,7 +70,7 @@
 | 0054 | frontend, product | 删除定时任务等不可撤销操作统一使用站内确认弹窗 | 已被 0055 取代 | [0054-destructive-confirmation-dialogs.md](decisions/0054-destructive-confirmation-dialogs.md) |
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |
 | 0056 | ingest, storage, citation | 单 worker 有界并发；生产 S3 兼容存储；MinerU 版本清单与引用来源范围 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
-| 0057 | frontend, library, ingest | 文献在主区域阅读，右侧按 MinerU 原始 block type 导航与定位 | 当前 | [0057-paper-reading-mineru-blocks.md](decisions/0057-paper-reading-mineru-blocks.md) |
+| 0057 | frontend, library, ingest | 文献在主区域阅读，右侧按 MinerU 原始 block type 导航与定位 | 块点击交互已被 0066 取代 | [0057-paper-reading-mineru-blocks.md](decisions/0057-paper-reading-mineru-blocks.md) |
 | 0058 | frontend, product | 文献处理进度按阶段顺序显示为步骤视图 | 当前 | [0058-ingestion-progress-stepper.md](decisions/0058-ingestion-progress-stepper.md) |
 | 0059 | frontend, library, product | 文献块显示图片与公式预览，PDF 连续滚动并按可见页绘制 | 当前 | [0059-paper-block-previews-continuous-pdf.md](decisions/0059-paper-block-previews-continuous-pdf.md) |
 | 0060 | frontend, library, product | PDF 叠加可选文本层并提供复制菜单；旧 MinerU 图片路径回退，公式优先渲染源码 | 当前 | [0060-paper-text-selection-and-legacy-previews.md](decisions/0060-paper-text-selection-and-legacy-previews.md) |
@@ -79,6 +79,7 @@
 | 0063 | api, library, cache | 授权 PDF 与不可变解析产物采用私有 HTTP 条件缓存，替换或重解析时换版 | 当前 | [0063-private-paper-http-cache.md](decisions/0063-private-paper-http-cache.md) |
 | 0064 | frontend, chat | 项目文献入口放在项目行操作区，会话顶栏控制可调宽度的文献侧栏 | 当前 | [0064-chat-project-paper-sidebar.md](decisions/0064-chat-project-paper-sidebar.md) |
 | 0065 | frontend, library, cache | 阅读页短时复用已授权 PDF 字节，替换文件后失效，并减少视口外预绘制 | 当前 | [0065-paper-reader-warm-cache.md](decisions/0065-paper-reader-warm-cache.md) |
+| 0066 | frontend, library | 分块只由定位按钮跳转，定位与复制有提示，点击 PDF 空白处取消高亮 | 当前 | [0066-paper-block-locate-action.md](decisions/0066-paper-block-locate-action.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

@@ -95,6 +95,16 @@ it("marks a normalized MinerU block on a portrait PDF page", async () => {
   expect(region.style.top).toBe("20%")
 })
 
+it("clears a located block from PDF whitespace without returning to the first page", async () => {
+  const clear = vi.fn()
+  const view = renderPdf(<PdfViewer paperId="paper-1" target={{ page: 2, bbox: [10, 20, 100, 80], pageSize: [500, 700] }} onClearTarget={clear} />)
+  await screen.findByText("2 / 3")
+  fireEvent.click(screen.getByRole("region", { name: "PDF 页面" }))
+  expect(clear).toHaveBeenCalledOnce()
+  view.rerender(<QueryClientProvider client={queryClient}><PdfViewer paperId="paper-1" onClearTarget={clear} /></QueryClientProvider>)
+  expect(screen.getByText("2 / 3")).toBeTruthy()
+})
+
 it("lets the user select PDF text and copy it from the context menu", async () => {
   const user = userEvent.setup()
   renderPdf(<PdfViewer paperId="paper-1" />)

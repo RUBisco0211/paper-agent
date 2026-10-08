@@ -11,7 +11,7 @@ import { ApiProvider } from "@/lib/api/provider"
 import { PaperReadingPage } from "@/pages/paper-reading"
 
 vi.mock("@/components/papers/pdf-viewer", () => ({
-  PdfViewer: ({ target }: { target?: { page: number } }) => <p>PDF 第 {target?.page ?? 1} 页</p>,
+  PdfViewer: ({ target, onClearTarget }: { target?: { page: number }; onClearTarget?: () => void }) => <div><p>PDF 第 {target?.page ?? 1} 页</p><button type="button" onClick={onClearTarget}>文献空白处</button></div>,
 }))
 vi.mock("@upstream/components/ui/resizable", () => ({
   ResizablePanelGroup: ({ children, className }: { children: ReactNode; className?: string }) => <div className={className}>{children}</div>,
@@ -19,7 +19,7 @@ vi.mock("@upstream/components/ui/resizable", () => ({
   ResizableHandle: ({ "aria-label": label }: { "aria-label": string }) => <div role="separator" aria-label={label} />,
 }))
 
-it("shows MinerU block type tabs and locates the selected block when it is clicked", async () => {
+it("shows MinerU block type tabs and locates a block only when its locate button is clicked", async () => {
   const fetchImpl = vi.fn(async (input: string | URL) => {
     const url = String(input)
     if (url.endsWith("/blocks/2")) {
@@ -47,8 +47,12 @@ it("shows MinerU block type tabs and locates the selected block when it is click
   )
   const user = userEvent.setup()
   await user.click(await screen.findByRole("tab", { name: "表格" }))
-  await user.click(await screen.findByRole("button", { name: /结果表/ }))
+  await user.click(await screen.findByText("结果表"))
+  expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
+  await user.click(screen.getByRole("button", { name: "定位分块" }))
   expect(screen.getByText("PDF 第 3 页")).toBeTruthy()
+  await user.click(screen.getByRole("button", { name: "文献空白处" }))
+  expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
 })
 
 it("previews images and equations and offers copy actions without a redundant heading", async () => {
