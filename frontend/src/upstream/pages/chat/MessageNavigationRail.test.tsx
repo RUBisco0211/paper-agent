@@ -44,3 +44,21 @@ it("shows nearby conversation context when a rail mark is hovered", async () => 
   expect(screen.getByText("第一条回答")).toBeTruthy()
   expect(screen.getByText("后续提问")).toBeTruthy()
 })
+
+it("aligns each preview with its original equal length mark when expanded", async () => {
+  const user = userEvent.setup()
+  const messages = [
+    UserMsg({ id: "question-1", name: "user", content: "第一条提问", metadata: {} }),
+    AssistantMsg({ id: "answer-1", name: "assistant", content: "第一条回答", metadata: {} }),
+  ]
+  render(<MessageNavigationRail messages={messages} />)
+  const first = screen.getByRole("button", { name: "跳转到第 1 条消息" })
+  const second = screen.getByRole("button", { name: "跳转到第 2 条消息" })
+  expect(first.querySelector("span")?.className).toContain("w-6")
+  expect(second.querySelector("span")?.className).toContain("w-6")
+
+  await user.hover(first)
+
+  expect(first.textContent).toContain("第一条提问")
+  expect(second.textContent).toContain("第一条回答")
+})
