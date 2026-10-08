@@ -30,7 +30,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const sessionId = scheduledRun?.id ?? params.sessionId ?? ""
   const { api } = useApi()
   const { setOpen: setImportQueueOpen } = useImportQueue()
-  const seenImportCalls = useRef<Set<string> | null>(null)
+  const seenSuccessfulImports = useRef<Set<string> | null>(null)
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
@@ -71,14 +71,17 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
 
   useEffect(() => {
     if (loading) return
-    const calls = msgs.flatMap((message) => message.content.filter((block) => block.type === "tool_call" && block.name === "import_selected_papers"))
-    const ids = new Set(calls.map((call) => call.id))
-    if (seenImportCalls.current === null) { seenImportCalls.current = ids; return }
-    if (calls.some((call) => !seenImportCalls.current!.has(call.id))) {
+    const successful = msgs.flatMap((message) => {
+      const calls = new Set(message.content.filter((block) => block.type === "tool_call" && block.name === "import_selected_papers").map((block) => block.id))
+      return message.content.filter((block) => block.type === "tool_result" && block.state === "success" && calls.has(block.id)).map((block) => block.id)
+    })
+    const ids = new Set(successful)
+    if (seenSuccessfulImports.current === null) { seenSuccessfulImports.current = ids; return }
+    if (successful.some((id) => !seenSuccessfulImports.current!.has(id))) {
       toast.info("文献已加入入库队列")
       setImportQueueOpen(true)
     }
-    seenImportCalls.current = ids
+    seenSuccessfulImports.current = ids
   }, [loading, msgs, setImportQueueOpen])
 
   async function importSelected(tokens: string[]) {

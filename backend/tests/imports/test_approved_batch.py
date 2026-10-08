@@ -105,3 +105,37 @@ def test_import_queue_contains_only_the_current_users_imports(
     assert [item["identifier"] for item in response.json()["items"]] == [
         "10.1234/owner"
     ]
+
+
+def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
+    client: TestClient, api_prefix: str, register_user, monkeypatch
+) -> None:
+    owner = register_user(email="approved-real-import@example.com")
+    session_id = str(uuid4())
+    client.post(
+        f"{api_prefix}/session-bindings",
+        headers=auth_headers(owner["access_token"]),
+        json={"session_id": session_id},
+    )
+    token = create_candidate_token(
+        user_id=owner["user"]["id"], session_id=session_id,
+        openalex_id="https://openalex.org/W7148549932",
+        identifier="10.48550/arXiv.2604.00722",
+    )
+    approval = client.post(
+        f"{api_prefix}/imports/approvals",
+        headers=auth_headers(owner["access_token"]),
+        json={"session_id": session_id, "candidate_tokens": [token]},
+    )
+    assert approval.status_code == 201
+    from app.imports.service import ImportService
+
+    monkeypatch.setattr(ImportService, "_run_sync", lambda self, import_id: None)
+    monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
+    result = client.post(
+        f"{api_prefix}/internal/import-approved",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        json={"user_id": owner["user"]["id"], "session_id": session_id},
+    )
+    assert result.status_code == 200
+    assert result.json()["results"][0]["status"] == "queued"

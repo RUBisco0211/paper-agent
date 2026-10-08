@@ -12,13 +12,19 @@ from app.platform.config import settings
 
 class PaperReadTool(FunctionTool):
     async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
-        return PermissionDecision(behavior=PermissionBehavior.ALLOW)
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW,
+            message="Session-bound read tool allowed.",
+        )
 
 
 class ApprovedImportTool(FunctionTool):
     async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
         # The business service enforces a previously confirmed, single-use batch.
-        return PermissionDecision(behavior=PermissionBehavior.ALLOW)
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW,
+            message="Approved import batch allowed by the business service.",
+        )
 
 
 async def prepare_schedule_scope(
