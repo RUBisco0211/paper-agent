@@ -10,8 +10,8 @@ it("submits only checked discovery candidates when the user confirms", async () 
   const pair = {
     call: { id: "call-1", name: "discover_papers" },
     result: { state: "success", output: JSON.stringify({ papers: [
-      { openalex_id: "https://openalex.org/W1", title: "Selected paper", candidate_token: "signed-1" },
-      { openalex_id: "https://openalex.org/W2", title: "Other paper", candidate_token: "signed-2" },
+      { source_id: "https://openalex.org/W1", title: "Selected paper", candidate_token: "signed-1" },
+      { source_id: "https://openalex.org/W2", title: "Other paper", candidate_token: "signed-2" },
     ] }) },
   } as ToolCallWithResult
   render(<DiscoveryImportContext.Provider value={approve}>

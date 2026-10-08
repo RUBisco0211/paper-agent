@@ -82,6 +82,30 @@ def test_another_user_cannot_approve_a_discovered_candidate(
     assert response.status_code in {403, 404}
 
 
+def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(
+    client: TestClient, api_prefix: str, register_user
+) -> None:
+    owner = register_user(email="approved-semantic-scholar@example.com")
+    session_id = str(uuid4())
+    client.post(
+        f"{api_prefix}/session-bindings",
+        headers=auth_headers(owner["access_token"]),
+        json={"session_id": session_id},
+    )
+    token = create_candidate_token(
+        user_id=owner["user"]["id"],
+        session_id=session_id,
+        source_id="https://www.semanticscholar.org/paper/abc",
+        identifier="10.1234/selected",
+    )
+    response = client.post(
+        f"{api_prefix}/imports/approvals",
+        headers=auth_headers(owner["access_token"]),
+        json={"session_id": session_id, "candidate_tokens": [token]},
+    )
+    assert response.status_code == 201
+
+
 def test_import_queue_contains_only_the_current_users_imports(
     client: TestClient, api_prefix: str, register_user, db_session
 ) -> None:

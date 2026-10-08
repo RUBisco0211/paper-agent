@@ -36,12 +36,14 @@ def discover_papers(
     _auth: AgentInternalAuth,
     service: DiscoveryServiceDep,
 ) -> DiscoveryResponse:
-    return DiscoveryResponse(papers=service.search(
-        user_id=payload.user_id,
-        session_id=payload.session_id,
-        query=payload.query,
-        limit=payload.limit,
-    ))
+    return DiscoveryResponse(
+        **service.search(
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            query=payload.query,
+            limit=payload.limit,
+        )
+    )
 
 
 @router.get("/internal/papers", response_model=BoundListResponse)

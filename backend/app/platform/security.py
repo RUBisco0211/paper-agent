@@ -25,8 +25,14 @@ IMPORT_CANDIDATE_TOKEN_TYPE = "import_candidate"
 
 
 def create_candidate_token(
-    *, user_id: str, session_id: str, openalex_id: str, identifier: str
+    *,
+    user_id: str,
+    session_id: str,
+    identifier: str,
+    source_id: str | None = None,
+    openalex_id: str | None = None,
 ) -> str:
+    candidate_source = source_id or openalex_id
     expires = datetime.now(UTC) + timedelta(minutes=30)
     return jwt.encode(
         {
@@ -34,7 +40,7 @@ def create_candidate_token(
             "iss": JWT_ISSUER,
             "uid": user_id,
             "sid": session_id,
-            "oid": openalex_id,
+            "source_id": candidate_source,
             "identifier": identifier,
             "exp": int(expires.timestamp()),
         },

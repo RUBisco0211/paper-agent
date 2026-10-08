@@ -61,17 +61,13 @@ class ImportApprovalService:
             ):
                 raise ForbiddenError("候选文献不属于当前会话")
             identifier = parse_identifier(claims.get("identifier", ""))
-            openalex_id = claims.get("oid")
-            if not isinstance(openalex_id, str) or not openalex_id.startswith(
-                "https://openalex.org/W"
-            ):
+            source_id = claims.get("source_id")
+            if not isinstance(source_id, str) or not source_id.startswith("https://"):
                 raise ValidationError("候选文献信息无效")
             if identifier.value in seen:
                 continue
             seen.add(identifier.value)
-            candidates.append(
-                {"identifier": identifier.value, "openalex_id": openalex_id}
-            )
+            candidates.append({"identifier": identifier.value, "source_id": source_id})
         with self._session_factory() as session:
             SessionBindingService(
                 SessionBindingRepository(session), ProjectRepository(session)

@@ -8,8 +8,8 @@ from ..library.depends import PaperLibraryServiceDep
 from ..library.repo import PaperRepository
 from ..platform.config import settings
 from ..platform.database import SessionDep
+from ..platform.discovery import DiscoveryAggregator
 from ..platform.errors import ErrorCode, UnauthorizedError
-from ..platform.openalex import OpenAlexAdapter
 from ..projects.repo import ProjectRepository
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import EmbeddingAdapter
@@ -84,15 +84,15 @@ def require_agent_internal_key(
 AgentInternalAuth = Annotated[None, Depends(require_agent_internal_key)]
 
 
-def get_openalex_adapter() -> OpenAlexAdapter:
-    return OpenAlexAdapter()
+def get_discovery_adapter() -> DiscoveryAggregator:
+    return DiscoveryAggregator()
 
 
-OpenAlexAdapterDep = Annotated[OpenAlexAdapter, Depends(get_openalex_adapter)]
+DiscoveryAdapterDep = Annotated[DiscoveryAggregator, Depends(get_discovery_adapter)]
 
 
 def get_discovery_service(
-    bindings: SessionBindingServiceDep, provider: OpenAlexAdapterDep
+    bindings: SessionBindingServiceDep, provider: DiscoveryAdapterDep
 ) -> DiscoveryService:
     return DiscoveryService(bindings, provider)
 

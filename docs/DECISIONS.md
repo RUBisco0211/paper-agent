@@ -85,6 +85,7 @@
 | 0069 | agent, retrieval | 增加 OpenAlex 库外文献发现，只返回候选元数据且不登记 Citation | 当前 | [0069-openalex-paper-discovery.md](decisions/0069-openalex-paper-discovery.md) |
 | 0070 | agent, security, ingest, frontend | 用户确认 OpenAlex 候选后批量入库；统一队列显示导入与处理阶段 | 当前 | [0070-approved-batch-paper-import.md](decisions/0070-approved-batch-paper-import.md) |
 | 0071 | frontend, product | 新建会话先进入草稿页；首条消息才创建会话，既有会话输入与发送状态分离 | 当前 | [0071-chat-draft-before-first-message.md](decisions/0071-chat-draft-before-first-message.md) |
+| 0072 | agent, retrieval, ingest, frontend | OpenAlex、Semantic Scholar、Crossref 聚合发现；候选展示 DOI 与开放 PDF 链接 | 当前 | [0072-multi-source-paper-discovery.md](decisions/0072-multi-source-paper-discovery.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

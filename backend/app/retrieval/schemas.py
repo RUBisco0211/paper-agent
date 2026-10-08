@@ -58,6 +58,7 @@ class DiscoveryRequest(BaseModel):
 
 class DiscoveryResponse(BaseModel):
     papers: list[dict]
+    failed_sources: list[str] = Field(default_factory=list)
 
 
 class BoundEvidenceRead(EvidenceRead):

@@ -29,4 +29,9 @@ class EmbeddingAdapter(Protocol):
 
 
 class PaperDiscoveryAdapter(Protocol):
-    def search(self, query: str, limit: int) -> list[dict]: ...
+    def search(self, query: str, limit: int) -> "PaperDiscoveryResult": ...
+
+
+class PaperDiscoveryResult(Protocol):
+    papers: list[dict]
+    failed_sources: list[str]

@@ -3,7 +3,8 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from app.platform.config import settings
-from app.retrieval.depends import get_openalex_adapter
+from app.platform.discovery import DiscoveryResult
+from app.retrieval.depends import get_discovery_adapter
 from tests.conftest import auth_headers
 
 
@@ -11,16 +12,20 @@ class FakeOpenAlex:
     def search(self, query: str, limit: int) -> list[dict]:
         assert query == "multi-agent safety"
         assert limit == 2
-        return [
-            {
-                "title": "Safety paper",
-                "doi": "10.1234/example",
-                "openalex_id": "https://openalex.org/W1",
-                "year": 2025,
-                "authors": ["A. Author"],
-                "url": "https://example.org/paper",
-            }
-        ]
+        return DiscoveryResult(
+            papers=[
+                {
+                    "title": "Safety paper",
+                    "doi": "10.1234/example",
+                    "source_id": "https://openalex.org/W1",
+                    "openalex_id": "https://openalex.org/W1",
+                    "year": 2025,
+                    "authors": ["A. Author"],
+                    "url": "https://example.org/paper",
+                }
+            ],
+            failed_sources=[],
+        )
 
 
 def test_discovery_returns_external_candidates_without_citations_when_session_is_bound(
@@ -34,7 +39,7 @@ def test_discovery_returns_external_candidates_without_citations_when_session_is
         json={"session_id": session_id},
     )
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
-    client.app.dependency_overrides[get_openalex_adapter] = FakeOpenAlex
+    client.app.dependency_overrides[get_discovery_adapter] = FakeOpenAlex
     try:
         response = client.post(
             f"{api_prefix}/internal/discover-papers",
@@ -47,7 +52,7 @@ def test_discovery_returns_external_candidates_without_citations_when_session_is
             },
         )
     finally:
-        client.app.dependency_overrides.pop(get_openalex_adapter, None)
+        client.app.dependency_overrides.pop(get_discovery_adapter, None)
 
     assert response.status_code == 200
     assert response.json()["papers"][0]["doi"] == "10.1234/example"

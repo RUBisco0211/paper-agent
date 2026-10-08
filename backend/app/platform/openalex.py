@@ -7,6 +7,8 @@ from .errors import AppError, ErrorCode, ProviderUnavailableError
 
 
 class OpenAlexAdapter:
+    name = "openalex"
+
     def search(self, query: str, limit: int) -> list[dict]:
         headers = {"Accept": "application/json"}
         key = settings.openalex_api_key.get_secret_value()
@@ -46,8 +48,12 @@ class OpenAlexAdapter:
             doi = item.get("doi")
             if isinstance(doi, str) and doi.startswith("https://doi.org/"):
                 doi = doi.removeprefix("https://doi.org/")
+            pdf_url = (item.get("best_oa_location") or {}).get(
+                "pdf_url"
+            ) or location.get("pdf_url")
             papers.append(
                 {
+                    "source_id": item.get("id"),
                     "openalex_id": item.get("id"),
                     "title": (item.get("display_name") or "")[:500],
                     "doi": doi,
@@ -62,6 +68,9 @@ class OpenAlexAdapter:
                     "url": location.get("landing_page_url")
                     or item.get("doi")
                     or item.get("id"),
+                    "pdf_url": pdf_url
+                    if isinstance(pdf_url, str) and pdf_url.startswith("https://")
+                    else None,
                 }
             )
         return papers

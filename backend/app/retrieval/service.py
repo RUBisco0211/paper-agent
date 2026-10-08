@@ -35,13 +35,15 @@ class DiscoveryService:
 
     def search(
         self, *, user_id: UUID, session_id: UUID, query: str, limit: int
-    ) -> list[dict]:
+    ) -> dict:
         self._bindings.require(session_id=session_id, user_id=user_id)
-        candidates = self._provider.search(query, limit)
+        result = self._provider.search(query, limit)
+        candidates = result.papers
         for candidate in candidates:
             identifier = candidate.get("doi")
+            source_id = candidate.get("source_id")
             try:
-                if not isinstance(identifier, str):
+                if not isinstance(identifier, str) or not isinstance(source_id, str):
                     continue
                 parse_identifier(identifier)
             except AppError:
@@ -49,10 +51,10 @@ class DiscoveryService:
             candidate["candidate_token"] = create_candidate_token(
                 user_id=str(user_id),
                 session_id=str(session_id),
-                openalex_id=str(candidate["openalex_id"]),
+                source_id=source_id,
                 identifier=identifier,
             )
-        return candidates
+        return {"papers": candidates, "failed_sources": result.failed_sources}
 
 
 class BoundSearchService:
