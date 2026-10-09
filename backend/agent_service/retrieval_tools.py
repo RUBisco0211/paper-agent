@@ -27,6 +27,20 @@ class ApprovedImportTool(FunctionTool):
         )
 
 
+class AskUserTool(FunctionTool):
+    """Browser-executed question tool; the reply is an external tool result."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.is_external_tool = True
+
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW,
+            message="Ask the current user in this session.",
+        )
+
+
 async def prepare_schedule_scope(
     storage: StorageBase,
     user_id: str,
@@ -151,11 +165,24 @@ async def build_retrieval_tools(
             json={"user_id": user_id, "session_id": session_id},
         )
 
+    async def ask_user(questions: list[dict]) -> dict:
+        """Ask the user up to three concise questions and wait for their answers.
+
+        Each question has a unique `name`, a `prompt`, a `type` of `single`,
+        `multiple`, or `text`, optional `description`, `required` (default
+        true), and for choice types an `options` list of `{value, label}`.
+        Choice questions can also set `allow_other` to accept free text.
+        Use this only when the answer is needed to continue; do not ask for
+        authorization to run another tool. The browser executes this tool.
+        """
+        raise RuntimeError("ask_user is executed by the browser")
+
     return [
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
         for func in (list_papers, search_papers, get_paper_excerpt, discover_papers)
     ] + [
         ApprovedImportTool(
             import_selected_papers, is_read_only=False, is_concurrency_safe=False
-        )
+        ),
+        AskUserTool(ask_user, is_read_only=False, is_concurrency_safe=False),
     ]

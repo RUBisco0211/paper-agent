@@ -7,7 +7,7 @@ import { DiscoverPage } from "@/pages/discover"
 import { PaperReadingPage } from "@/pages/paper-reading"
 import { LoginPage } from "@/pages/login"
 import { RegisterPage } from "@/pages/register"
-import { AppLayout, SectionLayout } from "@upstream/components/layout/AppLayout"
+import { AppLayout } from "@upstream/components/layout/AppLayout"
 import { ModelSettingsPage } from "@upstream/pages/model-settings"
 import { PaperChatPage } from "@upstream/pages/chat/PaperChatPage"
 import { ChatPage } from "@upstream/pages/chat/ChatPage"
@@ -21,9 +21,9 @@ const router = createBrowserRouter([
     element: <RequireAuth><AgentUiProvider><AppLayout /></AgentUiProvider></RequireAuth>,
     children: [
       { index: true, element: <Navigate to="/library" replace /> },
-      { path: "/library", element: <SectionLayout title="文献库" section="全部文献"><LibraryPage /></SectionLayout> },
-      { path: "/discover", element: <SectionLayout title="在线检索" section="搜索文献"><DiscoverPage /></SectionLayout> },
-      { path: "/library/:paperId", element: <SectionLayout title="文献库" section="全部文献"><PaperReadingPage /></SectionLayout> },
+      { path: "/library", element: <main className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-background"><LibraryPage /></main> },
+      { path: "/discover", element: <main className="flex h-full min-h-0 flex-1 flex-col overflow-y-auto bg-background"><DiscoverPage /></main> },
+      { path: "/library/:paperId", element: <div className="flex h-full min-h-0 flex-1 flex-col bg-background"><PaperReadingPage /></div> },
       { path: "/projects", element: <Navigate to="/chat" replace /> },
       { path: "/projects/:projectId", element: <LegacyProjectRedirect /> },
       { path: "/calendar", element: <Navigate to="/scheduled" replace /> },

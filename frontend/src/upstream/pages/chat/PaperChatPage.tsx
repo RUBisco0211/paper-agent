@@ -8,6 +8,7 @@ import { availableChatModels, listBindings, sameSessionId } from "@/lib/agent-se
 import { reasoningEffortsForModel } from "./chat-view"
 import { MessageNavigationRail } from "./MessageNavigationRail"
 import { ASMessageBubble } from "@upstream/components/chat/ASMessageBubble"
+import { AskUserQuestionnaire } from "@upstream/components/chat/AskUserQuestionnaire"
 import { CitationProvider } from "@upstream/components/chat/citation-context"
 import { DiscoveryImportContext } from "@upstream/components/chat/tool-renderers/PaperDiscoveryRenderer"
 import { TextInput } from "@upstream/components/chat/TextInput"
@@ -23,6 +24,7 @@ import { useMessages } from "@upstream/hooks/useMessages"
 import { notifyError } from "@/lib/errors"
 import { useImportQueue } from "@/lib/import-queue-context"
 import { toast } from "sonner"
+import type { ToolCallBlock } from "@agentscope-ai/agentscope/message"
 
 export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?: SessionRecord; scheduledScope?: string } = {}) {
   const params = useParams()
@@ -37,8 +39,11 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const papersPanel = useOutletContext<{ papersOpen: boolean; togglePapers: () => void; projectId: string | null } | undefined>()
   const [changingModel, setChangingModel] = useState(false)
   const [modelError, setModelError] = useState("")
-  const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm } =
+  const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm, onExternalAnswer } =
     useMessages(agentId || null, sessionId || null)
+  const pendingQuestion = !loading ? msgs.flatMap((message) => message.role === "assistant"
+    ? message.content.filter((block): block is ToolCallBlock => block.type === "tool_call" && block.name === "ask_user" && block.state === "submitted" && !message.content.some((result) => result.type === "tool_result" && result.id === block.id && result.state !== "running")).map((block) => ({ replyId: message.id, toolCall: block }))
+    : []).at(-1) : undefined
   const sessions = useQuery({
     queryKey: ["agent-sessions", agentId],
     queryFn: () => sessionApi.list(agentId),
@@ -173,6 +178,9 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
             </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /></MessageScroller>
           </MessageScrollerProvider>
         </div>
+        {pendingQuestion && <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+          <AskUserQuestionnaire key={pendingQuestion.toolCall.id} toolCall={pendingQuestion.toolCall} onAnswer={(answers) => onExternalAnswer(pendingQuestion.toolCall, pendingQuestion.replyId, answers)} />
+        </div>}
         <div className="mx-auto w-full max-w-3xl p-4">
           <TextInput
             className="w-full rounded-[32px] bg-muted p-1"

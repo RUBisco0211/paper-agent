@@ -16,6 +16,7 @@ import { ReadRenderer } from './ReadRenderer';
 import { TaskCreateRenderer } from './TaskCreateRenderer';
 import { PaperSearchRenderer } from './PaperSearchRenderer';
 import { PaperDiscoveryRenderer } from './PaperDiscoveryRenderer';
+import { AskUserRenderer } from './AskUserRenderer';
 import type { TFunction, ToolCallWithResult, ToolRenderer } from './types';
 import { WriteRenderer } from './WriteRenderer';
 
@@ -29,6 +30,7 @@ const renderers: Record<string, ToolRenderer> = {
 	TaskCreate: TaskCreateRenderer,
 	search_papers: PaperSearchRenderer,
 	discover_papers: PaperDiscoveryRenderer,
+	ask_user: AskUserRenderer,
 };
 
 function getRenderer(toolName: string): ToolRenderer {

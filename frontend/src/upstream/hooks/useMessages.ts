@@ -6,10 +6,11 @@ import type {
 	DataBlockDeltaEvent,
 	DataBlockEndEvent,
 	ReplyStartEvent,
+	ExternalExecutionResultEvent,
 	UserConfirmResultEvent,
 } from '@agentscope-ai/agentscope/event';
 import { appendEvent, AssistantMsg, UserMsg } from '@agentscope-ai/agentscope/message';
-import type { Msg, ContentBlock } from '@agentscope-ai/agentscope/message';
+import type { Msg, ContentBlock, ToolResultBlock } from '@agentscope-ai/agentscope/message';
 import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import { useState, useCallback, useRef, useEffect } from 'react';
 
@@ -477,6 +478,30 @@ export function useMessages(
 		[agentId, sessionId],
 	);
 
+	const onExternalAnswer = useCallback(
+		async (toolCall: ToolCallBlock, replyId: string, answer: Record<string, string | string[] | null>) => {
+			if (!agentId || !sessionId) return;
+			currentReplyRef.current = msgsRef.current.find((m) => m.id === replyId) ?? null;
+			const now = new Date().toISOString();
+			const result: ToolResultBlock = {
+				type: 'tool_result', id: toolCall.id, name: toolCall.name,
+				output: JSON.stringify({ answers: answer }), state: 'success', created_at: now,
+			};
+			const event: ExternalExecutionResultEvent = {
+				type: EventType.EXTERNAL_EXECUTION_RESULT,
+				id: crypto.randomUUID(), created_at: now, reply_id: replyId,
+				execution_results: [result],
+			};
+			try {
+				await chatApi.trigger({ agent_id: agentId, session_id: sessionId, input: event });
+			} catch (e) {
+				setError(e as Error);
+				throw e;
+			}
+		},
+		[agentId, sessionId],
+	);
+
 	/** Abort the current SSE connection. */
 	const abort = useCallback(() => {
 		abortRef.current?.abort();
@@ -603,6 +628,7 @@ export function useMessages(
 		historyInterrupted,
 		send,
 		onUserConfirm,
+		onExternalAnswer,
 		onSubagentConfirm,
 		subagentHitl,
 		abort,

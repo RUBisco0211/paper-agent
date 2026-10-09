@@ -31,6 +31,7 @@ def test_paper_agent_exposes_bound_read_tools_when_defaults_exist() -> None:
         "get_paper_excerpt",
         "discover_papers",
         "import_selected_papers",
+        "ask_user",
     }
     assert all(
         not group.mcps and not group.skills_or_loaders
