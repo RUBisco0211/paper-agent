@@ -1,11 +1,12 @@
 """Online metadata completion for known identifiers.
 
 Only exact identifier lookups are implemented (Crossref for DOIs, the arXiv
-Atom API for arXiv ids). Title search is deliberately not part of this module:
+Atom API and exact OpenAlex DOI fallback for arXiv ids). Title search is deliberately not part of this module:
 candidates from a search must not be treated as the confirmed paper.
 """
 
 import re
+import time
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -144,15 +145,79 @@ class ArxivClient:
         return identifier.type is IdentifierType.ARXIV
 
     def fetch(self, identifier: Identifier) -> ProviderMetadata:
+        rate_limit_error: AppError | None = None
         with self._client_factory() as client:
-            response = _request(
-                client,
-                self._base_url,
-                params={"id_list": identifier.value},
-            )
-        return _arxiv_metadata(
-            response.text,
-            identifier,
+            for attempt in range(3):
+                if attempt:
+                    time.sleep(attempt)
+                try:
+                    response = _request(
+                        client,
+                        self._base_url,
+                        params={"id_list": identifier.value},
+                    )
+                except AppError as exc:
+                    if exc.code is not ErrorCode.PROVIDER_RATE_LIMITED:
+                        raise
+                    rate_limit_error = exc
+                else:
+                    return _arxiv_metadata(
+                        response.text,
+                        identifier,
+                        pdf_url=f"{self._pdf_base_url}/{identifier.value}",
+                    )
+            assert rate_limit_error is not None
+            try:
+                return self._fetch_openalex(client, identifier)
+            except (AppError, httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                logger.info(
+                    "scholar.metadata.arxiv_fallback_failed",
+                    error_type=type(exc).__name__,
+                )
+                raise rate_limit_error from exc
+
+    def _fetch_openalex(
+        self, client: httpx.Client, identifier: Identifier
+    ) -> ProviderMetadata:
+        doi = f"10.48550/arxiv.{identifier.value}"
+        headers = {"Accept": "application/json"}
+        key = settings.openalex_api_key.get_secret_value()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        response = client.get(
+            "https://api.openalex.org/works",
+            params={"filter": f"doi:https://doi.org/{doi}", "per_page": 1},
+            headers=headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        results = payload.get("results") if isinstance(payload, dict) else None
+        if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+            raise ValueError("OpenAlex exact DOI result missing")
+        work = results[0]
+        reported_doi = work.get("doi")
+        if not isinstance(reported_doi, str) or reported_doi.casefold() != f"https://doi.org/{doi}".casefold():
+            raise ValueError("OpenAlex DOI mismatch")
+        authorships = work.get("authorships") or []
+        if not isinstance(authorships, list):
+            raise ValueError("OpenAlex authorships invalid")
+        authors = [
+            name
+            for item in authorships
+            if isinstance(item, dict)
+            and isinstance(item.get("author"), dict)
+            if isinstance(name := item["author"].get("display_name"), str)
+        ]
+        title = work.get("display_name")
+        if not isinstance(title, str) or not title.strip() or not authors:
+            raise ValueError("OpenAlex bibliographic metadata incomplete")
+        return ProviderMetadata(
+            source="openalex",
+            title=title,
+            authors=authors,
+            doi=doi,
+            arxiv_id=identifier.value,
+            year=work.get("publication_year"),
             pdf_url=f"{self._pdf_base_url}/{identifier.value}",
         )
 
@@ -189,7 +254,7 @@ class MetadataResolver:
         return ResolutionOutcome(
             status=metadata.metadata_status(),
             metadata=metadata,
-            source=provider.name,
+            source=metadata.source,
         )
 
 
