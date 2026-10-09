@@ -81,6 +81,35 @@ def test_arxiv_import_with_pdf_reaches_ready(
     assert pdf.status_code == 200
 
 
+def test_arxiv_doi_import_uses_arxiv_metadata_when_crossref_has_no_record(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+) -> None:
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="arxiv",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        ),
+    )
+    provider.name = "arxiv"
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(make_pdf())
+    token = register_user(email="arxiv-doi@example.com")["access_token"]
+
+    response = _import(client, api_prefix, token, "10.48550/arXiv.1706.03762")
+
+    assert response.status_code == 202, response.text
+    assert response.json()["status"] == "ready"
+    assert response.json()["identifier_type"] == "arxiv"
+    assert response.json()["identifier"] == ARXIV_ID
+    assert response.json()["metadata_source"] == "arxiv"
+
+
 def test_import_without_available_pdf_keeps_the_entry(
     client: TestClient,
     api_prefix: str,

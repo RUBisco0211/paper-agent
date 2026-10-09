@@ -16,6 +16,7 @@ ARXIV_LEGACY = re.compile(
     r"^(?P<id>[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?P<version>v\d+)?$",
 )
 DOI_PATTERN = re.compile(r"^10\.\d{4,9}/\S+$")
+ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(?P<id>\d{4}\.\d{4,5})(?:v\d+)?$", re.IGNORECASE)
 _TRAILING_PUNCTUATION = ".,;)\"'"
 
 
@@ -102,6 +103,8 @@ def _doi(value: str) -> Identifier:
     normalized = value.strip().rstrip(_TRAILING_PUNCTUATION)
     if not DOI_PATTERN.match(normalized):
         raise _invalid()
+    if match := ARXIV_DOI.fullmatch(normalized):
+        return _arxiv(match.group("id"))
     return Identifier(type=IdentifierType.DOI, value=normalized)
 
 
