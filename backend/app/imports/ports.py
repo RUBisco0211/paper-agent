@@ -19,3 +19,7 @@ class IngestionStarterFactory(Protocol):
         session_factory: SessionFactory,
         scheduler: TaskScheduler,
     ) -> IngestionStarter: ...
+
+
+class PdfSourceLocator(Protocol):
+    def find(self, doi: str) -> list[str]: ...

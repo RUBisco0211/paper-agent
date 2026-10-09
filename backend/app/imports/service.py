@@ -34,7 +34,7 @@ from ..scholar.pdf_fetch import PdfFetcher
 from ..sessions.repo import SessionBindingRepository
 from ..sessions.service import SessionBindingService
 from .domain import ImportStatus, PaperImport
-from .ports import IngestionStarterFactory
+from .ports import IngestionStarterFactory, PdfSourceLocator
 from .repo import ImportApprovalRecord, ImportRepository
 
 logger = structlog.get_logger(__name__)
@@ -145,6 +145,7 @@ class ImportService:
         storage: ObjectStorage,
         resolver: MetadataResolver,
         pdf_fetcher: PdfFetcher,
+        pdf_locator: PdfSourceLocator,
         scheduler: TaskScheduler,
         ingestion_starter_factory: IngestionStarterFactory,
     ) -> None:
@@ -152,6 +153,7 @@ class ImportService:
         self._storage = storage
         self._resolver = resolver
         self._pdf_fetcher = pdf_fetcher
+        self._pdf_locator = pdf_locator
         self._scheduler = scheduler
         self._ingestion_starter_factory = ingestion_starter_factory
 
@@ -322,41 +324,64 @@ class ImportService:
                 )
             repository.commit()
 
-            if not outcome.metadata.pdf_url:
-                self._finish(
-                    repository,
-                    import_id,
-                    status=ImportStatus.PDF_UNAVAILABLE,
-                    error_code=str(ErrorCode.PAPER_PDF_NOT_AVAILABLE),
-                )
-                return
-
             library = self._build_library_service(session, papers)
-            try:
-                with tempfile.TemporaryDirectory(
-                    prefix="paper-agent-import-"
-                ) as directory:
-                    destination = Path(directory) / "download.pdf"
-                    downloaded = self._pdf_fetcher.download(
-                        outcome.metadata.pdf_url,
-                        destination=destination,
+            attempted: set[str] = set()
+            last_error = ErrorCode.PAPER_PDF_NOT_AVAILABLE
+            downloaded = False
+            primary_urls = (
+                [outcome.metadata.pdf_url] if outcome.metadata.pdf_url else []
+            )
+            for url in primary_urls:
+                attempted.add(url)
+                try:
+                    self._attach_pdf_from_url(
+                        library,
+                        url=url,
+                        user_id=record.user_id,
+                        user_paper_id=user_paper.id,
+                        filename=outcome.metadata.title or f"{identifier.value}.pdf",
                     )
-                    with downloaded.path.open("rb") as handle:
-                        library.attach_pdf(
+                except AppError as exc:
+                    last_error = exc.code
+                    repository.expire_all()
+                else:
+                    downloaded = True
+                    break
+
+            if not downloaded and identifier.type is IdentifierType.DOI:
+                try:
+                    fallback_urls = self._pdf_locator.find(identifier.value)
+                except AppError as exc:
+                    fallback_urls = []
+                    if not attempted:
+                        last_error = exc.code
+                for url in fallback_urls:
+                    if url in attempted:
+                        continue
+                    attempted.add(url)
+                    try:
+                        self._attach_pdf_from_url(
+                            library,
+                            url=url,
                             user_id=record.user_id,
                             user_paper_id=user_paper.id,
                             filename=outcome.metadata.title
                             or f"{identifier.value}.pdf",
-                            stream=handle,
                         )
-            except AppError as exc:
-                # Metadata stays; the user can retry or upload the PDF later.
+                    except AppError as exc:
+                        last_error = exc.code
+                        repository.expire_all()
+                    else:
+                        downloaded = True
+                        break
+
+            if not downloaded:
                 repository.expire_all()
                 self._finish(
                     repository,
                     import_id,
                     status=ImportStatus.PDF_UNAVAILABLE,
-                    error_code=str(exc.code),
+                    error_code=str(last_error),
                 )
                 return
 
@@ -386,6 +411,26 @@ class ImportService:
             session.close()
 
     # Internals -------------------------------------------------------------
+    def _attach_pdf_from_url(
+        self,
+        library: PaperLibraryService,
+        *,
+        url: str,
+        user_id: UUID,
+        user_paper_id: UUID,
+        filename: str,
+    ) -> None:
+        with tempfile.TemporaryDirectory(prefix="paper-agent-import-") as directory:
+            destination = Path(directory) / "download.pdf"
+            downloaded = self._pdf_fetcher.download(url, destination=destination)
+            with downloaded.path.open("rb") as handle:
+                library.attach_pdf(
+                    user_id=user_id,
+                    user_paper_id=user_paper_id,
+                    filename=filename,
+                    stream=handle,
+                )
+
     def _upsert_entry(
         self,
         papers: PaperRepository,

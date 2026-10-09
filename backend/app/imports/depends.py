@@ -6,7 +6,16 @@ from ..library.depends import MetadataResolverDep, PdfFetcherDep
 from ..platform.database import SessionDep, SessionFactoryDep
 from ..platform.storage import StorageDep
 from ..platform.tasks import TaskSchedulerDep
+from ..scholar.pdf_sources import DoiPdfLocator
+from .ports import PdfSourceLocator
 from .service import ImportApprovalService, ImportService
+
+
+def get_pdf_locator() -> PdfSourceLocator:
+    return DoiPdfLocator()
+
+
+PdfSourceLocatorDep = Annotated[PdfSourceLocator, Depends(get_pdf_locator)]
 
 
 def get_import_service(
@@ -16,6 +25,7 @@ def get_import_service(
     scheduler: TaskSchedulerDep,
     resolver: MetadataResolverDep,
     pdf_fetcher: PdfFetcherDep,
+    pdf_locator: PdfSourceLocatorDep,
 ) -> ImportService:
     """Wire identifier imports to the shared processing factory."""
     from ..processing.service import build_ingestion_service
@@ -25,6 +35,7 @@ def get_import_service(
         storage=storage,
         resolver=resolver,
         pdf_fetcher=pdf_fetcher,
+        pdf_locator=pdf_locator,
         scheduler=scheduler,
         ingestion_starter_factory=build_ingestion_service,
     )
