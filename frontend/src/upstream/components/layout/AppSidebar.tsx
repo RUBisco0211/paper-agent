@@ -1,3 +1,4 @@
+import { useRef } from "react"
 import { BookOpen, Clock3, KeyRound, ListChecks, LoaderCircle, LogOut, MessageSquareText, Search } from "lucide-react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
@@ -21,6 +22,9 @@ export function AppSidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { setOpen, active } = useImportQueue()
+  const lastPaths = useRef<Record<string, string>>({})
+  const currentRoute = routes.find(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
+  if (currentRoute) lastPaths.current[currentRoute.to] = `${location.pathname}${location.search}${location.hash}`
 
   return <Sidebar collapsible="none" className="w-16 border-r [&_[data-slot=sidebar-container]]:w-16 [&_[data-slot=sidebar-inner]]:w-16">
     <SidebarHeader className="items-center px-2 pt-4">
@@ -30,7 +34,7 @@ export function AppSidebar() {
       <SidebarGroup className="px-2"><SidebarGroupContent><SidebarMenu>
         {routes.map(({ to, label, icon: Icon }) => <SidebarMenuItem key={to}>
           <SidebarMenuButton asChild tooltip={{ children: label, hidden: false }} isActive={location.pathname === to || location.pathname.startsWith(`${to}/`)} className="mx-auto size-8! justify-center p-0!">
-            <NavLink to={to} aria-label={label}><Icon /><span className="sr-only">{label}</span></NavLink>
+            <NavLink to={lastPaths.current[to] ?? to} aria-label={label}><Icon /><span className="sr-only">{label}</span></NavLink>
           </SidebarMenuButton>
         </SidebarMenuItem>)}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>

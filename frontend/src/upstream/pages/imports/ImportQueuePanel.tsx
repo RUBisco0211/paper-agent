@@ -1,6 +1,7 @@
 import { LoaderCircle } from "lucide-react"
-import { Link } from "react-router-dom"
+import { useState } from "react"
 
+import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
 import { useImportQueue } from "@/lib/import-queue-context"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@upstream/components/ui/sheet"
 import type { ImportQueueItem } from "@/lib/api/types"
@@ -17,7 +18,7 @@ const stageColors: Record<string, string> = {
   succeeded: "text-emerald-600",
 }
 
-function QueueRow({ item, close }: { item: ImportQueueItem; close: () => void }) {
+function QueueRow({ item, openPaper }: { item: ImportQueueItem; openPaper: (paperId: string) => void }) {
   const active = ["queued", "running", "resolving", "downloading", "metadata_ready"].includes(item.status)
   const stage = item.stage ?? item.status
   const content = <>
@@ -26,13 +27,18 @@ function QueueRow({ item, close }: { item: ImportQueueItem; close: () => void })
     <span className={`shrink-0 text-xs ${stageColors[stage] ?? "text-muted-foreground"}`}>{stageLabels[stage] ?? "处理中"}</span>
   </>
   return item.paper_id
-    ? <Link to={`/library/${item.paper_id}`} onClick={close} className="flex items-center gap-2 rounded-lg px-3 py-2 hover:bg-muted">{content}</Link>
+    ? <button type="button" onClick={() => openPaper(item.paper_id!)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-muted">{content}</button>
     : <div className="flex items-center gap-2 px-3 py-2">{content}</div>
 }
 
 export function ImportQueuePanel() {
   const { open, setOpen, items, loading, error } = useImportQueue()
-  return <Sheet open={open} onOpenChange={setOpen}>
+  const [selectedPaperId, setSelectedPaperId] = useState<string | null>(null)
+  function openPaper(paperId: string) {
+    setOpen(false)
+    setSelectedPaperId(paperId)
+  }
+  return <><Sheet open={open} onOpenChange={setOpen}>
     <SheetContent side="right" className="w-[440px]! max-w-[90vw]! gap-0 p-0">
       <SheetHeader className="border-b px-5 py-4"><SheetTitle>入库队列</SheetTitle>
         <SheetDescription>仅显示你的导入与文献处理任务</SheetDescription></SheetHeader>
@@ -40,8 +46,8 @@ export function ImportQueuePanel() {
         {loading && <p className="p-3 text-sm text-muted-foreground">加载中…</p>}
         {error && <p role="alert" className="p-3 text-sm text-destructive">队列加载失败</p>}
         {!loading && !error && items.length === 0 && <p className="p-3 text-sm text-muted-foreground">暂无入库任务</p>}
-        {items.map((item) => <QueueRow key={`${item.kind}:${item.id}`} item={item} close={() => setOpen(false)} />)}
+        {items.map((item) => <QueueRow key={`${item.kind}:${item.id}`} item={item} openPaper={openPaper} />)}
       </div>
     </SheetContent>
-  </Sheet>
+  </Sheet><PaperDetailSheet paperId={selectedPaperId} onOpenChange={(nextOpen) => { if (!nextOpen) setSelectedPaperId(null) }} /></>
 }

@@ -89,6 +89,7 @@
 | 0073 | product, retrieval, frontend, ingest | 增加 `/discover` 手动在线检索，选择 DOI 候选按全局或项目入库 | 当前 | [0073-manual-scholarly-discovery.md](decisions/0073-manual-scholarly-discovery.md) |
 | 0074 | ingest, product | DOI 导入时按精确 DOI 查找开放 PDF，手动与 Agent 入库共用 | 当前 | [0074-doi-import-open-pdf-fallback.md](decisions/0074-doi-import-open-pdf-fallback.md) |
 | 0075 | agent, frontend, product | 移除文献与检索页无用侧栏；Agent 提问由 Questionnaire 接续同一工具调用 | 当前 | [0075-ask-user-questionnaire-and-simple-library-layout.md](decisions/0075-ask-user-questionnaire-and-simple-library-layout.md) |
+| 0076 | frontend, product, ingest | 全局导航页面保活并恢复各入口路径；入库队列打开文献入库详情抽屉 | 当前 | [0076-sidebar-route-keepalive-and-import-detail.md](decisions/0076-sidebar-route-keepalive-and-import-detail.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`
