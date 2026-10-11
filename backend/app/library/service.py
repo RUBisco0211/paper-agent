@@ -238,10 +238,13 @@ class PaperLibraryService:
         if image_path is None:
             raise NotFoundError("片段没有图片预览", code=ErrorCode.PAPER_NOT_FOUND)
         entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
-        manifest_key = entry.paper.artifact_manifest_key if entry.paper else None
+        paper = entry.paper
+        if paper is None:
+            raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        manifest_key = paper.artifact_manifest_key
         if not manifest_key:
             for relative_path in (f"images/{image_path}", image_path):
-                key = mineru_artifact_key(entry.paper.file_hash, relative_path)
+                key = mineru_artifact_key(paper.file_hash, relative_path)
                 if self._storage.exists(key):
                     return self._storage.read_bytes(key), self._image_media_type(
                         image_path
@@ -249,7 +252,7 @@ class PaperLibraryService:
             raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
         try:
             manifest = json.loads(self._storage.read_text(manifest_key))
-            if manifest.get("file_hash") != entry.paper.file_hash:
+            if manifest.get("file_hash") != paper.file_hash:
                 raise ValueError("artifact hash mismatch")
             files = manifest["files"]
             if image_path in files:

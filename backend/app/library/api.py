@@ -42,7 +42,9 @@ def _cache_headers(etag: str) -> dict[str, str]:
 
 def _matches_cache(request: Request, etag: str) -> bool:
     supplied = request.headers.get("If-None-Match", "")
-    return any(tag.strip().removeprefix("W/") in {etag, "*"} for tag in supplied.split(","))
+    return any(
+        tag.strip().removeprefix("W/") in {etag, "*"} for tag in supplied.split(",")
+    )
 
 
 @router.get("/{paper_id}/blocks", response_model=PaperBlocksResponse)
@@ -206,7 +208,9 @@ def read_paper(
     detail = to_detail(entry)
     if entry.paper is not None:
         detail.pdf_version = entry.paper.file_hash
-        detail.artifact_version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+        detail.artifact_version = service.artifact_cache_version(
+            user_id=user.id, user_paper_id=paper_id
+        )
     return detail
 
 
