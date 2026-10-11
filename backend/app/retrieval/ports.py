@@ -26,12 +26,3 @@ class EmbeddingAdapter(Protocol):
     def embed_query(self, text: str) -> list[float]:
         """把查询文本转成向量（含查询前缀与截断）。"""
         ...
-
-
-class PaperDiscoveryAdapter(Protocol):
-    def search(self, query: str, limit: int) -> "PaperDiscoveryResult": ...
-
-
-class PaperDiscoveryResult(Protocol):
-    papers: list[dict]
-    failed_sources: list[str]

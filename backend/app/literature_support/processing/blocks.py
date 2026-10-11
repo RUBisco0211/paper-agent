@@ -67,6 +67,11 @@ def _preview(block: dict) -> str:
     return _SPACE.sub(" ", unescape(_TAGS.sub(" ", str(raw)))).strip()
 
 
+def block_full_text(block: dict) -> str:
+    """Use the index's normalization without its preview length limit."""
+    return _preview(block)
+
+
 def _formula(block: dict) -> str | None:
     raw = block.get("latex") or block.get("text")
     if not raw and isinstance(block.get("content"), dict):

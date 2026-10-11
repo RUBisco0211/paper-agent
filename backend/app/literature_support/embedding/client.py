@@ -10,10 +10,10 @@ from collections.abc import Sequence
 import httpx
 import structlog
 
-from ..platform.config import settings
-from ..platform.errors import AppError, ErrorCode
-from ..scholar.metadata import HttpClientFactory, default_http_client_factory
-from .base import EmbeddingProfile, prepare
+from app.literature_support.embedding.base import EmbeddingProfile, prepare
+from app.platform.config import settings
+from app.platform.errors import AppError, ErrorCode
+from app.platform.outbound_http import HttpClientFactory, default_http_client_factory
 
 logger = structlog.get_logger(__name__)
 

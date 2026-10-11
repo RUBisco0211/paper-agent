@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 
-from ..platform.errors import AppError, ErrorCode
+from app.platform.errors import AppError, ErrorCode
 
 DOI_PREFIX = "10."
 ARXIV_MODERN = re.compile(r"^(?P<id>\d{4}\.\d{4,5})(?P<version>v\d+)?$")
@@ -16,7 +16,9 @@ ARXIV_LEGACY = re.compile(
     r"^(?P<id>[a-z-]+(?:\.[A-Z]{2})?/\d{7})(?P<version>v\d+)?$",
 )
 DOI_PATTERN = re.compile(r"^10\.\d{4,9}/\S+$")
-ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(?P<id>\d{4}\.\d{4,5})(?:v\d+)?$", re.IGNORECASE)
+ARXIV_DOI = re.compile(
+    r"^10\.48550/arxiv\.(?P<id>\d{4}\.\d{4,5})(?:v\d+)?$", re.IGNORECASE
+)
 _TRAILING_PUNCTUATION = ".,;)\"'"
 
 

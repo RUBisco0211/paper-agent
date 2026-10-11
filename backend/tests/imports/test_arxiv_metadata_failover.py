@@ -1,10 +1,9 @@
 import httpx
 import pytest
 
+from app.literature_support.scholar.identifiers import parse_identifier
+from app.literature_support.scholar.metadata import ArxivClient
 from app.platform.errors import AppError, ErrorCode
-from app.scholar.identifiers import parse_identifier
-from app.scholar.metadata import ArxivClient
-
 
 ARXIV_XML = """<feed xmlns="http://www.w3.org/2005/Atom"><entry>
 <title>Recovered Paper</title><author><name>Researcher</name></author>

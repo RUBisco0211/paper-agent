@@ -1,17 +1,20 @@
+import base64
 from uuid import UUID
 
 import structlog
 from sqlalchemy.exc import SQLAlchemyError
 
-from ..evidence.citations import build_citation_id
-from ..evidence.ranking import apply_budgets, reciprocal_rank_fusion
+from app.literature_support.evidence.citations import build_citation_id
+from app.literature_support.evidence.ranking import (
+    apply_budgets,
+    reciprocal_rank_fusion,
+)
+
 from ..library.repo import PaperRepository
 from ..library.service import PaperLibraryService
-from ..platform.errors import AppError, ErrorCode, NotFoundError
-from ..platform.security import create_candidate_token
+from ..platform.errors import ErrorCode, NotFoundError
 from ..projects.repo import ProjectRepository
-from ..retrieval.ports import EmbeddingAdapter, PaperDiscoveryAdapter
-from ..scholar.identifiers import parse_identifier
+from ..retrieval.ports import EmbeddingAdapter
 from ..sessions.service import SessionBindingService
 from .domain import (
     ChannelReport,
@@ -24,41 +27,6 @@ from .domain import (
 from .repo import ChunkRepository
 
 logger = structlog.get_logger(__name__)
-
-
-class DiscoveryService:
-    def __init__(
-        self, bindings: SessionBindingService, provider: PaperDiscoveryAdapter
-    ) -> None:
-        self._bindings = bindings
-        self._provider = provider
-
-    def search_manual(self, *, query: str, limit: int) -> dict:
-        result = self._provider.search(query, limit)
-        return {"papers": result.papers, "failed_sources": result.failed_sources}
-
-    def search(
-        self, *, user_id: UUID, session_id: UUID, query: str, limit: int
-    ) -> dict:
-        self._bindings.require(session_id=session_id, user_id=user_id)
-        result = self._provider.search(query, limit)
-        candidates = result.papers
-        for candidate in candidates:
-            identifier = candidate.get("doi")
-            source_id = candidate.get("source_id")
-            try:
-                if not isinstance(identifier, str) or not isinstance(source_id, str):
-                    continue
-                parse_identifier(identifier)
-            except AppError:
-                continue
-            candidate["candidate_token"] = create_candidate_token(
-                user_id=str(user_id),
-                session_id=str(session_id),
-                source_id=source_id,
-                identifier=identifier,
-            )
-        return {"papers": candidates, "failed_sources": result.failed_sources}
 
 
 class BoundSearchService:
@@ -116,6 +84,74 @@ class BoundPaperService:
         self._bindings = bindings
         self._library = library
         self._projects = projects
+
+    def resolve_quote(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        user_paper_id: UUID,
+        kind: str,
+        version: str,
+        page: int,
+        block_id: int | None,
+        start: int | None,
+        end: int | None,
+        selected_text: str,
+        include_image: bool = False,
+    ) -> dict:
+        binding = self._bindings.require(session_id=session_id, user_id=user_id)
+        entry = self._library.get_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if entry is None or (
+            binding.project_id is not None
+            and user_paper_id not in self._projects.paper_ids_of(binding.project_id)
+        ):
+            raise NotFoundError("文献不在当前会话范围", code=ErrorCode.PAPER_NOT_FOUND)
+        if kind == "parsed_block":
+            if version != self._library.artifact_cache_version(
+                user_id=user_id, user_paper_id=user_paper_id
+            ):
+                raise ValueError("artifact_version_changed")
+            if block_id is None or start is None or end is None:
+                raise ValueError("selection_mismatch")
+            block = self._library.get_block(
+                user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
+            )
+            text = self._library.get_block_full_text(
+                user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
+            )
+            source_text = text or block.get("formula") or ""
+            if (block["page"] != page or source_text[start:end] != selected_text
+                    or (not include_image and end <= start)):
+                raise ValueError("selection_mismatch")
+            if include_image:
+                if block["type"] not in {"image", "chart"} or not block["has_image"]:
+                    raise ValueError("image_unavailable")
+                payload, media_type = self._library.get_block_image(
+                    user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
+                )
+                if len(payload) > 5 * 1024 * 1024 or media_type not in {
+                    "image/png", "image/jpeg", "image/webp", "image/gif"
+                }:
+                    raise ValueError("image_unsupported")
+                return {
+                    "title": entry.user_paper.title,
+                    "page": page,
+                    "image_base64": base64.b64encode(payload).decode("ascii"),
+                    "image_media_type": media_type,
+                }
+        elif kind == "pdf_selection":
+            if include_image:
+                raise ValueError("image_unavailable")
+            if version != self._library.pdf_cache_version(
+                user_id=user_id, user_paper_id=user_paper_id
+            ):
+                raise ValueError("pdf_version_changed")
+            if entry.paper is None or page > entry.paper.page_count:
+                raise ValueError("page_out_of_range")
+        else:
+            raise ValueError("unsupported_quote_kind")
+        return {"title": entry.user_paper.title, "page": page}
 
     def list_papers(
         self,

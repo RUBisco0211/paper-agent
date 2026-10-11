@@ -4,16 +4,16 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ingestion.domain import IngestionStage, IngestionStatus, StageStatus
-from app.ingestion.repo import (
+from app.library.repo import PaperRepository, UserPaperRecord
+from app.literature_support.processing.worker import IngestionWorker
+from app.platform.tasks import ApiTaskScheduler
+from app.processing.domain import IngestionStage, IngestionStatus, StageStatus
+from app.processing.repo import (
     IngestionJobRecord,
     IngestionRepository,
     IngestionStageRecordOrm,
 )
-from app.ingestion.service import IngestionService
-from app.library.repo import PaperRepository, UserPaperRecord
-from app.platform.tasks import ApiTaskScheduler
-from app.processing.worker import IngestionWorker
+from app.processing.service import IngestionService
 
 
 class RecordingPipeline:

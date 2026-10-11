@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from ..platform.database import SessionDep, SessionFactoryDep
-from ..platform.storage import StorageDep
-from ..platform.tasks import TaskSchedulerDep
-from ..processing.service import build_ingestion_service
-from .repo import IngestionRepository
-from .service import IngestionService
+from app.literature_support.processing.pipeline import build_ingestion_service
+from app.platform.database import SessionDep, SessionFactoryDep
+from app.platform.storage import StorageDep
+from app.platform.tasks import TaskSchedulerDep
+from app.processing.repo import IngestionRepository
+from app.processing.service import IngestionService
 
 
 def get_ingestion_repository(session: SessionDep) -> IngestionRepository:

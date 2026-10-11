@@ -2,13 +2,32 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+
 from ..library.depends import MetadataResolverDep, PdfFetcherDep
 from ..platform.database import SessionDep, SessionFactoryDep
+from ..platform.discovery import DiscoveryAggregator
 from ..platform.storage import StorageDep
 from ..platform.tasks import TaskSchedulerDep
-from ..scholar.pdf_sources import DoiPdfLocator
+from ..sessions.depends import SessionBindingServiceDep
 from .ports import PdfSourceLocator
-from .service import ImportApprovalService, ImportService
+from .service import DiscoveryService, ImportApprovalService, ImportService
+
+
+def get_discovery_adapter() -> DiscoveryAggregator:
+    return DiscoveryAggregator()
+
+
+DiscoveryAdapterDep = Annotated[DiscoveryAggregator, Depends(get_discovery_adapter)]
+
+
+def get_discovery_service(
+    bindings: SessionBindingServiceDep, provider: DiscoveryAdapterDep
+) -> DiscoveryService:
+    return DiscoveryService(bindings, provider)
+
+
+DiscoveryServiceDep = Annotated[DiscoveryService, Depends(get_discovery_service)]
 
 
 def get_pdf_locator() -> PdfSourceLocator:
@@ -28,7 +47,7 @@ def get_import_service(
     pdf_locator: PdfSourceLocatorDep,
 ) -> ImportService:
     """Wire identifier imports to the shared processing factory."""
-    from ..processing.service import build_ingestion_service
+    from app.literature_support.processing.pipeline import build_ingestion_service
 
     return ImportService(
         session_factory=session_factory,

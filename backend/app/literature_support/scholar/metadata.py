@@ -1,24 +1,26 @@
 """Online metadata completion for known identifiers.
 
 Only exact identifier lookups are implemented (Crossref for DOIs, the arXiv
-Atom API and exact OpenAlex DOI fallback for arXiv ids). Title search is deliberately not part of this module:
+Atom API and exact OpenAlex DOI fallback for arXiv ids). Title search is
+deliberately not part of this module:
 candidates from a search must not be treated as the confirmed paper.
 """
 
 import re
 import time
 import xml.etree.ElementTree as ElementTree
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
 import structlog
 
-from ..library.domain import MetadataStatus, PaperSource
-from ..platform.config import settings
-from ..platform.errors import AppError, ErrorCode
-from .identifiers import Identifier, IdentifierType
+from app.library.domain import MetadataStatus, PaperSource
+from app.literature_support.scholar.identifiers import Identifier, IdentifierType
+from app.platform.config import settings
+from app.platform.errors import AppError, ErrorCode
+from app.platform.outbound_http import HttpClientFactory, default_http_client_factory
 
 logger = structlog.get_logger(__name__)
 
@@ -85,17 +87,6 @@ class MetadataProvider(Protocol):
     def supports(self, identifier: Identifier) -> bool: ...
 
     def fetch(self, identifier: Identifier) -> ProviderMetadata: ...
-
-
-HttpClientFactory = Callable[[], httpx.Client]
-
-
-def default_http_client_factory() -> httpx.Client:
-    return httpx.Client(
-        timeout=settings.outbound_timeout_seconds,
-        follow_redirects=True,
-        headers={"User-Agent": "paper-agent/0.1 (metadata resolution)"},
-    )
 
 
 class CrossrefClient:
@@ -192,11 +183,18 @@ class ArxivClient:
         response.raise_for_status()
         payload = response.json()
         results = payload.get("results") if isinstance(payload, dict) else None
-        if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+        if (
+            not isinstance(results, list)
+            or not results
+            or not isinstance(results[0], dict)
+        ):
             raise ValueError("OpenAlex exact DOI result missing")
         work = results[0]
         reported_doi = work.get("doi")
-        if not isinstance(reported_doi, str) or reported_doi.casefold() != f"https://doi.org/{doi}".casefold():
+        if (
+            not isinstance(reported_doi, str)
+            or reported_doi.casefold() != f"https://doi.org/{doi}".casefold()
+        ):
             raise ValueError("OpenAlex DOI mismatch")
         authorships = work.get("authorships") or []
         if not isinstance(authorships, list):
@@ -204,8 +202,7 @@ class ArxivClient:
         authors = [
             name
             for item in authorships
-            if isinstance(item, dict)
-            and isinstance(item.get("author"), dict)
+            if isinstance(item, dict) and isinstance(item.get("author"), dict)
             if isinstance(name := item["author"].get("display_name"), str)
         ]
         title = work.get("display_name")

@@ -3,7 +3,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from .domain import IngestionJob, IngestionStage, IngestionStatus, StageStatus
+from app.processing.domain import (
+    IngestionJob,
+    IngestionStage,
+    IngestionStatus,
+    StageStatus,
+)
 
 
 class IngestionStageRead(BaseModel):

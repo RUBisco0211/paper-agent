@@ -76,6 +76,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     agent_internal_key: str = ""
     business_api_url: str = "http://127.0.0.1:8000"
+    agent_service_url: str = "http://127.0.0.1:8001"
+    schedule_default_timezone: str = "Asia/Shanghai"
     credential_master_key: SecretStr = SecretStr("")
     credential_base_urls: dict[str, str] = {}
     access_token_ttl_minutes: int = 15

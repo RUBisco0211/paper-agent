@@ -7,7 +7,7 @@ module scope; wiring happens in ``library.depends``.
 from typing import Protocol
 from uuid import UUID
 
-from ..ingestion.domain import IngestionJob
+from app.processing.domain import IngestionJob
 
 
 class IngestionStarter(Protocol):

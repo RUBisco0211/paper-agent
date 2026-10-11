@@ -14,12 +14,12 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from ..platform.database import (
+from app.platform.database import (
     Base,
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
-from .domain import (
+from app.processing.domain import (
     IngestionJob,
     IngestionStage,
     IngestionStageRecord,

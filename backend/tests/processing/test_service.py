@@ -9,20 +9,20 @@ from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ingestion.depends import get_ingestion_service
-from app.ingestion.domain import IngestionStage
-from app.ingestion.repo import IngestionRepository
-from app.ingestion.service import IngestionService
 from app.library.depends import get_ingestion_starter
 from app.library.repo import PaperRepository
+from app.literature_support.processing.mineru import MineruArtifact, MineruParser
+from app.literature_support.processing.pipeline import IngestionPipeline
+from app.literature_support.processing.worker import IngestionWorker
+from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from app.platform.config import settings
 from app.platform.storage import ObjectStorage, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
-from app.processing.mineru import MineruArtifact, MineruParser
-from app.processing.service import IngestionPipeline
-from app.processing.worker import IngestionWorker
+from app.processing.depends import get_ingestion_service
+from app.processing.domain import IngestionStage
+from app.processing.repo import IngestionRepository
+from app.processing.service import IngestionService
 from app.retrieval.depends import get_embedding_adapter
-from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers, build_pdf_with_text
 from tests.library.test_pdf_and_metadata import FakeProvider
 

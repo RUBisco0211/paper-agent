@@ -15,6 +15,16 @@ ROUTER_FILES = {
     "ports.py",
 }
 
+LITERATURE_PACKAGES = {"library", "imports", "processing", "retrieval"}
+
+
+def test_literature_workflows_have_four_business_packages():
+    for name in LITERATURE_PACKAGES:
+        package = APP / name
+        assert {path.name for path in package.glob("*.py")} == ROUTER_FILES
+    for old_name in {"ingestion", "embedding", "evidence", "scholar"}:
+        assert not (APP / old_name).exists()
+
 
 def _imports(path: Path) -> list[str]:
     """Resolve imports without bootstrapping application infrastructure."""

@@ -17,6 +17,23 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class ToolAuthorizationUpdate(BaseModel):
+    always_allow: bool
+
+
+class ToolAuthorizationRead(BaseModel):
+    tool_name: str
+    always_allow: bool
+
+
+class TimezoneUpdate(BaseModel):
+    timezone: str = Field(min_length=1, max_length=64)
+
+
+class TimezoneRead(BaseModel):
+    timezone: str
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

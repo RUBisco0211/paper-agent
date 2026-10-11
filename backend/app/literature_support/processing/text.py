@@ -11,8 +11,8 @@ import structlog
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from ..platform.errors import AppError, ErrorCode
-from ..scholar.identifiers import Identifier, find_identifiers
+from app.literature_support.scholar.identifiers import Identifier, find_identifiers
+from app.platform.errors import AppError, ErrorCode
 
 logger = structlog.get_logger(__name__)
 

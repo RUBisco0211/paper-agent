@@ -4,7 +4,7 @@
 需要先做一次离线迁移（见 backend/README 的 Embedding 章节）。
 """
 
-from .base import EmbeddingProfile
+from app.literature_support.embedding.base import EmbeddingProfile
 
 DEFAULT_PROFILE = EmbeddingProfile(
     notes="未知模型：使用环境变量提供的维度与截断长度",

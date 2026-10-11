@@ -8,26 +8,47 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.ingestion.repo import (
-    IngestionJobRecord,
-    IngestionRepository,
-    IngestionStageRecordOrm,
-)
-from app.ingestion.service import IngestionService
 from app.library.depends import (
     get_paper_library_service,
 )
 from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
 from app.library.service import PaperLibraryService
+from app.literature_support.scholar.metadata import MetadataResolver
 from app.platform.storage import (
     ObjectStorage,
     mineru_artifact_key,
     mineru_job_artifact_key,
 )
-from app.scholar.metadata import MetadataResolver
+from app.processing.repo import (
+    IngestionJobRecord,
+    IngestionRepository,
+    IngestionStageRecordOrm,
+)
+from app.processing.service import IngestionService
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
+
+
+def test_paper_detail_exposes_versions_when_owner_reads_quoted_sources(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+) -> None:
+    owner = register_user(email="quote-version-owner@example.com")
+    stranger = register_user(email="quote-version-stranger@example.com")
+    entry_id = UUID(_upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"]["id"])
+    paper = db_session.get(PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id)
+    paper.has_fulltext = True
+    db_session.commit()
+
+    detail = client.get(f"{api_prefix}/papers/{entry_id}", headers=auth_headers(owner["access_token"]))
+    assert detail.status_code == 200
+    assert detail.json()["pdf_version"] == paper.file_hash
+    assert detail.json()["artifact_version"]
+    assert client.get(f"{api_prefix}/papers/{entry_id}", headers=auth_headers(stranger["access_token"])).status_code == 404
 
 
 def test_legacy_paper_image_can_be_previewed_from_its_own_storage_prefix(

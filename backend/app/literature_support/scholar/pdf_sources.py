@@ -7,9 +7,9 @@ from urllib.parse import quote, urlsplit
 import httpx
 import structlog
 
-from ..platform.config import settings
-from ..platform.errors import AppError, ErrorCode
-from .metadata import default_http_client_factory
+from app.platform.config import settings
+from app.platform.errors import AppError, ErrorCode
+from app.platform.outbound_http import default_http_client_factory
 
 logger = structlog.get_logger(__name__)
 

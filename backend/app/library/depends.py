@@ -2,12 +2,16 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from app.literature_support.scholar.metadata import (
+    MetadataResolver,
+    build_default_resolver,
+)
+from app.literature_support.scholar.pdf_fetch import PdfFetcher
+
 from ..platform.config import settings
 from ..platform.database import SessionDep, SessionFactoryDep
 from ..platform.storage import StorageDep
 from ..platform.tasks import TaskSchedulerDep
-from ..scholar.metadata import MetadataResolver, build_default_resolver
-from ..scholar.pdf_fetch import PdfFetcher
 from .ports import IngestionStarter
 from .repo import PaperRepository
 from .service import PaperLibraryService
@@ -28,7 +32,7 @@ def get_ingestion_starter(
 ) -> IngestionStarter:
     """Build the shared ingestion service for this request.
     """
-    from ..processing.service import build_ingestion_service
+    from app.literature_support.processing.pipeline import build_ingestion_service
 
     return build_ingestion_service(
         session=session,

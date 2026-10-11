@@ -2,7 +2,7 @@
 
 Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理任务和混合检索；AgentScope 会话服务与文献解析 worker 分别运行在独立进程。
 
-功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md) 的 0018–0034 一组，技术选型见 [../docs/research/technical-stack.md](../docs/research/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
+功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md)，包与依赖边界见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，技术选型见 [../docs/research/technical-stack.md](../docs/research/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
 
 ## 本地依赖
 
@@ -16,7 +16,7 @@ uv sync
 cp .env.example .env
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
-uv run python -m app.processing.worker  # 另一个终端
+uv run python -m app.literature_support.processing.worker  # 另一个终端
 ```
 
 完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、解析 worker、AgentScope 会话服务、PostgreSQL 和前端。
@@ -26,7 +26,7 @@ uv run python -m app.processing.worker  # 另一个终端
 - API 文档：<http://127.0.0.1:8000/docs>
 - 健康检查：<http://127.0.0.1:8000/health>
 
-AgentScope Credential 使用独立的 `CREDENTIAL_MASTER_KEY`（32 随机字节的 hex），按用户派生对称密钥加密 API Key。`./start.sh` 仅在 agent_service 数据库尚无凭据时自动生成并写入 `backend/.env`；首次生成后请安全备份。主密钥丢失时已有凭据无法解密，服务会拒绝启动。`CREDENTIAL_BASE_URLS` 可由服务端设置 Provider endpoint 白名单，浏览器提交其他 URL 会被拒绝（见决策 0038–0039）。
+AgentScope Credential 使用独立的 `CREDENTIAL_MASTER_KEY`（32 随机字节的 hex），按用户派生对称密钥加密 API Key。`./start.sh` 仅在 agent_service 数据库尚无凭据时自动生成并写入 `backend/.env`；首次生成后请安全备份。主密钥丢失时已有凭据无法解密，服务会拒绝启动。`CREDENTIAL_BASE_URLS` 可由服务端设置 Provider endpoint 白名单，浏览器提交其他 URL 会被拒绝（见决策 0015）。
 
 ## 测试
 
@@ -44,24 +44,21 @@ uv run pytest
 ```text
 app/
 ├── auth/         # 账号与登录态
-├── imports/      # DOI/arXiv 导入
-├── ingestion/    # 处理任务与阶段状态
+├── imports/      # DOI/arXiv 导入、库外文献发现与入库队列
+├── processing/   # 处理任务、阶段状态和重试入口
 ├── library/      # 个人文献库与共享 PDF
 ├── projects/     # 项目与文献成员
 ├── retrieval/    # 授权检索与 Chunk 仓储
 ├── sessions/     # AgentScope 会话绑定与已登记引用
-├── processing/   # PDF 工具、MinerU、分块、处理流水线与独立 worker
-├── embedding/    # 向量服务适配器与模型档案
+├── literature_support/  # PDF/MinerU、分块、向量、学术来源与证据算法
 ├── agent/        # LLM 模型目录
-├── evidence/     # 排名融合与引用 ID 工具
-├── scholar/      # 标识符、元数据查询/合并与 PDF 下载
 ├── platform/     # 配置、数据库、日志、错误、存储与调度
 └── main.py       # FastAPI 应用装配
 alembic/          # 版本化数据库迁移
 tests/            # 按职责分包的测试与架构约束
 ```
 
-有 Router 的七个业务包统一为 `api.py`、`schemas.py`、`depends.py`、`service.py`、
+有 Router 的业务包统一为 `api.py`、`schemas.py`、`depends.py`、`service.py`、
 `domain.py`、`repo.py`、`ports.py`，另有 `__init__.py`。`depends.py` 负责 HTTP 依赖装配，
 `service.py` 负责用例，`repo.py` 负责 ORM；复杂执行过程、外部适配器和纯工具放在同级支持包。
 
@@ -186,7 +183,7 @@ EMBEDDING_DIMENSIONS=1024
 
 ### 适配层
 
-向量差异都收敛在 `app/embedding/`：
+向量差异都收敛在 `app/literature_support/embedding/`：
 
 ```text
 base.py              EmbeddingProfile（维度/截断/前缀）+ prepare()

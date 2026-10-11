@@ -11,8 +11,8 @@ from pathlib import Path
 import httpx
 import structlog
 
-from ..platform.errors import AppError, ErrorCode
-from .metadata import HttpClientFactory, default_http_client_factory
+from app.platform.errors import AppError, ErrorCode
+from app.platform.outbound_http import HttpClientFactory, default_http_client_factory
 
 logger = structlog.get_logger(__name__)
 

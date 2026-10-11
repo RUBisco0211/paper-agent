@@ -2,10 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, status
 
-from ..auth.depends import CurrentUser
-from ..platform.errors import ErrorCode, NotFoundError
-from .depends import IngestionServiceDep
-from .schemas import IngestionJobRead
+from app.auth.depends import CurrentUser
+from app.platform.errors import ErrorCode, NotFoundError
+from app.processing.depends import IngestionServiceDep
+from app.processing.schemas import IngestionJobRead
 
 router = APIRouter(prefix="/ingestion-jobs", tags=["ingestion"])
 

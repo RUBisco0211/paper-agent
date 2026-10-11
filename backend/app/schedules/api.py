@@ -1,11 +1,44 @@
 from fastapi import APIRouter, Response, status
 
 from ..auth.depends import CurrentUser
-from ..retrieval.depends import AgentInternalAuth
-from .depends import ScheduleBindingServiceDep
-from .schemas import ScheduleBindingCreate, ScheduleBindingRead, ScheduleSessionEnsure
+from ..platform.internal_auth import AgentInternalAuth
+from .depends import AgentScheduleGatewayDep, ScheduleBindingServiceDep
+from .schemas import (
+    AgentScheduleCreate,
+    AgentScheduleRead,
+    ScheduleBindingCreate,
+    ScheduleBindingRead,
+    ScheduleSessionEnsure,
+)
 
 router = APIRouter(tags=["schedules"])
+
+
+@router.post(
+    "/internal/agent-schedules",
+    response_model=AgentScheduleRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_agent_schedule(
+    payload: AgentScheduleCreate,
+    _auth: AgentInternalAuth,
+    service: ScheduleBindingServiceDep,
+    gateway: AgentScheduleGatewayDep,
+) -> AgentScheduleRead:
+    binding, cron, timezone = service.create_for_agent(
+        gateway=gateway,
+        **payload.model_dump(),
+    )
+    return AgentScheduleRead(
+        schedule_id=binding.schedule_id,
+        project_id=binding.project_id,
+        cron_expression=cron,
+        name=payload.name.strip(),
+        prompt=payload.prompt.strip(),
+        timezone=timezone,
+        time=payload.time,
+        weekdays=payload.weekdays,
+    )
 
 
 @router.post(

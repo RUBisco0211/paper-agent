@@ -5,9 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 
+from app.processing.domain import IngestionJob
+from app.processing.schemas import IngestionJobRead
+
 from ..auth.depends import CurrentUser
-from ..ingestion.domain import IngestionJob
-from ..ingestion.schemas import IngestionJobRead
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
 from .depends import PaperLibraryServiceDep
@@ -202,7 +203,11 @@ def read_paper(
     service: PaperLibraryServiceDep,
 ) -> UserPaperDetail:
     entry = _entry_or_404(service, user_id=user.id, user_paper_id=paper_id)
-    return to_detail(entry)
+    detail = to_detail(entry)
+    if entry.paper is not None:
+        detail.pdf_version = entry.paper.file_hash
+        detail.artifact_version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    return detail
 
 
 @router.get(

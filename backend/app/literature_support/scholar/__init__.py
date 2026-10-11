@@ -1,7 +1,11 @@
 """Identifier resolution and online metadata completion."""
 
-from .identifiers import Identifier, IdentifierType, parse_identifier
-from .metadata import (
+from app.literature_support.scholar.identifiers import (
+    Identifier,
+    IdentifierType,
+    parse_identifier,
+)
+from app.literature_support.scholar.metadata import (
     MetadataResolver,
     ProviderMetadata,
     ResolutionOutcome,

@@ -1,1 +1,1 @@
-"""PDF validation, extraction and ingestion execution."""
+"""Paper processing jobs, stage state and retry use cases."""

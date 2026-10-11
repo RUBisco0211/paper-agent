@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
 from app.library.domain import MetadataStatus, PaperSource
 from app.library.repo import PaperRepository
-from app.scholar.identifiers import Identifier
-from app.scholar.metadata import MetadataResolver, ProviderMetadata
+from app.literature_support.scholar.identifiers import Identifier
+from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers
 
 
@@ -46,7 +46,7 @@ class FakePdfFetcher:
         self.urls: list[str] = []
 
     def download(self, url: str, *, destination: Path):
-        from app.scholar.pdf_fetch import DownloadedPdf
+        from app.literature_support.scholar.pdf_fetch import DownloadedPdf
 
         self.urls.append(url)
         destination.write_bytes(self.payload)

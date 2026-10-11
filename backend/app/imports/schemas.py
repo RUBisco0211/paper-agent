@@ -3,7 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from ..scholar.identifiers import IdentifierType
+from app.literature_support.scholar.identifiers import IdentifierType
+
 from .domain import ImportStatus, PaperImport
 
 
@@ -24,6 +25,10 @@ class ImportApprovalRequest(BaseModel):
 class ImportApprovalRead(BaseModel):
     id: UUID
     count: int
+
+
+class ImportApprovalPreview(BaseModel):
+    candidates: list[dict]
 
 
 class BoundBatchImportRequest(BaseModel):
@@ -49,6 +54,23 @@ class ImportQueueItem(BaseModel):
 
 class ImportQueueRead(BaseModel):
     items: list[ImportQueueItem]
+
+
+class DiscoveryRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    query: str = Field(min_length=1, max_length=300)
+    limit: int = Field(default=8, ge=1, le=10)
+
+
+class ManualDiscoveryRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=300)
+    limit: int = Field(default=10, ge=1, le=20)
+
+
+class DiscoveryResponse(BaseModel):
+    papers: list[dict]
+    failed_sources: list[str] = Field(default_factory=list)
 
 
 class ImportRead(BaseModel):

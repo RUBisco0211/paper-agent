@@ -7,7 +7,7 @@ the original paper.
 
 from dataclasses import dataclass, field
 
-from ..retrieval.domain import ChunkDraft
+from app.retrieval.domain import ChunkDraft
 
 CHARS_PER_TOKEN = 4
 HEADING_TYPES = {"title", "heading"}

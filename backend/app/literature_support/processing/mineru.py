@@ -17,8 +17,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
-from ..platform.errors import AppError, ErrorCode
-from ..scholar.metadata import HttpClientFactory, default_http_client_factory
+from app.platform.errors import AppError, ErrorCode
+from app.platform.outbound_http import HttpClientFactory, default_http_client_factory
 
 logger = structlog.get_logger(__name__)
 

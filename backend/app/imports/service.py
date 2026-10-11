@@ -13,6 +13,14 @@ from uuid import UUID
 import structlog
 from sqlalchemy import select
 
+from app.literature_support.scholar.identifiers import (
+    Identifier,
+    IdentifierType,
+    parse_identifier,
+)
+from app.literature_support.scholar.metadata import MetadataResolver
+from app.literature_support.scholar.pdf_fetch import PdfFetcher
+
 from ..library.domain import PaperSource
 from ..library.repo import PaperRepository
 from ..library.service import PaperLibraryService
@@ -24,20 +32,55 @@ from ..platform.errors import (
     NotFoundError,
     ValidationError,
 )
-from ..platform.security import read_candidate_token
+from ..platform.security import create_candidate_token, read_candidate_token
 from ..platform.storage import ObjectStorage
 from ..platform.tasks import TaskScheduler
 from ..projects.repo import ProjectRepository
-from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
-from ..scholar.metadata import MetadataResolver
-from ..scholar.pdf_fetch import PdfFetcher
 from ..sessions.repo import SessionBindingRepository
 from ..sessions.service import SessionBindingService
 from .domain import ImportStatus, PaperImport
-from .ports import IngestionStarterFactory, PdfSourceLocator
+from .ports import IngestionStarterFactory, PaperDiscoveryAdapter, PdfSourceLocator
 from .repo import ImportApprovalRecord, ImportRepository
 
 logger = structlog.get_logger(__name__)
+
+
+class DiscoveryService:
+    def __init__(
+        self, bindings: SessionBindingService, provider: PaperDiscoveryAdapter
+    ) -> None:
+        self._bindings = bindings
+        self._provider = provider
+
+    def search_manual(self, *, query: str, limit: int) -> dict:
+        result = self._provider.search(query, limit)
+        return {"papers": result.papers, "failed_sources": result.failed_sources}
+
+    def search(
+        self, *, user_id: UUID, session_id: UUID, query: str, limit: int
+    ) -> dict:
+        self._bindings.require(session_id=session_id, user_id=user_id)
+        result = self._provider.search(query, limit)
+        candidates = result.papers
+        for candidate in candidates:
+            identifier = candidate.get("doi")
+            source_id = candidate.get("source_id")
+            try:
+                if not isinstance(identifier, str) or not isinstance(source_id, str):
+                    continue
+                parse_identifier(identifier)
+            except AppError:
+                continue
+            candidate["candidate_token"] = create_candidate_token(
+                user_id=str(user_id),
+                session_id=str(session_id),
+                source_id=source_id,
+                identifier=identifier,
+                title=candidate.get("title")
+                if isinstance(candidate.get("title"), str)
+                else None,
+            )
+        return {"papers": candidates, "failed_sources": result.failed_sources}
 
 
 class ImportApprovalService:
@@ -67,7 +110,15 @@ class ImportApprovalService:
             if identifier.value in seen:
                 continue
             seen.add(identifier.value)
-            candidates.append({"identifier": identifier.value, "source_id": source_id})
+            candidates.append(
+                {
+                    "identifier": identifier.value,
+                    "source_id": source_id,
+                    "title": claims.get("title")
+                    if isinstance(claims.get("title"), str)
+                    else None,
+                }
+            )
         with self._session_factory() as session:
             SessionBindingService(
                 SessionBindingRepository(session), ProjectRepository(session)
@@ -133,6 +184,38 @@ class ImportApprovalService:
             record.status = "started"
             session.commit()
             return results
+
+    def preview(self, *, user_id: UUID, session_id: UUID) -> list[dict]:
+        with self._session_factory() as session:
+            SessionBindingService(
+                SessionBindingRepository(session), ProjectRepository(session)
+            ).require(session_id=session_id, user_id=user_id)
+            record = session.scalar(
+                select(ImportApprovalRecord)
+                .where(
+                    ImportApprovalRecord.user_id == user_id,
+                    ImportApprovalRecord.session_id == session_id,
+                )
+                .order_by(
+                    ImportApprovalRecord.created_at.desc(),
+                    ImportApprovalRecord.id.desc(),
+                )
+                .limit(1)
+            )
+            if (
+                record is None
+                or record.status != "pending"
+                or record.expires_at < datetime.now(UTC)
+            ):
+                raise ForbiddenError("本次选文授权已失效，请重新选择")
+            return [
+                {
+                    "title": item.get("title"),
+                    "identifier": item["identifier"],
+                    "source_id": item["source_id"],
+                }
+                for item in record.candidates
+            ]
 
 
 class ImportService:

@@ -3,13 +3,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Query
 
+from app.literature_support.evidence.citations import build_citation_id
+
 from ..auth.depends import CurrentUser
-from ..evidence.citations import build_citation_id
+from ..platform.internal_auth import AgentInternalAuth
 from .depends import (
-    AgentInternalAuth,
     BoundPaperServiceDep,
     BoundSearchServiceDep,
-    DiscoveryServiceDep,
     SearchServiceDep,
 )
 from .domain import SearchOutcome
@@ -20,10 +20,9 @@ from .schemas import (
     BoundSearchRequest,
     BoundSearchResponse,
     ChannelRead,
-    DiscoveryRequest,
-    DiscoveryResponse,
     EvidenceRead,
-    ManualDiscoveryRequest,
+    QuoteReferenceResolved,
+    QuoteReferenceResolveRequest,
     SearchRequest,
     SearchResponse,
 )
@@ -31,31 +30,32 @@ from .schemas import (
 router = APIRouter(tags=["retrieval"])
 
 
-@router.post("/discover-papers", response_model=DiscoveryResponse)
-def discover_papers_manually(
-    payload: ManualDiscoveryRequest,
-    _user: CurrentUser,
-    service: DiscoveryServiceDep,
-) -> DiscoveryResponse:
-    return DiscoveryResponse(
-        **service.search_manual(query=payload.query, limit=payload.limit)
-    )
-
-
-@router.post("/internal/discover-papers", response_model=DiscoveryResponse)
-def discover_papers(
-    payload: DiscoveryRequest,
+@router.post("/internal/quote-reference/resolve", response_model=QuoteReferenceResolved)
+def resolve_quote_reference(
+    payload: QuoteReferenceResolveRequest,
     _auth: AgentInternalAuth,
-    service: DiscoveryServiceDep,
-) -> DiscoveryResponse:
-    return DiscoveryResponse(
-        **service.search(
-            user_id=payload.user_id,
-            session_id=payload.session_id,
-            query=payload.query,
-            limit=payload.limit,
+    service: BoundPaperServiceDep,
+) -> QuoteReferenceResolved:
+    from fastapi import HTTPException
+
+    try:
+        return QuoteReferenceResolved(
+            **service.resolve_quote(
+                user_id=payload.user_id,
+                session_id=payload.session_id,
+                user_paper_id=payload.user_paper_id,
+                kind=payload.kind,
+                version=payload.version,
+                page=payload.page,
+                block_id=payload.block_id,
+                start=payload.start,
+                end=payload.end,
+                selected_text=payload.selected_text,
+                include_image=payload.include_image,
+            )
         )
-    )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/internal/papers", response_model=BoundListResponse)

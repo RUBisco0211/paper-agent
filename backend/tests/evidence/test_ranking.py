@@ -1,7 +1,10 @@
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from app.evidence.ranking import apply_budgets, reciprocal_rank_fusion
+from app.literature_support.evidence.ranking import (
+    apply_budgets,
+    reciprocal_rank_fusion,
+)
 from app.retrieval.domain import Chunk, ChunkMatch
 
 

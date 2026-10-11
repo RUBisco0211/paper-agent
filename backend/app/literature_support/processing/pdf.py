@@ -6,8 +6,8 @@ from pathlib import Path
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 
-from ..library.domain import PDF_MAGIC
-from ..platform.errors import AppError, ErrorCode
+from app.library.domain import PDF_MAGIC
+from app.platform.errors import AppError, ErrorCode
 
 
 @dataclass(frozen=True, slots=True)

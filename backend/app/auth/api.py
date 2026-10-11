@@ -1,18 +1,26 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Request, Response, status
 
 from ..platform.config import settings
 from ..platform.errors import ErrorCode, ForbiddenError, UnauthorizedError
+from ..platform.internal_auth import AgentInternalAuth
 from .depends import AuthServiceDep, CurrentUser
 from .schemas import (
     AccessTokenResponse,
     AuthSessionResponse,
     LoginRequest,
     RegisterRequest,
+    TimezoneRead,
+    TimezoneUpdate,
+    ToolAuthorizationRead,
+    ToolAuthorizationUpdate,
     UserRead,
 )
 from .service import IssuedSession
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+internal_router = APIRouter(tags=["auth"])
 
 REFRESH_COOKIE_PATH = f"{settings.api_prefix}/auth"
 
@@ -143,3 +151,39 @@ def logout(
 )
 def read_current_user(user: CurrentUser) -> UserRead:
     return UserRead.from_domain(user)
+
+
+@router.get("/tool-authorizations", response_model=dict[str, bool])
+def read_tool_authorizations(
+    user: CurrentUser, service: AuthServiceDep
+) -> dict[str, bool]:
+    return service.tool_authorizations(user.id)
+
+
+@router.patch("/timezone", response_model=TimezoneRead)
+def update_timezone(
+    payload: TimezoneUpdate, user: CurrentUser, service: AuthServiceDep
+) -> TimezoneRead:
+    return TimezoneRead(
+        timezone=service.set_timezone(user_id=user.id, timezone=payload.timezone)
+    )
+
+
+@router.patch("/tool-authorizations/{tool_name}", response_model=ToolAuthorizationRead)
+def update_tool_authorization(
+    tool_name: str,
+    payload: ToolAuthorizationUpdate,
+    user: CurrentUser,
+    service: AuthServiceDep,
+) -> ToolAuthorizationRead:
+    allowed = service.set_tool_authorization(
+        user_id=user.id, tool_name=tool_name, always_allow=payload.always_allow
+    )
+    return ToolAuthorizationRead(tool_name=tool_name, always_allow=allowed)
+
+
+@internal_router.get("/internal/tool-authorizations", response_model=dict[str, bool])
+def read_internal_tool_authorizations(
+    user_id: UUID, _auth: AgentInternalAuth, service: AuthServiceDep
+) -> dict[str, bool]:
+    return service.tool_authorizations(user_id)

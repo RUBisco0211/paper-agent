@@ -239,6 +239,9 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     ok "已生成服务间检索密钥"
   fi
   export BUSINESS_API_URL="${BUSINESS_API_URL:-http://127.0.0.1:$BACKEND_PORT}"
+  AGENT_SERVICE_INTERNAL_HOST="$AGENT_SERVICE_HOST"
+  [[ "$AGENT_SERVICE_INTERNAL_HOST" == "0.0.0.0" ]] && AGENT_SERVICE_INTERNAL_HOST="127.0.0.1"
+  export AGENT_SERVICE_URL="${AGENT_SERVICE_URL:-http://$AGENT_SERVICE_INTERNAL_HOST:$AGENT_SERVICE_PORT}"
 
   if [[ "$DO_INSTALL" -eq 1 ]]; then
     uv sync --quiet
@@ -297,7 +300,7 @@ PY
   echo
 
   step "启动文献解析 worker"
-  uv run python -m app.processing.worker >"$LOG_DIR/worker.log" 2>&1 &
+  uv run python -m app.literature_support.processing.worker >"$LOG_DIR/worker.log" 2>&1 &
   WORKER_PID=$!
   sleep 0.5
   if ! kill -0 "$WORKER_PID" 2>/dev/null; then

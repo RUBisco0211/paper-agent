@@ -4,8 +4,8 @@ import zipfile
 
 import pytest
 
+from app.literature_support.processing.mineru import _read_artifact
 from app.platform.errors import AppError
-from app.processing.mineru import _read_artifact
 
 
 def _zip(entries: dict[str, bytes]) -> bytes:

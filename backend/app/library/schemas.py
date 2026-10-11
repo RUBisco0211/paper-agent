@@ -3,7 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from ..ingestion.schemas import IngestionJobRead, ProcessingRead
+from app.processing.schemas import IngestionJobRead, ProcessingRead
+
 from .domain import Capabilities, MetadataStatus, PaperSource
 from .service import LibraryEntry
 
@@ -45,6 +46,8 @@ class UserPaperDetail(UserPaperSummary):
     metadata: dict | None = None
     metadata_sources: list | None = None
     pdf: PdfInfoRead
+    pdf_version: str | None = None
+    artifact_version: str | None = None
 
 
 class PaperBlockRead(BaseModel):

@@ -4,8 +4,8 @@ from fastapi.testclient import TestClient
 
 from app.imports.depends import get_pdf_locator
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from app.platform.errors import AppError, ErrorCode
-from app.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers
 from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
 

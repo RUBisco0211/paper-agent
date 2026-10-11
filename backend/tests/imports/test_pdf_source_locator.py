@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
+from app.literature_support.scholar.pdf_sources import DoiPdfLocator
 from app.platform.errors import AppError, ErrorCode
-from app.scholar.pdf_sources import DoiPdfLocator
 
 
 def test_pdf_locator_returns_only_urls_from_exact_doi_matches() -> None:

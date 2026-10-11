@@ -5,6 +5,29 @@ from pydantic import BaseModel, Field
 from .domain import ChannelStatus, SearchScope, SearchStatus
 
 
+class QuoteReferenceResolveRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    kind: str
+    user_paper_id: UUID
+    version: str
+    page: int = Field(ge=1)
+    block_id: int | None = None
+    start: int | None = None
+    end: int | None = None
+    rects: list[list[float]] = Field(default_factory=list)
+    selected_text: str = Field(max_length=2000)
+    comment: str = Field(max_length=2000)
+    include_image: bool = False
+
+
+class QuoteReferenceResolved(BaseModel):
+    title: str | None
+    page: int
+    image_base64: str | None = None
+    image_media_type: str | None = None
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     scope: SearchScope = SearchScope.LIBRARY
@@ -47,23 +70,6 @@ class BoundSearchRequest(BaseModel):
     session_id: UUID
     query: str = Field(min_length=1, max_length=500)
     limit: int = Field(default=8, ge=1, le=20)
-
-
-class DiscoveryRequest(BaseModel):
-    user_id: UUID
-    session_id: UUID
-    query: str = Field(min_length=1, max_length=300)
-    limit: int = Field(default=8, ge=1, le=10)
-
-
-class ManualDiscoveryRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=300)
-    limit: int = Field(default=10, ge=1, le=20)
-
-
-class DiscoveryResponse(BaseModel):
-    papers: list[dict]
-    failed_sources: list[str] = Field(default_factory=list)
 
 
 class BoundEvidenceRead(EvidenceRead):

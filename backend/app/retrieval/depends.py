@@ -1,15 +1,13 @@
-import secrets
 from typing import Annotated
 
-from fastapi import Depends, Header
+from fastapi import Depends
 
-from ..embedding import build_embedding_adapter
+from app.literature_support.embedding import build_embedding_adapter
+
 from ..library.depends import PaperLibraryServiceDep
 from ..library.repo import PaperRepository
 from ..platform.config import settings
 from ..platform.database import SessionDep
-from ..platform.discovery import DiscoveryAggregator
-from ..platform.errors import ErrorCode, UnauthorizedError
 from ..projects.repo import ProjectRepository
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import EmbeddingAdapter
@@ -17,7 +15,6 @@ from .repo import ChunkRepository
 from .service import (
     BoundPaperService,
     BoundSearchService,
-    DiscoveryService,
     SearchService,
 )
 
@@ -64,40 +61,6 @@ def get_search_service(
 
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
-
-
-def require_agent_internal_key(
-    x_agent_internal_key: Annotated[str | None, Header()] = None,
-) -> None:
-    configured = settings.agent_internal_key
-    if (
-        not configured
-        or not x_agent_internal_key
-        or not secrets.compare_digest(
-            configured,
-            x_agent_internal_key,
-        )
-    ):
-        raise UnauthorizedError("内部服务认证失败", code=ErrorCode.UNAUTHORIZED)
-
-
-AgentInternalAuth = Annotated[None, Depends(require_agent_internal_key)]
-
-
-def get_discovery_adapter() -> DiscoveryAggregator:
-    return DiscoveryAggregator()
-
-
-DiscoveryAdapterDep = Annotated[DiscoveryAggregator, Depends(get_discovery_adapter)]
-
-
-def get_discovery_service(
-    bindings: SessionBindingServiceDep, provider: DiscoveryAdapterDep
-) -> DiscoveryService:
-    return DiscoveryService(bindings, provider)
-
-
-DiscoveryServiceDep = Annotated[DiscoveryService, Depends(get_discovery_service)]
 
 
 def get_bound_search_service(

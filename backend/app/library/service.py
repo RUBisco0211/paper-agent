@@ -8,17 +8,25 @@ from uuid import UUID
 
 import structlog
 
-from ..ingestion.domain import IngestionJob
+from app.literature_support.processing.blocks import (
+    build_block_index,
+    normalize_image_path,
+)
+from app.literature_support.processing.pdf import ensure_pdf_magic, inspect_pdf
+from app.literature_support.processing.text import detect_identifiers
+from app.literature_support.scholar.identifiers import (
+    Identifier,
+    IdentifierType,
+    parse_identifier,
+)
+from app.literature_support.scholar.merge import merge_provider_metadata, merge_sources
+from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
+from app.literature_support.scholar.pdf_fetch import PdfFetcher
+from app.processing.domain import IngestionJob
+
 from ..platform.config import settings as app_settings
 from ..platform.errors import AppError, ConflictError, ErrorCode, NotFoundError
 from ..platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
-from ..processing.blocks import build_block_index, normalize_image_path
-from ..processing.pdf import ensure_pdf_magic, inspect_pdf
-from ..processing.text import detect_identifiers
-from ..scholar.identifiers import Identifier, IdentifierType, parse_identifier
-from ..scholar.merge import merge_provider_metadata, merge_sources
-from ..scholar.metadata import MetadataResolver, ProviderMetadata
-from ..scholar.pdf_fetch import PdfFetcher
 from .domain import (
     Capabilities,
     MetadataStatus,
@@ -193,6 +201,32 @@ class PaperLibraryService:
             if item["id"] == block_id:
                 return item
         raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+
+    def get_block_full_text(
+        self, *, user_id: UUID, user_paper_id: UUID, block_id: int
+    ) -> str:
+        """Read an original MinerU block for quote verification."""
+        from app.literature_support.processing.blocks import block_full_text
+
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None:
+            raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+        if paper.artifact_manifest_key:
+            manifest = json.loads(self._storage.read_text(paper.artifact_manifest_key))
+            if manifest.get("file_hash") != paper.file_hash:
+                raise ValueError("artifact hash mismatch")
+            raw = self._read_artifact_part(manifest["files"]["content_list.json"])
+            content = json.loads(raw)
+        else:
+            content = json.loads(
+                self._storage.read_text(
+                    mineru_artifact_key(paper.file_hash, "content_list.json")
+                )
+            )
+        if not isinstance(content, list) or block_id < 0 or block_id >= len(content):
+            raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+        return block_full_text(content[block_id])
 
     def get_block_image(
         self, *, user_id: UUID, user_paper_id: UUID, block_id: int

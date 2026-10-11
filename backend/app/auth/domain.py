@@ -6,6 +6,7 @@ from ..platform.errors import DomainValidationError
 
 MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 128
+REVIEWABLE_AGENT_TOOLS = frozenset({"import_selected_papers", "create_scheduled_task"})
 
 
 class InvalidEmail(DomainValidationError):

@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.platform.config import settings
 from app.platform.discovery import DiscoveryResult
-from app.retrieval.depends import get_discovery_adapter
+from app.imports.depends import get_discovery_adapter
 from tests.conftest import auth_headers
 
 

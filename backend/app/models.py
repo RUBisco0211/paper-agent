@@ -4,9 +4,10 @@ Alembic autogenerate and the test schema bootstrap import this module so that
 all domain tables are known regardless of which router is loaded.
 """
 
+from app.processing import repo as _ingestion_repo  # noqa: F401
+
 from .auth import repo as _auth_repo  # noqa: F401
 from .imports import repo as _imports_repo  # noqa: F401
-from .ingestion import repo as _ingestion_repo  # noqa: F401
 from .library import repo as _library_repo  # noqa: F401
 from .projects import repo as _projects_repo  # noqa: F401
 from .retrieval import repo as _retrieval_repo  # noqa: F401

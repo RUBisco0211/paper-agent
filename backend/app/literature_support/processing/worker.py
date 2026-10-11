@@ -5,15 +5,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 
-from ..embedding import build_embedding_adapter
-from ..ingestion.repo import IngestionRepository
-from ..platform.config import settings
-from ..platform.database import SessionFactory, SessionLocal
-from ..platform.logging import configure_logging
-from ..platform.storage import get_object_storage
-from ..scholar.metadata import build_default_resolver
-from .mineru import MineruParser
-from .service import IngestionPipeline
+from app.literature_support.embedding import build_embedding_adapter
+from app.literature_support.processing.mineru import MineruParser
+from app.literature_support.processing.pipeline import IngestionPipeline
+from app.literature_support.scholar.metadata import build_default_resolver
+from app.platform.config import settings
+from app.platform.database import SessionFactory, SessionLocal
+from app.platform.logging import configure_logging
+from app.platform.storage import get_object_storage
+from app.processing.repo import IngestionRepository
 
 logger = structlog.get_logger(__name__)
 

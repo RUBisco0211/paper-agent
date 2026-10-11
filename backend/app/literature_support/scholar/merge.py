@@ -8,8 +8,8 @@ placeholder. Keeping it here avoids two divergent implementations.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from ..library.domain import UserPaper
-from .metadata import ProviderMetadata
+from app.library.domain import UserPaper
+from app.literature_support.scholar.metadata import ProviderMetadata
 
 
 @dataclass(frozen=True, slots=True)

@@ -5,8 +5,11 @@ import json
 import httpx
 import pytest
 
-from app.embedding import OpenAICompatibleEmbeddingAdapter, profile_for
-from app.embedding.base import EmbeddingProfile
+from app.literature_support.embedding import (
+    OpenAICompatibleEmbeddingAdapter,
+    profile_for,
+)
+from app.literature_support.embedding.base import EmbeddingProfile
 
 
 def _transport(dimensions: int = 3) -> tuple[httpx.MockTransport, list[httpx.Request]]:
@@ -135,7 +138,7 @@ def test_dashscope_profile_keeps_its_small_batch_limit() -> None:
 
 def test_request_batches_respect_the_char_budget(tmp_path) -> None:
     """除了条数，供应商还限制整批 token/字符时也要拆包。"""
-    from app.embedding.client import _split_batches
+    from app.literature_support.embedding.client import _split_batches
 
     batches = _split_batches(["a" * 8, "b" * 8, "c" * 8], max_items=10, max_chars=20)
 

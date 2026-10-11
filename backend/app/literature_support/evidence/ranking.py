@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 
-from ..retrieval.domain import ChunkMatch, Evidence
+from app.retrieval.domain import ChunkMatch, Evidence
 
 DEFAULT_RRF_K = 60
 

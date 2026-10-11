@@ -31,6 +31,7 @@ def create_candidate_token(
     identifier: str,
     source_id: str | None = None,
     openalex_id: str | None = None,
+    title: str | None = None,
 ) -> str:
     candidate_source = source_id or openalex_id
     expires = datetime.now(UTC) + timedelta(minutes=30)
@@ -42,6 +43,7 @@ def create_candidate_token(
             "sid": session_id,
             "source_id": candidate_source,
             "identifier": identifier,
+            "title": title[:500] if title else None,
             "exp": int(expires.timestamp()),
         },
         settings.jwt_secret_key,

@@ -24,6 +24,7 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
         session_id=session_id,
         openalex_id="https://openalex.org/W1",
         identifier="10.1234/selected",
+        title="Selected Study",
     )
     approval = client.post(
         f"{api_prefix}/imports/approvals",
@@ -31,6 +32,19 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
         json={"session_id": session_id, "candidate_tokens": [token]},
     )
     assert approval.status_code == 201
+    preview = client.get(
+        f"{api_prefix}/imports/approvals/latest",
+        headers=auth_headers(owner["access_token"]),
+        params={"session_id": session_id},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["candidates"] == [
+        {
+            "title": "Selected Study",
+            "identifier": "10.1234/selected",
+            "source_id": "https://openalex.org/W1",
+        }
+    ]
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     imports = []
     from app.imports.service import ImportService
@@ -80,6 +94,12 @@ def test_another_user_cannot_approve_a_discovered_candidate(
         json={"session_id": session_id, "candidate_tokens": [token]},
     )
     assert response.status_code in {403, 404}
+    preview = client.get(
+        f"{api_prefix}/imports/approvals/latest",
+        headers=auth_headers(stranger["access_token"]),
+        params={"session_id": session_id},
+    )
+    assert preview.status_code in {403, 404}
 
 
 def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(

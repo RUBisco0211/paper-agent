@@ -1,4 +1,4 @@
-from app.processing.chunks import build_chunks
+from app.literature_support.processing.chunks import build_chunks
 
 
 def _block(block_type: str, text: str, page: int = 0, **extra) -> dict:

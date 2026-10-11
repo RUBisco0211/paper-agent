@@ -2,11 +2,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 
 from ..platform.config import settings
-from ..platform.errors import ConflictError, ErrorCode, UnauthorizedError
+from ..platform.errors import (
+    ConflictError,
+    ErrorCode,
+    UnauthorizedError,
+    ValidationError,
+)
 from ..platform.security import (
     create_access_token,
     generate_refresh_token,
@@ -14,7 +20,7 @@ from ..platform.security import (
     hash_refresh_token,
     verify_password,
 )
-from .domain import User, normalize_email, validate_password
+from .domain import REVIEWABLE_AGENT_TOOLS, User, normalize_email, validate_password
 from .ports import AuthStore
 
 logger = structlog.get_logger(__name__)
@@ -54,6 +60,30 @@ class AuthService:
         self._now = now
 
     # Use cases -------------------------------------------------------------
+    def set_timezone(self, *, user_id: UUID, timezone: str) -> str:
+        try:
+            ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError, TypeError) as exc:
+            raise ValidationError("时区无效") from exc
+        self._repository.set_timezone(user_id, timezone)
+        self._repository.commit()
+        return timezone
+
+    def tool_authorizations(self, user_id: UUID) -> dict[str, bool]:
+        stored = self._repository.get_tool_authorizations(user_id)
+        return {
+            name: stored.get(name, False) for name in sorted(REVIEWABLE_AGENT_TOOLS)
+        }
+
+    def set_tool_authorization(
+        self, *, user_id: UUID, tool_name: str, always_allow: bool
+    ) -> bool:
+        if tool_name not in REVIEWABLE_AGENT_TOOLS:
+            raise ValidationError("不能配置此工具")
+        self._repository.set_tool_authorization(user_id, tool_name, always_allow)
+        self._repository.commit()
+        return always_allow
+
     def register(
         self,
         *,

@@ -13,8 +13,8 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.literature_support.processing.mineru import MineruParser, _normalize_base_url
 from app.platform.errors import AppError
-from app.processing.mineru import MineruParser, _normalize_base_url
 
 UPLOAD_URL = "https://oss.test/upload/probe.pdf"
 ZIP_URL = "https://oss.test/result.zip"

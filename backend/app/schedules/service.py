@@ -1,8 +1,12 @@
 from uuid import UUID
 
-from ..platform.errors import ConflictError, ErrorCode, NotFoundError
+from ..auth.repo import AuthRepository
+from ..platform.config import settings
+from ..platform.errors import ConflictError, ErrorCode, NotFoundError, ValidationError
 from ..projects.repo import ProjectRepository
 from ..sessions.repo import SessionBindingRepository
+from .domain import weekly_cron
+from .ports import AgentScheduleGateway
 from .repo import ScheduleBindingRecord, ScheduleBindingRepository
 
 
@@ -12,10 +16,12 @@ class ScheduleBindingService:
         schedules: ScheduleBindingRepository,
         sessions: SessionBindingRepository,
         projects: ProjectRepository,
+        users: AuthRepository,
     ) -> None:
         self._schedules = schedules
         self._sessions = sessions
         self._projects = projects
+        self._users = users
 
     def create(
         self,
@@ -72,3 +78,60 @@ class ScheduleBindingService:
             raise ConflictError("会话范围冲突", code=ErrorCode.CONFLICT)
         self._sessions.commit()
         return task
+
+    def create_for_agent(
+        self,
+        *,
+        gateway: AgentScheduleGateway,
+        user_id: UUID,
+        agent_id: str,
+        session_id: UUID,
+        name: str,
+        prompt: str,
+        time: str,
+        weekdays: list[str],
+    ) -> tuple[ScheduleBindingRecord, str, str]:
+        scope = self._sessions.get(session_id)
+        if scope is None or scope.user_id != user_id:
+            raise NotFoundError("会话不存在", code=ErrorCode.SESSION_NOT_FOUND)
+        if scope.project_id is not None:
+            project = self._projects.get_project(scope.project_id)
+            if project is None or project.user_id != user_id:
+                raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
+        timezone = (
+            self._users.get_timezone(user_id) or settings.schedule_default_timezone
+        )
+        try:
+            cron = weekly_cron(time=time, weekdays=weekdays, timezone=timezone)
+        except ValueError as exc:
+            raise ValidationError(str(exc)) from exc
+
+        schedule_id = gateway.create_disabled(
+            user_id=str(user_id),
+            agent_id=agent_id,
+            session_id=session_id.hex,
+            name=name.strip(),
+            prompt=prompt.strip(),
+            cron_expression=cron,
+            timezone=timezone,
+        )
+        bound = False
+        try:
+            record = self.create(
+                schedule_id=schedule_id,
+                user_id=user_id,
+                project_id=scope.project_id,
+            )
+            bound = True
+            gateway.enable(user_id=str(user_id), schedule_id=schedule_id)
+            return record, cron, timezone
+        except Exception as cause:
+            try:
+                gateway.delete(user_id=str(user_id), schedule_id=schedule_id)
+                if bound:
+                    self.delete(schedule_id=schedule_id, user_id=user_id)
+            except Exception as cleanup_error:
+                raise ExceptionGroup(
+                    "创建定时任务失败且清理未完成", [cause, cleanup_error]
+                ) from cause
+            raise
