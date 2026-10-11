@@ -18,6 +18,7 @@ import { sessionApi, takeFreshlyCreated } from '@upstream/api';
 import { chatApi } from '@upstream/api';
 import { ApiError } from '@upstream/api/client';
 import { useAudioManager } from '@upstream/context/AudioContext';
+import { normalizePdfQuoteRects, type QuoteReference } from '@upstream/components/chat/quote-references';
 
 /**
  * One pending subagent HITL request, projected from a team *member*
@@ -410,22 +411,41 @@ export function useMessages(
 	 * @param content - The message content blocks.
 	 */
 	const send = useCallback(
-		async (content: ContentBlock[]) => {
-			if (!agentId || !sessionId) return;
+		async (content: ContentBlock[], references: QuoteReference[] = []): Promise<boolean> => {
+			if (!agentId || !sessionId) return false;
+			const boundedReferences = references.map((reference) => reference.kind === 'pdf_selection'
+				? { ...reference, rects: normalizePdfQuoteRects(reference.rects ?? []) }
+				: reference);
 
 			const userMsg = UserMsg({ name: 'user', content });
+			if (boundedReferences.length) userMsg.metadata = { paper_agent: {
+				body: content.filter((block) => block.type === 'text').map((block) => block.text).join('\n\n'),
+				references: boundedReferences,
+			} };
 			setHistoryInterrupted(false);
 			msgsRef.current = [...msgsRef.current, userMsg];
 			scheduleUpdate();
 
 			try {
-				await chatApi.trigger({
+				if (boundedReferences.length) {
+					const accepted = await chatApi.triggerQuoted({
+						agent_id: agentId, session_id: sessionId,
+						text: content.filter((block) => block.type === 'text').map((block) => block.text).join('\n\n'),
+						references: boundedReferences,
+					});
+					userMsg.id = accepted.message_id;
+					scheduleUpdate();
+				} else await chatApi.trigger({
 					agent_id: agentId,
 					session_id: sessionId,
 					input: userMsg,
 				});
+				return true;
 			} catch (e) {
+				msgsRef.current = msgsRef.current.filter((item) => item.id !== userMsg.id);
+				scheduleUpdate();
 				setError(e as Error);
+				return false;
 			}
 		},
 		[agentId, sessionId, scheduleUpdate],

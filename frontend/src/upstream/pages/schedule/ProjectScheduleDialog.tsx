@@ -16,6 +16,23 @@ export interface ScheduleDraft {
   model: ChatModelConfig
 }
 
+export interface ReviewedSchedule {
+  name: string
+  prompt: string
+  time: string
+  weekdays: string[]
+}
+
+const dayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+
+function frequencyFor(days: string[]): ScheduleFrequency {
+  const sorted = [...new Set(days)].sort().join(",")
+  if (days.length === 7) return "daily"
+  if (sorted === "fri,mon,thu,tue,wed") return "weekdays"
+  if (sorted === "sat,sun") return "weekends"
+  return days.length === 1 ? "weekly" : "custom"
+}
+
 export function ProjectScheduleDialog({
   projects,
   projectId,
@@ -24,6 +41,8 @@ export function ProjectScheduleDialog({
   open,
   onOpenChange,
   onCreate,
+  review,
+  onReview,
 }: {
   projects: Array<{ id: string; name: string }>
   projectId: string
@@ -31,7 +50,9 @@ export function ProjectScheduleDialog({
   models: ChatModelConfig[]
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreate: (draft: ScheduleDraft) => Promise<void>
+  onCreate?: (draft: ScheduleDraft) => Promise<void>
+  review?: ReviewedSchedule
+  onReview?: (draft: ReviewedSchedule) => Promise<void>
 }) {
   const [name, setName] = useState("")
   const [prompt, setPrompt] = useState("")
@@ -45,17 +66,39 @@ export function ProjectScheduleDialog({
   const [error, setError] = useState("")
 
   useEffect(() => {
-    if (open) setError("")
-  }, [open])
+    if (!open) return
+    setError("")
+    if (!review) return
+    const days = review.weekdays.map((day) => dayCodes.indexOf(day)).filter((day) => day >= 0)
+    setName(review.name)
+    setPrompt(review.prompt)
+    setTime(review.time)
+    setFrequency(frequencyFor(review.weekdays))
+    setWeekday(days[0] ?? 1)
+    setCustomDays(days)
+  }, [open, review])
 
   async function submit() {
     const model = models[modelIndex]
-    if (!name.trim() || !prompt.trim() || !model) return
+    if (!name.trim() || !prompt.trim() || (!review && !model)) return
     setBusy(true)
     setError("")
     try {
       const cronExpression = cronForFrequency(frequency, time, frequency === "weekly" ? [weekday] : customDays)
-      await onCreate({ name: name.trim(), prompt: prompt.trim(), cronExpression, timezone, model })
+      if (review) {
+        const selectedDays = frequency === "daily" ? [0, 1, 2, 3, 4, 5, 6]
+          : frequency === "weekdays" ? [1, 2, 3, 4, 5]
+          : frequency === "weekends" ? [0, 6]
+          : frequency === "weekly" ? [weekday] : customDays
+        if (!onReview) return
+        await onReview({
+          name: name.trim(), prompt: prompt.trim(), time,
+          weekdays: selectedDays.map((day) => dayCodes[day]),
+        })
+      } else {
+        if (!model || !onCreate) return
+        await onCreate({ name: name.trim(), prompt: prompt.trim(), cronExpression, timezone, model })
+      }
       onOpenChange(false)
       setName("")
       setPrompt("")
@@ -70,7 +113,8 @@ export function ProjectScheduleDialog({
     <DialogContent className="sm:max-w-lg">
       <DialogHeader><DialogTitle>新建定时任务</DialogTitle></DialogHeader>
       <div className="grid gap-4">
-        <label className="grid gap-1 text-sm">范围<Select value={projectId || "__global__"} onValueChange={(value) => onProjectChange(value === "__global__" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__global__">全局</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label>
+        {review ? <div className="grid gap-1 text-sm"><span>范围</span><span>{projects.find((project) => project.id === projectId)?.name ?? "全局"}</span></div>
+          : <label className="grid gap-1 text-sm">范围<Select value={projectId || "__global__"} onValueChange={(value) => onProjectChange(value === "__global__" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__global__">全局</SelectItem>{projects.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select></label>}
         <label className="grid gap-1 text-sm">名称<Input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} /></label>
         <label className="grid gap-1 text-sm">任务提示词<Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-28" /></label>
         <div className="grid grid-cols-2 gap-3">
@@ -79,12 +123,12 @@ export function ProjectScheduleDialog({
         </div>
         {frequency === "weekly" && <label className="grid gap-1 text-sm">星期<Select value={String(weekday)} onValueChange={(value) => setWeekday(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["日", "一", "二", "三", "四", "五", "六"].map((day, index) => <SelectItem key={index} value={String(index)}>周{day}</SelectItem>)}</SelectContent></Select></label>}
         {frequency === "custom" && <div className="grid gap-2 text-sm"><span>星期</span><div className="flex flex-wrap gap-2">{["日", "一", "二", "三", "四", "五", "六"].map((day, index) => <Button key={index} type="button" size="sm" variant={customDays.includes(index) ? "default" : "outline"} aria-pressed={customDays.includes(index)} onClick={() => setCustomDays((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index])}>周{day}</Button>)}</div></div>}
-        <label className="grid gap-1 text-sm">时区<Input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>
-        <label className="grid gap-1 text-sm">模型<Select value={String(modelIndex)} onValueChange={(value) => setModelIndex(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{models.map((model, index) => <SelectItem key={`${model.credential_id}:${model.model}`} value={String(index)}>{model.model}</SelectItem>)}</SelectContent></Select></label>
-        {models.length === 0 && <p className="text-sm text-muted-foreground">请先在模型设置中保存凭据</p>}
+        {!review && <label className="grid gap-1 text-sm">时区<Input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>}
+        {!review && <label className="grid gap-1 text-sm">模型<Select value={String(modelIndex)} onValueChange={(value) => setModelIndex(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{models.map((model, index) => <SelectItem key={`${model.credential_id}:${model.model}`} value={String(index)}>{model.model}</SelectItem>)}</SelectContent></Select></label>}
+        {!review && models.length === 0 && <p className="text-sm text-muted-foreground">请先在模型设置中保存凭据</p>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>
-      <DialogFooter><Button disabled={busy || (frequency === "custom" && customDays.length === 0) || !name.trim() || !prompt.trim() || !models.length || !timezone.trim()} onClick={() => void submit()}>创建任务</Button></DialogFooter>
+      <DialogFooter><Button disabled={busy || (frequency === "custom" && customDays.length === 0) || !name.trim() || !prompt.trim() || (!review && (!models.length || !timezone.trim()))} onClick={() => void submit()}>{review ? "确认创建" : "创建任务"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>
 }

@@ -210,5 +210,10 @@ export function authEndpoints(client: ApiClient) {
     logout: () =>
       client.request<void>("/v1/auth/logout", { method: "POST", skipRefresh: true }),
     me: () => client.request<import("./types").User>("/v1/auth/me"),
+    setTimezone: (timezone: string) =>
+      client.request<{ timezone: string }>("/v1/auth/timezone", {
+        method: "PATCH",
+        json: { timezone },
+      }),
   }
 }

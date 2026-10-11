@@ -9,6 +9,10 @@ import type { ChatRequest } from './types';
  * response body of this POST.
  */
 export const chatApi = {
+	triggerQuoted: (body: {
+		agent_id: string; session_id: string; text: string;
+		references: import('@upstream/components/chat/quote-references').QuoteReference[];
+	}) => client.post<{ status: string; session_id: string; message_id: string }>('/quoted-chat/', body),
 	/**
 	 * Trigger a chat run for the specified session.
 	 *

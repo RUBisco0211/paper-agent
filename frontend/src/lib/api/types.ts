@@ -145,6 +145,8 @@ export interface UserPaperDetail extends UserPaperSummary {
     page_count?: number | null
     byte_size?: number | null
   }
+  pdf_version?: string | null
+  artifact_version?: string | null
 }
 
 export interface PaperBlock {

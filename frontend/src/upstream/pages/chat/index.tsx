@@ -213,7 +213,7 @@ const ChatPageInner = () => {
 			 * (the drawer we want) — instead of the desktop `fixed left-0`
 			 * container, which would otherwise cover the app rail.
 			 */}
-			<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="rounded-[22px]">
+			<Sidebar collapsible={isMobile ? 'offcanvas' : 'none'} className="rounded-[18px]">
 				{/* Scrolling moves down to the session list below, so the
 				    agent picker and the new-session button stay put. */}
 				<SidebarContent className="my-2 overflow-hidden">

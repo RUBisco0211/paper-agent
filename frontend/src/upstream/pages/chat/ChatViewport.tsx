@@ -690,7 +690,7 @@ export function ChatViewport({ agentId, sessionId, onTeamUpdated }: ChatViewport
 			<main className="flex size-full">
 				<ResizablePanelGroup orientation="horizontal">
 					<ResizablePanel
-						className="flex flex-1 rounded-[22px] bg-card shadow-panel"
+						className="flex flex-1 rounded-[18px] bg-card shadow-panel"
 						minSize="24rem"
 					>
 						<div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-x-hidden p-2">

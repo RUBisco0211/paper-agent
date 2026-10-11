@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
 import { ApiError, type User } from "@/lib/api"
 import { useApi } from "@/lib/api/provider"
@@ -35,6 +36,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [status, setStatus] = useState<AuthStatus>("loading")
   const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    if (status !== "authenticated" || !user) return
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (!timezone) return
+    void api.auth.setTimezone(timezone).catch(() => {
+      toast.error("无法保存当前时区，定时任务将使用默认时区")
+    })
+  }, [api, status, user])
 
   const loadUser = useCallback(async () => {
     const current = await api.auth.me()

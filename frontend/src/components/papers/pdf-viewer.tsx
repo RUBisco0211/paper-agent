@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type RefObject } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { ChevronLeft, ChevronRight, Copy, Minus, Plus } from "lucide-react"
+import { ChevronLeft, ChevronRight, Copy, MessageSquarePlus, Minus, Plus } from "lucide-react"
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy, type PDFDocumentLoadingTask } from "pdfjs-dist"
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url"
 
@@ -16,6 +16,7 @@ export interface PdfTarget {
   bbox?: number[] | null
   pageSize?: number[] | null
   coordinateSystem?: "normalized" | "page" | null
+  rects?: number[][]
 }
 
 export function PdfViewer({
@@ -23,12 +24,14 @@ export function PdfViewer({
   page,
   target,
   onClearTarget,
+  onQuoteSelection,
   className,
 }: {
   paperId: string
   page?: number | null
   target?: PdfTarget
   onClearTarget?: () => void
+  onQuoteSelection?: (selection: { page: number; text: string; rects: number[][] }) => void
   className?: string
 }) {
   const { api } = useApi()
@@ -45,7 +48,7 @@ export function PdfViewer({
   const [currentPage, setCurrentPage] = useState(target?.page ?? page ?? 1)
   const [scale, setScale] = useState(1)
   const [error, setError] = useState<string | null>(null)
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; text: string; page?: number; rects?: number[][] } | null>(null)
 
   useEffect(() => {
     const element = scrollRef.current
@@ -133,11 +136,22 @@ export function PdfViewer({
     const root = scrollRef.current
     const text = selection?.toString().trim()
     if (!selection || !text || !root || !selection.anchorNode || !root.contains(selection.anchorNode)) return
+    const anchor = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode.parentElement
+    const focus = selection.focusNode instanceof Element ? selection.focusNode : selection.focusNode?.parentElement
+    const pageElement = anchor?.closest<HTMLElement>("[data-paper-pdf-page]")
+    const samePage = pageElement && pageElement === focus?.closest("[data-paper-pdf-page]")
+    const page = samePage ? Number(pageElement.dataset.pageNumber) : undefined
+    const bounds = pageElement?.getBoundingClientRect()
+    const rects = samePage && bounds && bounds.width && bounds.height
+      ? Array.from(selection.getRangeAt(0).getClientRects()).map((rect) => [
+          (rect.left - bounds.left) / bounds.width, (rect.top - bounds.top) / bounds.height,
+          (rect.right - bounds.left) / bounds.width, (rect.bottom - bounds.top) / bounds.height,
+        ]) : undefined
     event.preventDefault()
     setContextMenu({
       x: Math.max(8, Math.min(event.clientX, window.innerWidth - 112)),
-      y: Math.max(8, Math.min(event.clientY, window.innerHeight - 48)),
-      text,
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - (onQuoteSelection ? 88 : 48))),
+      text, page: Number.isSafeInteger(page) && page! > 0 ? page : undefined, rects,
     })
   }
 
@@ -188,6 +202,10 @@ export function PdfViewer({
       <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
       <div role="menu" aria-label="文本操作" className="bg-popover text-popover-foreground fixed z-50 min-w-24 rounded-md border p-1 shadow-lg" style={{ left: contextMenu.x, top: contextMenu.y }}>
         <Button role="menuitem" variant="ghost" size="sm" className="w-full justify-start" onClick={() => void copySelectedText()}><Copy />复制</Button>
+        {onQuoteSelection && contextMenu.page && <Button role="menuitem" variant="ghost" size="sm" className="w-full justify-start" onClick={() => {
+          onQuoteSelection({ page: contextMenu.page!, text: contextMenu.text, rects: contextMenu.rects ?? [] })
+          setContextMenu(null)
+        }}><MessageSquarePlus />添加到对话</Button>}
       </div>
     </>}
   </div>
@@ -281,11 +299,16 @@ function PdfPageCanvas({ document, number, scale, target, rootRef, pageRef }: {
         width: `${(box[2] - box[0]) / sourceSize[0] * 100}%`,
         height: `${(box[3] - box[1]) / sourceSize[1] * 100}%`,
       } : null
+  const quoteRegions = visible && rendered ? (target?.rects ?? []).filter((rect) =>
+    rect.length === 4 && rect.every((value) => Number.isFinite(value) && value >= 0 && value <= 1) &&
+    rect[2] > rect[0] && rect[3] > rect[1],
+  ) : []
 
-  return <div data-paper-pdf-page ref={(element) => { wrapperRef.current = element; pageRef(element) }} className="relative shrink-0 bg-white shadow-sm" style={{ width: size.width, minHeight: size.height }}>
+  return <div data-paper-pdf-page data-page-number={number} ref={(element) => { wrapperRef.current = element; pageRef(element) }} className="relative shrink-0 bg-white shadow-sm" style={{ width: size.width, minHeight: size.height }}>
     {visible && <canvas ref={canvasRef} role="img" aria-label="文献原文" className="block bg-white" />}
     {visible && <div ref={textLayerRef} className="paper-pdf-text-layer" />}
     {error && <p role="alert" className="p-4 text-sm text-destructive">第 {number} 页无法显示：{error}</p>}
     {region && <div data-testid="pdf-region" aria-label="所选片段位置" className="pointer-events-none absolute rounded-sm border-2 border-amber-500 bg-amber-400/20" style={region} />}
+    {quoteRegions.map((rect, index) => <div key={index} aria-label="引用文本位置" className="pointer-events-none absolute rounded-sm bg-amber-400/35" style={{ left: `${rect[0] * 100}%`, top: `${rect[1] * 100}%`, width: `${(rect[2] - rect[0]) * 100}%`, height: `${(rect[3] - rect[1]) * 100}%` }} />)}
   </div>
 }

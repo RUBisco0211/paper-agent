@@ -55,6 +55,24 @@ it("shows MinerU block type tabs and locates a block only when its locate button
   expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
 })
 
+it("adds a paper quote without requiring a comment and permits retry after rejection", async () => {
+  const onQuote = vi.fn().mockReturnValueOnce(false).mockReturnValueOnce(true)
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.includes("/blocks")) return new Response(JSON.stringify({ types: ["text"], items: [{ id: 4, type: "text", page: 2, text: "需要核对的段落" }], total: 1, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: false }, artifact_version: "v1", capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}><ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+    <MemoryRouter><PaperReadingPage paperId="p1" embedded onQuote={onQuote} onBack={vi.fn()} /></MemoryRouter>
+  </ApiProvider></QueryClientProvider>)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "添加到对话" }))
+  expect(onQuote).toHaveBeenCalledWith(expect.objectContaining({ kind: "parsed_block", block_id: 4, selected_text: "需要核对的段落", comment: "" }))
+  expect(screen.queryByRole("textbox", { name: "引用评论" })).toBeNull()
+  await user.click(screen.getByRole("button", { name: "添加到对话" }))
+  expect(onQuote).toHaveBeenCalledTimes(2)
+})
+
 it("previews images and equations and offers copy actions without a redundant heading", async () => {
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:preview"), revokeObjectURL: vi.fn() }))
   const fetchImpl = vi.fn(async (input: string | URL) => {

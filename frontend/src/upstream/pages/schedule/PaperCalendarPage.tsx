@@ -126,7 +126,7 @@ export function PaperCalendarPage() {
   return <SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full w-full">
       <Sidebar collapsible="none" className="border-r">
-        <SidebarHeader className="px-4 py-5 font-semibold tracking-tight">定时任务</SidebarHeader>
+        <SidebarHeader className="h-12 justify-center px-4 font-semibold tracking-tight">定时任务</SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center justify-between">全局
@@ -160,7 +160,7 @@ export function PaperCalendarPage() {
               : <p role="alert" className="p-5 text-sm text-muted-foreground">会话不存在</p>}
           </div>
         </> : <>
-          <div className="flex justify-end border-b px-4 py-3"><Button onClick={() => openCreate(null)}><Plus className="size-4" />新建定时任务</Button></div>
+          <div className="flex h-12 shrink-0 items-center justify-end border-b px-4"><Button onClick={() => openCreate(null)}><Plus className="size-4" />新建定时任务</Button></div>
           <div className="min-h-0 flex-1"><CalendarTabPage events={events} onEventClick={(event) => setSelectedTaskId(event.id.split(":")[0])} currentDate={currentDate} onMonthChange={setCurrentDate} /></div>
         </>}
       </main>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, expect, it, vi } from "vitest"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -53,8 +53,8 @@ beforeEach(() => {
 it("renders the cited PDF page in a canvas when the PDF is available", async () => {
   renderPdf(<PdfViewer paperId="paper-1" page={2} />)
   expect(await screen.findByText("2 / 3")).toBeTruthy()
-  expect(pdf.getPage).toHaveBeenCalledWith(2)
-  expect(screen.getAllByRole("img", { name: "文献原文" })[1]).toBeTruthy()
+  await waitFor(() => expect(pdf.getPage).toHaveBeenCalledWith(2))
+  expect((await screen.findAllByRole("img", { name: "文献原文" }))[1]).toBeTruthy()
   expect(screen.queryByTitle("文献原文")).toBeNull()
 })
 
@@ -65,6 +65,13 @@ it("reuses the PDF bytes when the same paper is reopened", async () => {
   renderPdf(<PdfViewer paperId="paper-1" />)
   await screen.findByText("1 / 3")
   expect(api.library.pdfBlob).toHaveBeenCalledTimes(1)
+})
+
+it("marks the saved PDF text selection when a quote badge locates it", async () => {
+  renderPdf(<PdfViewer paperId="paper-1" target={{ page: 2, rects: [[0.1, 0.2, 0.4, 0.25]] }} />)
+  const region = await screen.findByLabelText("引用文本位置")
+  expect(region.style.left).toBe("10%")
+  expect(parseFloat(region.style.width)).toBeCloseTo(30)
 })
 
 it("lays out all PDF pages in one vertical scroll area", async () => {
@@ -117,6 +124,24 @@ it("lets the user select PDF text and copy it from the context menu", async () =
   fireEvent.contextMenu(text, { clientX: 120, clientY: 80 })
   await user.click(await screen.findByRole("menuitem", { name: "复制" }))
   expect(await navigator.clipboard.readText()).toBe("Selectable PDF text")
+})
+
+it("sends a same-page PDF selection with its page and rectangles when adding to chat", async () => {
+  const onQuoteSelection = vi.fn()
+  const user = userEvent.setup()
+  renderPdf(<PdfViewer paperId="paper-1" onQuoteSelection={onQuoteSelection} />)
+  const text = (await screen.findAllByText("Selectable PDF text"))[0]
+  const page = text.closest<HTMLElement>("[data-paper-pdf-page]")!
+  vi.spyOn(page, "getBoundingClientRect").mockReturnValue({ left: 10, top: 20, width: 500, height: 700, right: 510, bottom: 720 } as DOMRect)
+  vi.spyOn(window, "getSelection").mockReturnValue({
+    toString: () => "Selectable PDF text",
+    anchorNode: text.firstChild,
+    focusNode: text.firstChild,
+    getRangeAt: () => ({ getClientRects: () => [{ left: 60, top: 90, right: 160, bottom: 110 }] }),
+  } as unknown as Selection)
+  fireEvent.contextMenu(text, { clientX: 120, clientY: 80 })
+  await user.click(await screen.findByRole("menuitem", { name: "添加到对话" }))
+  expect(onQuoteSelection).toHaveBeenCalledWith({ page: 1, text: "Selectable PDF text", rects: [[0.1, 0.1, 0.3, 90 / 700]] })
 })
 
 it("zooms with a modifier wheel and scrolls horizontally with shift wheel", async () => {

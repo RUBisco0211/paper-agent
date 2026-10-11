@@ -154,7 +154,7 @@ function ModelTable({ models, variant }: ModelTableProps) {
 
 	return (
 		<div>
-			<div className="overflow-x-auto rounded-[16px] border border-border">
+			<div className="overflow-x-auto rounded-[12px] border border-border">
 				<Table className="min-w-[500px]">
 					<TableHeader>
 						<TableRow className="border-border hover:bg-transparent">
@@ -426,7 +426,7 @@ function DetailPanel({ credential, schema, onEdit, onDelete }: DetailPanelProps)
 					</div>
 
 					{modelsLoading ? (
-						<Skeleton className="h-40 rounded-[16px]" />
+						<Skeleton className="h-40 rounded-[12px]" />
 					) : shown.length === 0 ? (
 						<Empty className="border-none py-6">
 							<EmptyHeader>
@@ -517,7 +517,7 @@ export const CredentialPage = () => {
 	return (
 		<div className="flex h-full w-full p-2 gap-2">
 			{/* Left sidebar */}
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="rounded-[18px]">
 				<SidebarHeader className={'flex flex-col p-[20px_18px_14px] gap-y-1'}>
 					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
 						{t('common.credential')}
@@ -625,7 +625,7 @@ export const CredentialPage = () => {
 			</Sidebar>
 
 			{/* Right detail */}
-			<main className="flex-1 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-h-0 overflow-hidden rounded-[18px] bg-card shadow-panel">
 				{selectedCredential ? (
 					<DetailPanel
 						credential={selectedCredential}

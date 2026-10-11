@@ -8,7 +8,7 @@ import { createQueryClient } from "@/app/query"
 import { NewChatPage } from "./NewChatPage"
 
 const actions = vi.hoisted(() => ({ create: vi.fn(), trigger: vi.fn() }))
-vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { sessions: { llmCatalog: async () => ({ providers: [] }) } } }) }))
+vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { projects: { list: async () => ({ items: [{ id: "project-1", name: "测试项目" }] }) }, sessions: { llmCatalog: async () => ({ providers: [] }) } } }) }))
 vi.mock("@/lib/agent-sessions", () => ({
   availableChatModels: async () => [{ type: "deepseek_credential", credential_id: "key-1", model: "deepseek-chat", parameters: {} }],
   createBoundSession: (...args: unknown[]) => actions.create(...args),
@@ -21,8 +21,8 @@ function Path() { return <span data-testid="path">{useLocation().pathname}</span
 it("creates a project session only when the first message is sent", async () => {
   actions.create.mockReset().mockResolvedValue({ agentId: "agent-1", sessionId: "session-1" })
   actions.trigger.mockReset().mockResolvedValue({ status: "accepted" })
-  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/chat/project/project-1/new"]}><Routes>
-    <Route path="/chat/project/:projectId/new" element={<><NewChatPage /><Path /></>} />
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={[{ pathname: "/chat/new", state: { initialProjectId: "project-1" } }]}><Routes>
+    <Route path="/chat/new" element={<><NewChatPage /><Path /></>} />
     <Route path="/chat/:agentId/:sessionId" element={<Path />} />
   </Routes></MemoryRouter></QueryClientProvider>)
   expect(actions.create).not.toHaveBeenCalled()

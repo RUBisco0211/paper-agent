@@ -1,8 +1,8 @@
 import type { ContentBlock, Msg } from "@agentscope-ai/agentscope/message"
 import { UserMsg } from "@agentscope-ai/agentscope/message"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useRef, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { useEffect, useRef, useState } from "react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
 import { availableChatModels, createBoundSession } from "@/lib/agent-sessions"
@@ -14,10 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { reasoningEffortsForModel } from "./chat-view"
 
 export function NewChatPage() {
-  const { projectId } = useParams()
   const { api } = useApi()
   const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
+  const [projectId, setProjectId] = useState<string>((location.state as { initialProjectId?: string } | null)?.initialProjectId ?? "")
+  useEffect(() => { setProjectId((location.state as { initialProjectId?: string } | null)?.initialProjectId ?? "") }, [location.state])
+  const projects = useQuery({ queryKey: ["sidebar-projects"], queryFn: () => api.projects.list({ limit: 100 }) })
   const [modelKey, setModelKey] = useState("")
   const [effort, setEffort] = useState("default")
   const [busy, setBusy] = useState(false)
@@ -41,13 +44,13 @@ export function NewChatPage() {
       const parameters = { ...selected.parameters }
       if (effort !== "default") parameters.reasoning_effort = effort
       const session = pendingSession.current ?? await createBoundSession(api, {
-        projectId,
+        projectId: projectId || undefined,
         modelConfig: { ...selected, parameters },
       })
       pendingSession.current = session
       await chatApi.trigger({ agent_id: session.agentId, session_id: session.sessionId, input: message })
-      void queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
-      navigate(`/chat/${session.agentId}/${session.sessionId}`, { replace: true })
+      await queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
+      navigate(`/chat/${session.agentId}/${session.sessionId}`, { replace: true, state: { replaceDraftTab: location.pathname } })
     } catch (cause) {
       setError(describeError(cause))
       setRetryText(blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n"))
@@ -57,7 +60,6 @@ export function NewChatPage() {
   }
 
   return <main className="flex h-full min-h-0 flex-col bg-background">
-    <header className="flex h-16 shrink-0 items-center border-b px-5"><h1 className="font-medium">新会话</h1></header>
     <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-20">
       <div className="w-full max-w-3xl space-y-7">
         <div className="text-center"><h2 className="text-2xl font-medium tracking-tight">想了解哪篇文献？</h2>
@@ -65,8 +67,12 @@ export function NewChatPage() {
         {models.isSuccess && models.data.length === 0 && <p className="text-center text-sm text-muted-foreground">请先<Link className="ml-1 underline" to="/settings">配置模型</Link></p>}
         {models.isError && <p role="alert" className="text-center text-sm text-destructive">模型列表加载失败，请刷新重试</p>}
         <TextInput
-          className="w-full rounded-[32px] bg-muted p-1"
+          className="w-full rounded-[26px] bg-muted p-1"
           headerSlot={<div className="flex items-center gap-2 px-2 py-1">
+            <Select value={projectId || "global"} onValueChange={(value) => setProjectId(value === "global" ? "" : value)} disabled={busy || Boolean(pendingSession.current)}>
+              <SelectTrigger className="h-8 max-w-40 border-0 bg-transparent text-xs" aria-label="所属项目"><SelectValue placeholder="选择项目" /></SelectTrigger>
+              <SelectContent><SelectItem value="global">全局</SelectItem>{projects.data?.items.map((project) => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent>
+            </Select>
             <Select value={selectedKey} onValueChange={(value) => { setModelKey(value); setEffort("default") }} disabled={busy || !models.data?.length}>
               <SelectTrigger className="h-8 max-w-56 border-0 bg-transparent text-xs"><SelectValue placeholder="选择模型" /></SelectTrigger>
               <SelectContent>{models.data?.map((item) => <SelectItem key={`${item.credential_id}:${item.model}`} value={`${item.credential_id}:${item.model}`}>{item.type.replace(/_credential$/, "")} · {item.model}</SelectItem>)}</SelectContent>

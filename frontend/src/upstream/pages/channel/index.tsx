@@ -198,7 +198,7 @@ export function ChannelPage() {
 		<div className="flex size-full p-2">
 			<ResizablePanelGroup orientation="horizontal">
 				<ResizablePanel minSize="24rem">
-					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[22px] bg-card shadow-panel">
+					<main className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[18px] bg-card shadow-panel">
 						<div className="px-6 pt-5 pb-4">
 							<div className="text-2xl font-semibold">{t('channel.title')}</div>
 							<div className="mt-1 text-sm text-muted-foreground">

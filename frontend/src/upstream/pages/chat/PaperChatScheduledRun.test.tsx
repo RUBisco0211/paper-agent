@@ -11,11 +11,11 @@ import { PaperChatPage } from "./PaperChatPage"
 
 const send = vi.fn()
 const onExternalAnswer = vi.fn(async () => {})
-const importState = vi.hoisted(() => ({ messages: [] as Array<{ id: string; role: string; content: unknown[] }>, open: vi.fn() }))
-vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { sessions: { llmCatalog: async () => ({ providers: [] }) } } }) }))
+const importState = vi.hoisted(() => ({ messages: [] as Array<{ id: string; role: string; content: unknown[] }>, open: vi.fn(), confirm: vi.fn(async () => {}) }))
+vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { sessions: { llmCatalog: async () => ({ providers: [] }) }, client: { request: async () => ({ candidates: [{ title: "Selected Study", identifier: "10.1234/selected", source_id: "https://example.org/study" }] }) } } }) }))
 vi.mock("@/lib/import-queue-context", () => ({ useImportQueue: () => ({ setOpen: importState.open }) }))
 vi.mock("@/lib/agent-sessions", () => ({ availableChatModels: async () => [], listBindings: async () => [], sameSessionId: (left: string, right: string) => left === right }))
-vi.mock("@upstream/hooks/useMessages", () => ({ useMessages: () => ({ msgs: importState.messages, loading: false, phase: "idle", error: null, reconnecting: false, historyInterrupted: false, send, interrupt: vi.fn(), onUserConfirm: vi.fn(), onExternalAnswer }) }))
+vi.mock("@upstream/hooks/useMessages", () => ({ useMessages: () => ({ msgs: importState.messages, loading: false, phase: "idle", error: null, reconnecting: false, historyInterrupted: false, send, interrupt: vi.fn(), onUserConfirm: importState.confirm, onExternalAnswer }) }))
 vi.mock("@upstream/components/chat/ASMessageBubble", () => ({ ASMessageBubble: () => null }))
 vi.mock("@upstream/components/chat/TextInput", () => ({ TextInput: ({ disabled, sendDisabled, onSend }: { disabled: boolean; sendDisabled?: boolean; onSend: (blocks: Array<{ type: "text"; text: string }>) => void }) => <button disabled={disabled} data-send-disabled={sendDisabled} onClick={() => onSend([{ type: "text", text: "继续提问" }])}>发送</button> }))
 vi.mock("./BoundCitationSheet", () => ({ BoundCitationSheet: () => null }))
@@ -84,4 +84,23 @@ it("shows a submitted ask-user call even while its tool result is running", asyn
   await userEvent.type(screen.getByRole("textbox", { name: "填写答案" }), "当前项目")
   await userEvent.click(screen.getByRole("button", { name: "提交答案" }))
   expect(onExternalAnswer).toHaveBeenCalledWith(expect.objectContaining({ id: "call-1" }), "reply-1", { scope: "当前项目" })
+})
+
+it("keeps an import call pending after closing review and confirms only inside the dialog", async () => {
+  importState.confirm.mockClear()
+  importState.messages = [{ id: "reply-1", role: "assistant", content: [
+    { type: "tool_call", id: "call-1", name: "import_selected_papers", state: "asking", input: "{}" },
+  ] }]
+  const run = { id: "run-1", agent_id: "agent-1", source_schedule_id: "task-1", config: { name: "问候" } }
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><PaperChatPage scheduledRun={run as SessionRecord} scheduledScope="全局" /></MemoryRouter></QueryClientProvider>)
+
+  await userEvent.click(screen.getByRole("button", { name: "查看并确认" }))
+  expect(await screen.findByText("Selected Study")).toBeTruthy()
+  await userEvent.click(screen.getByRole("button", { name: "关闭" }))
+  expect(screen.getByText("文献入库等待确认")).toBeTruthy()
+  expect(importState.confirm).not.toHaveBeenCalled()
+
+  await userEvent.click(screen.getByRole("button", { name: "查看并确认" }))
+  await userEvent.click(screen.getByRole("button", { name: "确认入库" }))
+  expect(importState.confirm).toHaveBeenCalledWith(expect.objectContaining({ id: "call-1" }), true, "reply-1")
 })

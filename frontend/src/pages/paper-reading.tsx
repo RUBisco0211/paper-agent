@@ -1,11 +1,13 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, Info, LocateFixed, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
+import { ArrowLeft, Copy, Info, LocateFixed, MessageSquarePlus, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
 import { useEffect, useState } from "react"
+import { usePanelRef } from "react-resizable-panels"
 import katex from "katex"
 import "katex/dist/katex.min.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { PaperDetailSheet } from "@/components/papers/paper-detail-sheet"
+import { normalizePdfQuoteRects, type PaperQuote } from "@upstream/components/chat/quote-references"
 import { PdfViewer, type PdfTarget } from "@/components/papers/pdf-viewer"
 import { useApi } from "@/lib/api/provider"
 import type { PaperBlock } from "@/lib/api/types"
@@ -78,20 +80,38 @@ function BlockImagePreview({ paperId, block, onOpen }: {
     : image
 }
 
-export function PaperReadingPage() {
-  const { paperId = "" } = useParams()
+export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, onBack, onQuote, locatedQuote }: {
+  paperId?: string
+  embedded?: boolean
+  onBack?: () => void
+  onQuote?: (reference: PaperQuote) => boolean
+  locatedQuote?: PaperQuote | null
+} = {}) {
+  const { paperId: routePaperId = "" } = useParams()
+  const paperId = suppliedPaperId ?? routePaperId
   const { api } = useApi()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialPage = Number(searchParams.get("page"))
-  const linkedBlockId = Number(searchParams.get("block"))
+  const linkedBlockId = Number(locatedQuote?.kind === "parsed_block" ? locatedQuote.block_id : searchParams.get("block"))
   const [target, setTarget] = useState<PdfTarget | undefined>(
     Number.isSafeInteger(initialPage) && initialPage > 0 ? { page: initialPage } : undefined,
   )
+  useEffect(() => {
+    if (locatedQuote) setTarget({ page: locatedQuote.page, rects: locatedQuote.kind === "pdf_selection" ? locatedQuote.rects : undefined })
+  }, [locatedQuote])
   const [selectedBlock, setSelectedBlock] = useState<number | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
+  const blocksPanelRef = usePanelRef()
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (panelOpen) blocksPanelRef.current?.expand()
+      else blocksPanelRef.current?.collapse()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [panelOpen, blocksPanelRef])
   const [infoOpen, setInfoOpen] = useState(false)
   const [imageViewer, setImageViewer] = useState<{ source: string; title: string } | null>(null)
   const [imageZoom, setImageZoom] = useState(1)
@@ -109,7 +129,7 @@ export function PaperReadingPage() {
   const linkedBlock = useQuery({
     queryKey: ["paper-block", paperId, linkedBlockId],
     queryFn: () => api.library.block(paperId, linkedBlockId),
-    enabled: Boolean(paperId && Number.isSafeInteger(linkedBlockId) && linkedBlockId >= 0 && searchParams.has("block")),
+    enabled: Boolean(paperId && Number.isSafeInteger(linkedBlockId) && linkedBlockId >= 0 && (locatedQuote?.kind === "parsed_block" || searchParams.has("block"))),
   })
   useEffect(() => {
     if (!linkedBlock.data) return
@@ -142,13 +162,13 @@ export function PaperReadingPage() {
       pageSize: block.page_size,
       coordinateSystem: block.coordinate_system,
     })
-    setSearchParams({ page: String(block.page), block: String(block.id) }, { replace: true })
+    if (!embedded) setSearchParams({ page: String(block.page), block: String(block.id) }, { replace: true })
   }
 
   function clearLocatedBlock() {
     setSelectedBlock(null)
     setTarget(undefined)
-    setSearchParams((current) => {
+    if (!embedded) setSearchParams((current) => {
       const next = new URLSearchParams(current)
       next.delete("block")
       return next
@@ -164,9 +184,28 @@ export function PaperReadingPage() {
     }
   }
 
+  function addBlockQuote(block: PaperBlock) {
+    if (!paper.data?.artifact_version || !onQuote) return
+    if ((block.type === "image" || block.type === "chart") && !block.has_image) return
+    const image = block.has_image && (block.type === "image" || block.type === "chart")
+    const text = (block.text || block.formula || "").slice(0, 2000)
+    const accepted = onQuote({ kind: "parsed_block", user_paper_id: paperId, version: paper.data.artifact_version,
+      page: block.page, block_id: block.id, start: 0, end: text.length, selected_text: text,
+      include_image: image, comment: "", source_title: paper.data.title ?? undefined })
+    if (!accepted) notifyError(new Error("无法加入当前对话"), "请检查会话后重试")
+  }
+
+  function addPdfQuote(selection: { page: number; text: string; rects: number[][] }) {
+    if (!paper.data?.pdf_version || !onQuote) return
+    const accepted = onQuote({ kind: "pdf_selection", user_paper_id: paperId, version: paper.data.pdf_version,
+      page: selection.page, rects: normalizePdfQuoteRects(selection.rects), selected_text: selection.text.slice(0, 2000),
+      comment: "", source_title: paper.data.title ?? undefined })
+    if (!accepted) notifyError(new Error("无法加入当前对话"), "请检查会话后重试")
+  }
+
   return <div className="flex h-full min-h-0 w-full flex-col">
-    <header className="flex min-h-14 items-center gap-3 border-b px-4">
-      <Button variant="ghost" size="icon-sm" aria-label="返回" onClick={() => navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+      <Button variant="ghost" size="icon-sm" aria-label={embedded ? "返回文献列表" : "返回"} onClick={() => onBack ? onBack() : navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-medium">{paper.data?.title || paper.data?.original_filename || "文献"}</h1>
         {paper.data && <p className="text-muted-foreground truncate text-xs">{paper.data.authors.join("、") || "作者未知"}{paper.data.year ? ` · ${paper.data.year}` : ""}</p>}
@@ -175,14 +214,14 @@ export function PaperReadingPage() {
       <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => { setPanelOpen(!panelOpen); setImageViewer(null) }}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
     </header>
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-      <ResizablePanel minSize="20rem" className="min-h-0 min-w-0">
+      <ResizablePanel minSize={embedded ? "12rem" : "20rem"} className="min-h-0 min-w-0">
         <main className="h-full min-w-0 overflow-hidden">
-        {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} onClearTarget={clearLocatedBlock} />}
+        {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} onClearTarget={clearLocatedBlock} onQuoteSelection={onQuote && paper.data?.pdf_version ? addPdfQuote : undefined} />}
         </main>
       </ResizablePanel>
-      {panelOpen && <>
-        <ResizableHandle aria-label="调整分块宽度" withHandle />
-        <ResizablePanel defaultSize="26rem" minSize="20rem" maxSize="50rem" className="min-h-0 min-w-0">
+      <>
+        <ResizableHandle aria-label="调整分块宽度" withHandle className={panelOpen ? "" : "pointer-events-none opacity-0"} />
+        <ResizablePanel data-animated-sidebar panelRef={blocksPanelRef} collapsible collapsedSize={0} defaultSize={embedded ? "45%" : "26rem"} minSize={embedded ? "12rem" : "20rem"} maxSize={embedded ? "65%" : "50rem"} className="min-h-0 min-w-0">
           <aside aria-label="文献分块" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
         {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null); setImageViewer(null) }} className="h-full min-h-0 flex-1 gap-0">
           <div className="flex h-12 shrink-0 items-center overflow-x-auto border-b px-2">
@@ -197,7 +236,7 @@ export function PaperReadingPage() {
               const markup = isFormula && block.formula ? formulaMarkup(block.formula) : null
               const canCopy = (block.type === "text" && Boolean(block.text)) || (isFormula && Boolean(block.formula || block.text))
               return <div key={block.id} className={`relative rounded-md hover:bg-muted ${selectedBlock === block.id ? "bg-muted" : ""}`}>
-                <div className="w-full px-3 py-2 pr-16 text-left">
+                <div className="w-full px-3 py-2 pr-24 text-left">
                   <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
                   <span className="mt-1 block">
                     {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
@@ -211,6 +250,7 @@ export function PaperReadingPage() {
                 <div className="absolute right-1 top-1 flex items-center gap-0.5">
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="定位分块" onClick={() => locateBlock(block)}><LocateFixed /></Button></TooltipTrigger><TooltipContent>定位原文</TooltipContent></Tooltip>
                   {canCopy && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button></TooltipTrigger><TooltipContent>{isFormula ? "复制公式" : "复制正文"}</TooltipContent></Tooltip>}
+                  {onQuote && paper.data?.artifact_version && ((block.type === "image" || block.type === "chart") ? block.has_image : (block.text || block.formula)) && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="添加到对话" onClick={() => addBlockQuote(block)}><MessageSquarePlus /></Button></TooltipTrigger><TooltipContent>添加到对话</TooltipContent></Tooltip>}
                 </div>
               </div>
             })}
@@ -219,7 +259,7 @@ export function PaperReadingPage() {
         </Tabs> : <p className="p-4 text-sm text-muted-foreground">{overview.isError ? describeError(overview.error) : paper.data?.capabilities.has_fulltext ? "暂无原文片段" : "文献尚未完成解析"}</p>}
           </aside>
         </ResizablePanel>
-      </>}
+      </>
     </ResizablePanelGroup>
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
     <Dialog open={Boolean(imageViewer)} onOpenChange={(open) => { if (!open) setImageViewer(null) }}>

@@ -42,16 +42,17 @@ export function ModelSettingsPage() {
   return <SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full w-full">
       <Sidebar collapsible="none" className="border-r">
-        <SidebarHeader className="px-4 py-5 font-semibold">模型设置</SidebarHeader>
+        <SidebarHeader className="h-12 justify-center px-4 font-semibold">模型设置</SidebarHeader>
         <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
           {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
             <SidebarMenuButton isActive={selected === item.id} onClick={() => { setProvider(item.id); setError(""); setSuccess(false) }}><KeyRound />{item.label}</SidebarMenuButton>
           </SidebarMenuItem>)}
         </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
       </Sidebar>
-      <main className="min-w-0 flex-1 overflow-y-auto bg-background p-6">
+      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <header className="flex h-12 shrink-0 items-center border-b px-6"><h1 className="font-medium">{chosen?.label ?? "模型设置"}</h1></header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl space-y-8">
-          <header className="border-b pb-5"><h1 className="text-2xl font-semibold">{chosen?.label ?? "模型设置"}</h1></header>
           <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>
             {credentials.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
             {saved.length === 0 && !credentials.isPending && <p className="text-sm text-muted-foreground">尚未配置</p>}
@@ -66,6 +67,7 @@ export function ModelSettingsPage() {
               {success && <p role="status" className="text-sm">凭据已保存</p>}
             </form>
           </section>
+        </div>
         </div>
       </main>
     </div>

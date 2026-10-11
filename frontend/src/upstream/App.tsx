@@ -32,7 +32,6 @@ const router = createBrowserRouter([
       { path: "/settings", element: <ModelSettingsPage /> },
       { path: "/chat", element: <ChatPage />, children: [
         { path: "new", element: <NewChatPage /> },
-        { path: "project/:projectId/new", element: <NewChatPage /> },
         { path: "project/:projectId", element: <div className="flex h-full items-center justify-center text-muted-foreground">选择会话或新建会话</div> },
         { path: ":agentId/:sessionId", element: <PaperChatPage /> },
       ] },

@@ -483,7 +483,7 @@ export function SkillHubPage() {
 
 	return (
 		<div className="flex size-full p-2 gap-2">
-			<Sidebar collapsible="none" className="rounded-[22px]">
+			<Sidebar collapsible="none" className="rounded-[18px]">
 				<SidebarHeader className="flex flex-col p-[20px_18px_14px] gap-y-1">
 					<div className="text-xl font-medium tracking-[-0.02em] text-foreground">
 						{t('common.skill-hub')}
@@ -593,7 +593,7 @@ export function SkillHubPage() {
 				</SidebarContent>
 			</Sidebar>
 
-			<main className="flex-1 min-w-0 min-h-0 overflow-hidden rounded-[22px] bg-card shadow-panel">
+			<main className="flex-1 min-w-0 min-h-0 overflow-hidden rounded-[18px] bg-card shadow-panel">
 				{hubId ? (
 					// Remount on hub change so the panel's query box resets.
 					<HubPanel

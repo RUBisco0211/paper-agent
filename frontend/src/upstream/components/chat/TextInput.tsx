@@ -49,7 +49,7 @@ interface ProcessedFile {
 }
 
 interface TextInputProps {
-	onSend: (blocks: ContentBlock[]) => void;
+	onSend: (blocks: ContentBlock[]) => void | Promise<boolean>;
 	sendDisabled?: boolean;
 	placeholder?: string;
 	autoComplete?: (input: string) => string | null;
@@ -97,6 +97,8 @@ interface TextInputProps {
 	 * header's edges.
 	 */
 	headerSlot?: React.ReactNode;
+	quoteSlot?: React.ReactNode;
+	allowEmptyText?: boolean;
 }
 
 export interface TextInputRef {
@@ -142,6 +144,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			phase = 'idle',
 			onInterrupt,
 			headerSlot,
+			quoteSlot,
+			allowEmptyText = false,
 		},
 		ref,
 	) => {
@@ -219,8 +223,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			}
 		};
 
-		const handleSend = () => {
-			if (!value.trim() || disabled || sendDisabled || hasProcessing) return;
+		const handleSend = async () => {
+			if ((!value.trim() && !allowEmptyText) || disabled || sendDisabled || hasProcessing) return;
 
 			const blocks: ContentBlock[] = [];
 
@@ -243,7 +247,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				}
 			});
 
-			onSend?.(blocks);
+			const accepted = await onSend(blocks);
+			if (accepted === false) return;
 			setValue('');
 			setFiles([]);
 		};
@@ -277,8 +282,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			return {
 				icon: ArrowUp,
 				tooltip: t('textInput.send'),
-				disabled: disabled || sendDisabled || !value.trim() || hasProcessing,
-				onClick: handleSend,
+				disabled: disabled || sendDisabled || (!value.trim() && !allowEmptyText) || hasProcessing,
+				onClick: () => { void handleSend(); },
 			};
 		})();
 
@@ -330,9 +335,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				{headerSlot}
 				<div
 					id="tour-chat-input"
-					className="flex w-full flex-col rounded-[28px] border bg-background px-2"
+					className="flex w-full flex-col rounded-[22px] border bg-background px-2"
 					data-tour="chat-input"
 				>
+					{quoteSlot && <div className="flex flex-wrap gap-1.5 px-2 pt-2">{quoteSlot}</div>}
 					{files.length > 0 && (
 						<AttachmentGroup className={'w-full max-w-full px-1 mt-1'}>
 							{files.map((file, index) => {

@@ -102,7 +102,7 @@ svg.lucide {
 	--chart-5: oklch(0.269 0 0);
 
 	/* --radius: 0.625rem; */
-	--radius: 1rem;
+	--radius: 0.75rem;
 
 	/* --sidebar: oklch(0.985 0 0); */
 	--sidebar: rgba(255, 255, 255, 0.62);
@@ -303,4 +303,40 @@ svg.lucide {
 .paper-pdf-text-layer ::selection {
 	background: color-mix(in srgb, Highlight 40%, transparent);
 	color: transparent;
+}
+/* Message quotes share one accent across source text, comments, and badges. */
+:root {
+	--message-quote-accent: #c88b28;
+	--message-quote-fill: #fff0bb;
+}
+.dark {
+	--message-quote-accent: #e5ad54;
+	--message-quote-fill: #574016;
+}
+::highlight(paper-agent-message-quote) {
+	background-color: var(--message-quote-fill);
+	text-decoration: underline;
+	text-decoration-color: var(--message-quote-accent);
+}
+
+@keyframes route-page-enter {
+	from { opacity: 0.7; transform: translateY(5px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.route-page-enter {
+	animation: route-page-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.route-page-enter { animation: none; }
+}
+[data-animated-sidebar] {
+  transition: flex-grow 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-animated-sidebar] {
+    transition: none;
+  }
 }

@@ -8,11 +8,12 @@ const api = vi.hoisted(() => ({
   messages: vi.fn(),
   streamEvents: vi.fn(),
   trigger: vi.fn(),
+  triggerQuoted: vi.fn(),
 }))
 
 vi.mock("@upstream/api", () => ({
   sessionApi: api,
-  chatApi: { trigger: api.trigger },
+  chatApi: { trigger: api.trigger, triggerQuoted: api.triggerQuoted },
   takeFreshlyCreated: () => false,
 }))
 
@@ -102,5 +103,19 @@ it("returns an ask-user answer as an external result for the same reply", async 
     id: "call-1", name: "ask_user", state: "success",
     output: JSON.stringify({ answers: { scope: "project" } }),
   })
+  unmount()
+})
+
+it("sends every rectangle in a long PDF selection", async () => {
+  api.messages.mockResolvedValue({ messages: [], is_running: false })
+  api.streamEvents.mockImplementation(async function* () { await new Promise(() => {}) })
+  api.triggerQuoted.mockResolvedValue({ message_id: "quoted-1" })
+  const { result, unmount } = renderHook(() => useMessages("agent-1", "session-1"))
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  await act(async () => {
+    await result.current.send([], [{ kind: "pdf_selection", user_paper_id: "paper-1", version: "v1",
+      page: 1, selected_text: "选中文字", comment: "", rects: Array.from({ length: 30 }, (_, index) => [0.1, index / 40, 0.4, index / 40 + 0.01]) }])
+  })
+  expect(api.triggerQuoted.mock.calls[0][0].references[0].rects).toHaveLength(30)
   unmount()
 })

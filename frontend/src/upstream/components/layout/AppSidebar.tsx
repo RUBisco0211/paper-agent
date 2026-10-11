@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, type CSSProperties } from "react"
 import { BookOpen, Clock3, KeyRound, ListChecks, LoaderCircle, LogOut, MessageSquareText, Search } from "lucide-react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
@@ -26,7 +26,7 @@ export function AppSidebar() {
   const currentRoute = routes.find(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
   if (currentRoute) lastPaths.current[currentRoute.to] = `${location.pathname}${location.search}${location.hash}`
 
-  return <Sidebar collapsible="none" className="w-16 border-r [&_[data-slot=sidebar-container]]:w-16 [&_[data-slot=sidebar-inner]]:w-16">
+  return <Sidebar collapsible="none" className="w-16 border-r [&_[data-slot=sidebar-container]]:w-16 [&_[data-slot=sidebar-inner]]:w-16" style={{ "--sidebar": "#f7f8f9" } as CSSProperties}>
     <SidebarHeader className="items-center px-2 pt-4">
       <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-sm font-semibold" aria-label="Paper Agent">P</span>
     </SidebarHeader>

@@ -11,17 +11,23 @@ import type {
 import {
 	ArrowDown,
 	ArrowUp,
+	Check,
 	CheckCircle,
 	ChevronRight,
 	CirclePlay,
+	Copy,
+	Download,
 	FileText,
 	FileVideo2,
 	Loader2,
+	MessageSquareText,
 	Square,
 	TriangleAlert,
+	X,
 } from 'lucide-react';
 import * as mime from 'mime-types';
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { renderToolCall } from './tool-renderers';
 import { countDiffStats, DiffStats, getResultDiff } from './tool-renderers/_shared';
@@ -37,6 +43,8 @@ import {
 	AttachmentTitle,
 } from '@upstream/components/ui/attachment.tsx';
 import { Badge } from '@upstream/components/ui/badge';
+import { Button } from '@upstream/components/ui/button';
+import { Input } from '@upstream/components/ui/input';
 import { Bubble, BubbleContent } from '@upstream/components/ui/bubble.tsx';
 import {
 	Collapsible,
@@ -48,6 +56,12 @@ import { useAudioBlock, useReplayController } from '@upstream/context/AudioConte
 import { useTranslation } from '@upstream/i18n/useI18n';
 import { cn } from '@upstream/lib/utils';
 import { formatNumber, formatTime } from '@upstream/utils/common';
+import { toast } from 'sonner';
+import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
+import { QuoteBadge } from './QuoteBadge';
+import { messageQuoteKey, messageReferenceFromSelection, readQuoteReferences, readQuotedBody, type MessageQuote, type QuoteReference } from './quote-references';
+import { captureRenderedSelection, restoreRenderedSelection } from './rendered-selection';
+import { addMessageHighlight } from './message-highlight';
 import 'streamdown/styles.css';
 
 /**
@@ -64,6 +78,13 @@ interface ToolCallGroupBlock {
 }
 
 type ExtendedContentBlock = ContentBlock | ToolCallGroupBlock;
+
+function placeCommentHost(line: Element, host: HTMLElement) {
+	if (line.tagName === 'LI') { line.append(host); return; }
+	let anchor = line;
+	while (anchor.nextElementSibling?.hasAttribute('data-quote-comment-host')) anchor = anchor.nextElementSibling;
+	anchor.after(host);
+}
 
 /**
  * Pair every tool_call with its tool_result (by id) and collect *consecutive*
@@ -359,6 +380,10 @@ function summarizeToolGroup(calls: ToolCallWithResult[], t: TFunction) {
 
 interface MessageBubbleProps {
 	message: Msg;
+	onQuote?: (reference: QuoteReference) => boolean | void;
+	onOpenReference?: (reference: QuoteReference) => void;
+	annotations?: MessageQuote[];
+	activeAnnotationKey?: string | null;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -384,8 +409,38 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-export function ASMessageBubble({ message }: MessageBubbleProps) {
+export function ASMessageBubble({ message, onQuote, onOpenReference, annotations, activeAnnotationKey }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
+	const references = isUser ? readQuoteReferences(message.metadata) : [];
+	const quotedBody = references.length ? readQuotedBody(message.metadata) : null;
+	const [selection, setSelection] = useState<{ blockIndex: number; start: number; end: number; text: string; range: Range } | null>(null);
+	const [quoteComment, setQuoteComment] = useState('');
+	const [editorHost, setEditorHost] = useState<HTMLElement | null>(null);
+	const commentInputRef = useRef<HTMLInputElement>(null);
+	const [annotationHosts, setAnnotationHosts] = useState<Array<{ host: HTMLElement; reference: MessageQuote }>>([]);
+	const textRoots = useRef(new Map<number, HTMLElement>());
+	useEffect(() => () => editorHost?.remove(), [editorHost]);
+	useEffect(() => {
+		const hosts: Array<{ host: HTMLElement; reference: MessageQuote }> = [];
+		const cleanup: Array<() => void> = [];
+		for (const reference of annotations ?? []) {
+			const root = textRoots.current.get(reference.block_index)?.querySelector<HTMLElement>('.cn-markdown');
+			if (!root) continue;
+			const range = restoreRenderedSelection(root, { start: reference.start, end: reference.end, text: reference.selected_text });
+			if (!range) continue;
+			cleanup.push(addMessageHighlight(range));
+			if (messageQuoteKey(reference) !== activeAnnotationKey || !reference.comment) continue;
+			const end = range.endContainer instanceof Element ? range.endContainer : range.endContainer.parentElement;
+			const line = end?.closest('p, li, pre, blockquote, table') ?? root;
+			const host = document.createElement('div');
+			host.dataset.quoteCommentHost = 'true';
+			placeCommentHost(line, host);
+			hosts.push({ host, reference });
+		}
+		setAnnotationHosts(hosts);
+		return () => { cleanup.forEach((remove) => remove()); hosts.forEach(({ host }) => host.remove()); };
+	}, [annotations, activeAnnotationKey, message.content]);
+	useEffect(() => editorHost && selection ? addMessageHighlight(selection.range) : undefined, [editorHost, selection]);
 	const { t } = useTranslation();
 
 	const isRunning = !message.finished_at;
@@ -409,7 +464,46 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 		(b): b is DataBlock => b.type === 'data' && b.source.media_type.split('/')[0] === 'audio',
 	);
 
-	const blocks = groupToolCalls(message.content);
+	const displayContent = quotedBody !== null ? [
+		...message.content.filter((block) => block.type !== 'text'),
+		...(quotedBody ? [{ ...message.content.find((block) => block.type === 'text'), type: 'text' as const, text: quotedBody } as TextBlock] : []),
+	] : message.content;
+	const blocks = groupToolCalls(displayContent);
+	const captureSelection = (element: HTMLElement, block: ExtendedContentBlock) => {
+		if (isUser || isRunning || !onQuote || block.type !== 'text') { setSelection(null); setEditorHost(null); return; }
+		const selected = window.getSelection();
+		if (!selected || selected.isCollapsed || !selected.anchorNode || !selected.focusNode ||
+			!element.contains(selected.anchorNode) || !element.contains(selected.focusNode)) { setSelection(null); setEditorHost(null); return; }
+		const root = element.querySelector<HTMLElement>('.cn-markdown');
+		const range = selected.getRangeAt(0).cloneRange();
+		const position = root && captureRenderedSelection(root, range);
+		if (!position) { setSelection(null); setEditorHost(null); return; }
+		const blockIndex = message.content.findIndex((item) => item.id === block.id);
+		if (blockIndex < 0) { setSelection(null); setEditorHost(null); return; }
+		setSelection({ blockIndex, ...position, range });
+	};
+	const beginQuote = () => {
+		if (!selection) return;
+		if (selection.text.length > 2000) { toast.error('引用最多 2000 字，请缩小选择范围'); return; }
+		setQuoteComment('');
+		const end = selection.range.endContainer instanceof Element ? selection.range.endContainer : selection.range.endContainer.parentElement;
+		const line = end?.closest('p, li, pre, blockquote, table') ?? textRoots.current.get(selection.blockIndex);
+		if (!line) return;
+		const host = document.createElement('div');
+		host.dataset.quoteCommentHost = 'true';
+		placeCommentHost(line, host);
+		setEditorHost(host);
+	};
+	const addQuote = () => {
+		if (!selection || !onQuote) return;
+		const accepted = onQuote(messageReferenceFromSelection(message.id, selection.blockIndex, selection.start, selection.end, selection.text, quoteComment.trim()));
+		if (accepted === false) return;
+		setSelection(null);
+		setEditorHost(null);
+		setQuoteComment('');
+		window.getSelection()?.removeAllRanges();
+	};
+	const cancelQuote = () => { setSelection(null); setEditorHost(null) };
 
 	// A fatal error terminated this reply. ``finished_reason`` / ``error`` are
 	// reply-level fields set by ``appendEvent`` on a ``REPLY_END`` with
@@ -424,6 +518,32 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
+	const messageText = displayContent
+		.filter((block): block is TextBlock => block.type === 'text')
+		.map((block) => block.text)
+		.join('\n\n');
+	const timestamp = isUser ? message.created_at : message.finished_at;
+	const messageTime = timestamp ? new Date(timestamp) : null;
+	const validMessageTime = messageTime && !Number.isNaN(messageTime.getTime()) ? messageTime : null;
+
+	async function copyMessage() {
+		try {
+			await navigator.clipboard.writeText(messageText);
+			toast.success('已复制消息');
+		} catch {
+			toast.error('复制失败，请重试');
+		}
+	}
+
+	function exportMarkdown() {
+		const blob = new Blob([messageText], { type: 'text/markdown;charset=utf-8' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `message-${message.id}.md`;
+		link.click();
+		setTimeout(() => URL.revokeObjectURL(url), 0);
+	}
 
 	return (
 		<Message align={isUser ? 'end' : 'start'} data-role={message.role}>
@@ -433,10 +553,37 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 					.map((block, index) => (
 						<Bubble key={index} variant={isUser ? 'muted' : 'ghost'}>
 							<BubbleContent>
-								<ASBlock block={block} />
+								{isUser && index === 0 && references.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{references.map((reference, referenceIndex) =>
+									<QuoteBadge key={referenceIndex} reference={reference} onOpen={() => onOpenReference?.(reference)} />
+								)}</div>}
+								<ContextMenuPrimitive.Root>
+									<ContextMenuPrimitive.Trigger asChild>
+										<div data-quote-block-index={message.content.findIndex((item) => item.id === ('id' in block ? block.id : undefined))}
+											ref={(node) => { const blockIndex = message.content.findIndex((item) => item.id === ('id' in block ? block.id : undefined)); if (blockIndex >= 0) { if (node) textRoots.current.set(blockIndex, node); else textRoots.current.delete(blockIndex) } }}
+											onContextMenu={(event) => captureSelection(event.currentTarget, block)}><ASBlock block={block} /></div>
+									</ContextMenuPrimitive.Trigger>
+									<ContextMenuPrimitive.Portal><ContextMenuPrimitive.Content onCloseAutoFocus={(event) => { if (editorHost) { event.preventDefault(); commentInputRef.current?.focus() } }} className="z-50 min-w-32 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
+										<ContextMenuPrimitive.Item disabled={!selection || block.type !== 'text'} onSelect={beginQuote} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden focus:bg-accent data-disabled:opacity-50"><MessageSquareText className="size-4" />评论</ContextMenuPrimitive.Item>
+										<ContextMenuPrimitive.Item disabled={!selection || block.type !== 'text'} onSelect={() => { if (selection) void navigator.clipboard.writeText(selection.text).then(() => toast.success('已复制')).catch(() => toast.error('复制失败，请重试')) }} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden focus:bg-accent data-disabled:opacity-50"><Copy className="size-4" />复制</ContextMenuPrimitive.Item>
+									</ContextMenuPrimitive.Content></ContextMenuPrimitive.Portal>
+								</ContextMenuPrimitive.Root>
 							</BubbleContent>
 						</Bubble>
 					))}
+				{isUser && references.length > 0 && blocks.every((block) => block.type === 'data') &&
+					<Bubble variant="muted"><BubbleContent><div className="flex flex-wrap gap-1.5">{references.map((reference, index) =>
+						<QuoteBadge key={index} reference={reference} onOpen={() => onOpenReference?.(reference)} />
+					)}</div></BubbleContent></Bubble>}
+				{selection && editorHost && createPortal(
+					<div className="mt-1 flex w-full min-w-0 items-center gap-1 border-l-2 border-[var(--message-quote-accent)] bg-[var(--message-quote-fill)] px-2 py-1">
+						<Input ref={commentInputRef} aria-label="引用评论" autoFocus maxLength={2000} className="h-8 min-w-0 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0" value={quoteComment} onChange={(event) => setQuoteComment(event.target.value)} placeholder="添加评论…" onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); addQuote() } else if (event.key === 'Escape') cancelQuote() }} />
+						<Button type="button" variant="ghost" size="icon-xs" aria-label="取消引用" title="取消引用" onClick={cancelQuote}><X /></Button>
+						<Button type="button" variant="ghost" size="icon-xs" aria-label="加入提问" title="加入提问" onClick={addQuote}><Check /></Button>
+					</div>, editorHost,
+				)}
+				{annotationHosts.map(({ host, reference }, index) => createPortal(
+					<div className="mt-1 border-l-2 border-[var(--message-quote-accent)] bg-[var(--message-quote-fill)] px-2 py-1 text-sm" aria-label="引用评论">{reference.comment}</div>, host, `${reference.source_message_id}:${reference.block_index}:${reference.start}:${index}`,
+				))}
 				{isError && (
 					<Alert
 						variant="destructive"
@@ -452,16 +599,20 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 						</AlertDescription>
 					</Alert>
 				)}
-				<AttachmentGroup className="max-w-full">
-					{blocks
-						.filter((block) => block.type === 'data')
-						.map((block, index) => (
-							<ASBlock block={block} key={index} />
-						))}
-				</AttachmentGroup>
-				{message.role !== 'user' && (
-					<MessageFooter className="font-mono">
+				{blocks.some((block) => block.type === 'data') && (
+					<AttachmentGroup className="max-w-full">
+						{blocks
+							.filter((block) => block.type === 'data')
+							.map((block, index) => (
+								<ASBlock block={block} key={index} />
+							))}
+					</AttachmentGroup>
+				)}
+				{(!isUser || messageText) && (
+					<MessageFooter className="-mt-1.5 flex items-center gap-1">
+						{!isUser && (
 						<Badge
+							className="font-mono"
 							variant="secondary"
 							aria-label={isRunning ? t('messageBubble.running') : isInterrupted ? t('messageBubble.stopped') : undefined}
 						>
@@ -490,6 +641,28 @@ export function ASMessageBubble({ message }: MessageBubbleProps) {
 								<AudioInlineControl key={block.id} block={block} />
 							))}
 						</Badge>
+						)}
+						{messageText && (isUser || !isRunning) && (
+							<div className="flex items-center gap-0.5">
+								<Button variant="ghost" size="icon-xs" aria-label="复制消息" title="复制消息" onClick={() => void copyMessage()}>
+									<Copy />
+								</Button>
+								{!isUser && (
+									<Button variant="ghost" size="icon-xs" aria-label="导出 Markdown" title="导出 Markdown" onClick={exportMarkdown}>
+										<Download />
+									</Button>
+								)}
+							</div>
+						)}
+						{messageText && (isUser || !isRunning) && validMessageTime && (
+							<time
+								className="ml-1 tabular-nums text-muted-foreground"
+								dateTime={validMessageTime.toISOString()}
+								title={`${isUser ? '发送于' : '完成于'} ${validMessageTime.toLocaleString('zh-CN')}`}
+							>
+								{new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(validMessageTime)}
+							</time>
+						)}
 					</MessageFooter>
 				)}
 			</MessageContent>
