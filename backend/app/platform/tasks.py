@@ -2,7 +2,7 @@
 
 import asyncio
 import threading
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable, Coroutine
 from typing import Annotated, Any, Protocol
 
 import structlog
@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 
 logger = structlog.get_logger(__name__)
 
-TaskFactory = Callable[[], Awaitable[None]]
+TaskFactory = Callable[[], Coroutine[Any, Any, None]]
 
 
 class TaskScheduler(Protocol):
