@@ -9,8 +9,8 @@ from fastapi import APIRouter
 
 from app.processing.api import router as processing_router
 
-from .auth.api import router as auth_router
 from .auth.api import internal_router as auth_internal_router
+from .auth.api import router as auth_router
 from .imports.api import internal_router as imports_internal_router
 from .imports.api import router as imports_router
 from .library.api import router as library_router
