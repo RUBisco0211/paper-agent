@@ -5,7 +5,7 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from agent_service.retrieval_tools import prepare_schedule_scope
+from agent_service.tools import prepare_schedule_scope
 from app.platform.config import settings
 
 

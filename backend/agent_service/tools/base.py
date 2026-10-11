@@ -1,0 +1,56 @@
+"""Permission types for the project's explicit agent tool allowlist."""
+
+from agentscope.permission import PermissionBehavior, PermissionDecision
+from agentscope.tool import FunctionTool
+
+
+class PaperReadTool(FunctionTool):
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW,
+            message="Session-bound read tool allowed.",
+        )
+
+
+class ApprovedImportTool(FunctionTool):
+    def __init__(self, *args, always_allow: bool = False, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.always_allow = always_allow
+
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW
+            if self.always_allow
+            else PermissionBehavior.ASK,
+            message="User review required before importing selected papers.",
+            bypass_immune=not self.always_allow,
+        )
+
+
+class ScheduleCreateTool(FunctionTool):
+    def __init__(self, *args, always_allow: bool = False, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.always_allow = always_allow
+
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW
+            if self.always_allow
+            else PermissionBehavior.ASK,
+            message="User review required before creating a scheduled task.",
+            bypass_immune=not self.always_allow,
+        )
+
+
+class AskUserTool(FunctionTool):
+    """Browser-executed question tool; the reply is an external tool result."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.is_external_tool = True
+
+    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
+        return PermissionDecision(
+            behavior=PermissionBehavior.ALLOW,
+            message="Ask the current user in this session.",
+        )
