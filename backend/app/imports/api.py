@@ -52,7 +52,7 @@ def discover_papers(
 
 @router.get("/queue", response_model=ImportQueueRead)
 def read_import_queue(user: CurrentUser, service: ImportServiceDep) -> ImportQueueRead:
-    return ImportQueueRead(items=service.queue(user_id=user.id))
+    return ImportQueueRead.model_validate({"items": service.queue(user_id=user.id)})
 
 
 @router.post("/approvals", response_model=ImportApprovalRead, status_code=201)

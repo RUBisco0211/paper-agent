@@ -304,7 +304,11 @@ class ImportService:
                 item.user_paper_id for item in imports if item.user_paper_id
             }
             for item in imports:
-                entry = entries_by_id.get(item.user_paper_id)
+                entry = (
+                    entries_by_id.get(item.user_paper_id)
+                    if item.user_paper_id is not None
+                    else None
+                )
                 job = entry.latest_job if entry else None
                 items.append(
                     {
@@ -350,6 +354,7 @@ class ImportService:
 
     def _run_sync(self, import_id: UUID) -> None:
         session = self._session_factory()
+        repository: ImportRepository | None = None
         try:
             repository = ImportRepository(session)
             record = repository.get(import_id)
@@ -481,6 +486,8 @@ class ImportService:
                 import_id=str(import_id),
                 error_type=type(exc).__name__,
             )
+            if repository is None:
+                raise
             try:
                 repository.mark_status(
                     import_id,
