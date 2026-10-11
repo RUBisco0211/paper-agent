@@ -98,7 +98,8 @@ class OpenAICompatibleEmbeddingAdapter:
     def _embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
-        if not self.is_configured:
+        base_url = self._base_url
+        if not base_url:
             raise AppError(
                 "Embedding 服务未配置",
                 code=ErrorCode.PROVIDER_NOT_CONFIGURED,
@@ -113,7 +114,7 @@ class OpenAICompatibleEmbeddingAdapter:
         try:
             with self._client_factory() as client:
                 response = client.post(
-                    f"{self._base_url.rstrip('/')}/embeddings",
+                    f"{base_url.rstrip('/')}/embeddings",
                     json=payload,
                     headers=headers,
                 )
