@@ -42,7 +42,11 @@ class _Buffer:
         start = len(self.text) + (2 if self.texts else 0)
         self.texts.append(text)
         self.block_ids.append(block_id)
-        span = {"block_id": block_id, "start": start, "end": start + len(text)}
+        span: dict = {
+            "block_id": block_id,
+            "start": start,
+            "end": start + len(text),
+        }
         if page is not None:
             span["page"] = page
         bbox = block.get("bbox")

@@ -396,6 +396,7 @@ class IngestionPipeline:
                 status_code=502,
             )
         for draft in drafts:
+            assert draft.chunk_metadata is not None
             draft.chunk_metadata["artifact_manifest_key"] = paper.artifact_manifest_key
         count = chunks.replace_chunks(paper_id=paper.id, drafts=drafts)
         papers.set_paper_capabilities(paper.id, has_keyword_index=True)
