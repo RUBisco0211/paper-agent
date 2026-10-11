@@ -3,7 +3,7 @@
 import asyncio
 from uuid import uuid4
 
-from agentscope.permission import PermissionBehavior, PermissionMode
+from agentscope.permission import PermissionBehavior, PermissionContext, PermissionMode
 from agentscope.tool import Toolkit
 
 from agent_service.paper_agent import PaperAgent
@@ -41,7 +41,7 @@ def test_write_tools_request_user_confirmation_by_default():
     tools = asyncio.run(build_agent_tools(str(uuid4()), "agent", str(uuid4())))
     for name in ("import_selected_papers", "create_scheduled_task"):
         tool = next(item for item in tools if item.name == name)
-        decision = asyncio.run(tool.check_permissions({}, None))
+        decision = asyncio.run(tool.check_permissions({}, PermissionContext()))
         assert decision.behavior is PermissionBehavior.ASK
         assert decision.bypass_immune
 

@@ -1,10 +1,34 @@
 """Permission types for the project's explicit agent tool allowlist."""
 
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 from agentscope.permission import PermissionBehavior, PermissionDecision
-from agentscope.tool import FunctionTool
+from agentscope.tool import Function, FunctionTool, ToolMiddlewareBase
 
 
 class PaperReadTool(FunctionTool):
+    def __init__(
+        self,
+        func: Function | Callable[..., Awaitable[dict[str, object]]],
+        name: str | None = None,
+        description: str | None = None,
+        is_concurrency_safe: bool = True,
+        is_read_only: bool = False,
+        is_state_injected: bool = False,
+        middlewares: list[ToolMiddlewareBase] | None = None,
+    ) -> None:
+        # AgentScope normalizes dict results in call(), but Function omits them.
+        super().__init__(
+            cast(Function, func),
+            name=name,
+            description=description,
+            is_concurrency_safe=is_concurrency_safe,
+            is_read_only=is_read_only,
+            is_state_injected=is_state_injected,
+            middlewares=middlewares,
+        )
+
     async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
         return PermissionDecision(
             behavior=PermissionBehavior.ALLOW,
