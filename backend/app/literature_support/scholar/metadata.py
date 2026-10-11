@@ -356,14 +356,15 @@ def _arxiv_metadata(
             status_code=404,
         )
 
-    published = _text(entry, "atom:published")
+    published = _text(entry, "atom:published") or ""
     doi = _text(entry, "arxiv:doi")
     return ProviderMetadata(
         source=ArxivClient.name,
         title=_collapse(_text(entry, "atom:title")),
         authors=[
-            _collapse(_text(author, "atom:name"))
+            name
             for author in entry.findall("atom:author", ARXIV_NAMESPACE)
+            if (name := _collapse(_text(author, "atom:name"))) is not None
         ],
         abstract=_collapse(_text(entry, "atom:summary")),
         doi=doi,
