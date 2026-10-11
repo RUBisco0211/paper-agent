@@ -7,13 +7,14 @@
 
 ## DECISION
 
-检索以普通工具函数形式，经 `extra_agent_tools` 异步工厂注入：签名 `(user_id, agent_id, session_id, workspace) -> list[Tool]`。会话范围（全库 / 项目 / 单篇）在服务端按 `session_id` 查 `session_binding` 后闭合，**模型无法通过工具参数越权**。混合检索（FTS + pgvector + RRF）与页码定位保持自研。
+检索以普通工具函数形式，经 `extra_agent_tools` 异步工厂注入：当前签名 `(user_id, agent_id, session_id) -> list[Tool]`。AgentScope `Toolkit` 按库内文献阅读、库外发现与入库、用户交互、系统功能组织工具；全部通过白名单的工具默认可见，会话期间工具定义不切换，也不向模型提供 `reset_tools`。工具描述和用户请求约束调用意图，写操作另由 0049、0070 的 HITL 与业务校验约束。会话范围在服务端按 `session_id` 查绑定后闭合，**模型无法通过工具参数越权**。混合检索（FTS + pgvector + RRF）与页码定位保持自研。
 
 ## REJECTED
 
 - 包成 MCP server：每次调用多一跳序列化与网络开销，且范围隔离要在 MCP 侧另做一层（传参可被模型伪造）。
 - 内部 toolkit + 对外再包一层 MCP：两处实现要保持一致，MVP 阶段属提前设计。
 - 工具内部各自查范围：每个工具都要重复一遍归属校验，容易漏。
+- 会话中用 `reset_tools` 动态切换组：增加工具调用与输入前缀变化；当前工具数量不需要动态裁剪。
 - 每个项目建一个真 Knowledge Base 只借 id：KB 自研后这层间接没有意义。
 
 ## RATIONALE

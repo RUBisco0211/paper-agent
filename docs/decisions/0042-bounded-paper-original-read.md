@@ -7,7 +7,7 @@
 
 ## DECISION
 
-文献入读流程完成后，为 Agent 增加直接读取文献原文的只读工具，以 MinerU 解析并保存的 Markdown 为来源，按需返回有限片段，不默认返回整篇。读取必须受当前用户与会话的文献范围约束，与按已登记 Citation ID 回查证据的 `get_paper_excerpt` 分开。现阶段的 Agentic RAG 继续使用 `search_papers`，当前运行时仍只开放 0041 所列三个工具。
+文献入读流程完成后，为 Agent 增加直接读取文献原文的只读工具，以 MinerU 解析并保存的 Markdown 为来源，按需返回有限片段，不默认返回整篇。读取必须受当前用户与会话的文献范围约束，与按已登记 Citation ID 回查证据的 `get_paper_excerpt` 分开。现阶段的 Agentic RAG 继续使用 `search_papers`；当前工具边界见 0026，本条所述新原文工具尚未实现。
 
 ## REJECTED
 
@@ -21,7 +21,7 @@
 
 ## OUT OF SCOPE
 
-本次实现工具、改变当前三工具白名单、整篇原文注入。
+本次实现工具、改变当前工具白名单、整篇原文注入。
 
 ## OPEN
 

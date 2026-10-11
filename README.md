@@ -16,6 +16,7 @@ docs/       产品契约、架构基线、决策记录与调研
 |---|---|
 | [AGENTS.md](AGENTS.md) | AI 协作的唯一常驻约束（改代码前必读） |
 | [WORKFLOW.md](WORKFLOW.md) | 给人看的流程总纲：任务分档、七阶段与检查点 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 前后端运行入口、包结构和依赖边界 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策索引（正文一条一文件） |
 | [docs/research/technical-stack.md](docs/research/technical-stack.md) | ORM、日志、中间件选型 |
 | [docs/research/sse-transport.md](docs/research/sse-transport.md) | SSE 传输与事件模型 |
@@ -48,7 +49,7 @@ cd frontend && pnpm run typecheck && pnpm run test && pnpm run build
 详情与内嵌 PDF）、按项目分组的对话、定时任务月视图、AgentScope 模型凭据设置和会话工作区（流式回答、工具状态与引用原文）。定时任务可选全局或项目范围，自定义提示词与一周内的执行日；历次运行在任务详情中查看，不进入普通会话列表。
 
 功能范围与验收标准见 `docs/DECISIONS.md` 的 0018–0034 一组（原功能规格文档已拆为决策条目）。
-AgentScope 服务、三个只读文献工具、会话绑定与引用回查已接入；旧会话执行链已移除，文献解析由独立 worker 消费数据库任务。DeepSeek 浏览器主路径已验证；剩余边界回测见 [TODO.md](TODO.md) 的 R8。
+AgentScope 服务、会话绑定、库内文献工具、库外文献发现和引用回查已接入；旧会话执行链已移除，文献解析由独立 worker 消费数据库任务。DeepSeek 浏览器主路径已验证；剩余边界回测见 [TODO.md](TODO.md) 的 R8。
 
 ## 数据流向
 

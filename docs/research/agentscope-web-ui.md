@@ -91,7 +91,7 @@ TanStack Query：`staleTime 60s`、`retry: 1`、无轮询。会话列表 `staleT
 | 用原生 `EventSource` 消费 SSE | 不可行 | 要带 `Authorization` header，`EventSource` 不支持自定义头 |
 | 自己写消息渲染 | 不选（0033） | 流式、工具结果、中断 UI 是它已做好且最易出错的部分 |
 | 把论文库塞进 `pages/knowledge` | 部分可用 | 页面骨架（文档列表 + 详情抽屉 + 状态轮询 `useDocumentStatusPolling`）可借鉴，但后端 KB 我们不用，数据要换成自己的 API |
-| 保留它的 `schedule` 页面 | 待定（0017） | Cron 页面现成，若 Cron 后置转正式需求，可直接复用 |
+| 保留它的 `schedule` 页面 | 已用于定时任务（0049） | Cron 页面已作为定时任务月视图底座 |
 | 保留 i18n 双语言 | 只留 `zh` | 0014 已定 i18n 不做；`zh.json` 现成，关掉页脚语言切换即可，不要删 i18n 机制（否则所有 `t()` 调用要改） |
 
 ## 参考

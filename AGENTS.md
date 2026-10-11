@@ -2,6 +2,7 @@
 
 > 每次会话自动读取。本项目唯一的常驻约束文件。
 > 决策 → `docs/DECISIONS.md`（索引）+ `docs/decisions/NNNN-*.md`（正文）
+> 代码架构 → `docs/ARCHITECTURE.md`（按需读取）
 > 调研 → `docs/research/`
 > 流程总纲 → `WORKFLOW.md`，你不需要读它。
 > 超过 200 行时，把最长的一节抽成 `docs/xxx.md`，并在第 12 节登记。
@@ -14,44 +15,31 @@ Paper Agent 管理个人论文库、项目范围与基于论文证据的 Agent �
 - 规模：单机 Docker Compose，个人自用，并发 <10，论文库千篇量级
 - 用户：研究者本人在浏览器里完成入库 → 组织范围 → 问答 → 打开原文核对引用
 - 硬约束：单机部署（PostgreSQL 16 + pgvector；生产用 S3 兼容对象存储，开发/测试可用本地适配器）；**无 Redis / Celery**（解析走独立 worker 进程，由 DB 协调）；LLM API Key 由 Credential 系统持有、不进日志
-- **明确不做**：多实例部署；会话分支（框架 `messages` 为 upsert 语义）；历史编辑；跨会话历史合并；精确区域高亮与图表交互；GROBID；多解析器回退；除 0070 用户确认批量入库外的 Agent 写工具；通用 HITL 权限确认与沙箱；MCP/Skill 市场、channels、TTS
-- **已扩展**：Cron 定时任务支持全局或项目范围与一周内选日（0049）。
+- **明确不做**：多实例部署；会话分支（框架 `messages` 为 upsert 语义）；历史编辑；跨会话历史合并；精确区域高亮与图表交互；GROBID；多解析器回退；除 0070 用户确认批量入库和 0049 定时任务创建外的 Agent 写工具；通用 HITL 权限确认与沙箱；MCP/Skill 市场、channels、TTS
+- **已扩展**：Cron 定时任务支持全局或项目范围与一周内选日（0049）；库外文献发现和用户确认的批量入库（0072、0070）。
 - **后置（MVP 之后，非否决）**：Agent Team（0006）、rerank（0011）、历史导出（0009）。这些**不是不做**，评估时不要当成已否决。
 
 你默认按"生产级 + 高规模"写代码。「阶段」和「规模」两行是唯一能纠正你的东西。
 
 ## 2. 分层与依赖方向
 
-后端依赖只能从左指向右，反向一律禁止：
+后端依赖只能从左指向右，反向一律禁止；当前包与文件职责见 `docs/ARCHITECTURE.md`：
 
 ```
 api.py → service.py → domain.py / repo.py / ports.py → platform/
 ```
 
-| 目录 | 职责 | 不该放 |
-|---|---|---|
-| `backend/app/<业务包>/api.py` | HTTP 路由、认证依赖、调 service、响应转换 | 直接查 repo、写 SQLAlchemy 查询 |
-| `.../service.py` | 用例编排、资源归属检查、事务协调 | 导入 FastAPI |
-| `.../domain.py` | 领域对象、枚举、局部业务规则 | 外部 I/O |
-| `.../repo.py` | SQLAlchemy 表、查询与持久化 | 业务编排 |
-| `.../ports.py` | 本包用到的外部能力契约 | 具体适配器实现 |
-| `.../depends.py`、`schemas.py` | HTTP 装配、请求响应模型 | 业务规则 |
-| `backend/app/platform/` | 配置、数据库、存储、调度、日志、错误、安全 | 业务规则 |
-| `frontend/src/pages/` | 路由页面、取数与状态编排 | 可复用展示组件 |
-| `frontend/src/components/` | 展示组件（不含取数） | `lib/api` 调用 |
-| `frontend/src/lib/api/` | HTTP 与 SSE 客户端 | 组件与样式 |
-
-业务包固定七文件：`api / schemas / depends / service / domain / repo / ports`。模块化单体，跨业务包可直接用对方的具体仓储，不引入完整 Unit of Work。
+业务包固定七文件：`api / schemas / depends / service / domain / repo / ports`。`api` 不直接查 `repo`，`service` 不依赖 HTTP 层；跨业务包可使用具体仓储，不引入完整 Unit of Work。前端页面编排数据与状态，展示组件不直接调用业务 API。
 
 ## 3. 模式锚点
 
 新增代码照着已有文件写，不要另起炉灶。路径必须真实存在。
 
 - 新增后端业务包 → 照 `backend/app/library/`（api/service/domain/repo/schemas/depends/ports）
-- 新增后端支持包 → 照 `backend/app/processing/`（纯函数 + 有状态类，不凑统一外观）
-- 新增 Agent 工具 → 照 `backend/agent_service/retrieval_tools.py`
+- 新增后端支持包 → 照 `backend/app/literature_support/processing/`（纯函数 + 有状态类，不凑统一外观）
+- 新增 Agent 工具 → 照 `backend/agent_service/tools/`，按功能分组并由 `paper_agent.py` 白名单装配
 - 新增后端测试 → 照 `backend/tests/library/test_upload.py`
-- 新增前端页面 → 照 `frontend/src/pages/session-workspace.tsx`
+- 新增业务前端页面 → 照 `frontend/src/pages/discover.tsx`；扩展 web_ui 会话页 → 照 `frontend/src/upstream/pages/chat/NewChatPage.tsx`
 - 新增前端组件 → 照 `frontend/src/components/chat/message-thread.tsx`
 - 新增前端测试 → 照 `frontend/src/components/chat/message-thread.test.tsx`
 
@@ -78,8 +66,13 @@ api.py → service.py → domain.py / repo.py / ports.py → platform/
 - 禁止把 citation 塞进 `Msg.payload` 的自定义字段，只能放 `Msg.metadata`（0009）。
 - 禁止给 Agent 工具加"范围"参数，范围只能由 `extra_agent_tools` 工厂在服务端注入。
 - 禁止让引用脱离已登记证据，Citation 必须能回查到原文片段与页码。
+- 禁止将库外候选或模型自造的 Citation ID 当作已登记证据；缺可靠页码时不得编造定位（0029、0072）。
 - 禁止用户 A 的数据出现在用户 B 的响应里；每个查询都要带归属校验。
+- 禁止让 Agent 自行传入入库 DOI、下载 URL 或项目范围；批量入库只消费当前用户确认的单次授权（0070）。
+- 禁止让 Agent 在会话中切换工具组；入库与创建定时任务默认逐次 HITL，按用户按工具的明确配置才可跳过审查（0011、0049、0070）。
+- 禁止定时任务运行进入普通会话列表，或默认继承其他运行的完整历史和追问（0049）。
 - 禁止改前端代码或文案前不读 `docs/decisions/0032-ui-copy-rules.md` 与 `0033-frontend-extend-web-ui.md`。
+- 禁止界面暴露内部 ID、存储与部署机制、阶段尝试次数或未实现能力入口；错误文案须给出可行动信息（0032）。
 - 禁止业务弹窗使用浏览器原生确认框或自有 Dialog/AlertDialog；统一使用 web_ui 的 Dialog 与 Button（0055）。
 - 禁止"顺手重构"无关的相邻代码。改动严格限定在本任务。
 - 禁止新增依赖前不检查是否已有同类。
@@ -158,9 +151,10 @@ design 只允许四个字段，不许增加：
 
 | 触发场景 | 读 |
 |---|---|
-| **改动 Agent 后端、会话、检索或凭据接入** | `docs/DECISIONS.md` 中 0006–0017、0035、0049，再按需读 `docs/research/agentscope-agent-service.md` |
+| **改动 Agent 后端、会话、检索或凭据接入** | `docs/DECISIONS.md` 中 0006–0016、0035–0037、0049、0070、0072、0075、0078，再按需读 `docs/research/agentscope-agent-service.md` |
 | **改动产品功能范围、文献 / 摄取 / 引用行为** | `docs/DECISIONS.md` 中 0018–0034 |
-| **改任何前端代码或文案** | 0014（基座）、0032（文案）、0033（沿用与扩展的边界）、0045（页面布局）、0048（任务入口）、0049（定时任务范围与频率）、0055（业务弹窗） |
+| **改任何前端代码或文案** | 0014（基座）、0032（文案）、0033（扩展边界）、0045（导航与对话）、0049（定时任务）、0055（弹窗）；按页面查 `docs/DECISIONS.md` |
+| **改包结构、依赖方向或路由入口** | `docs/ARCHITECTURE.md`，按实际代码核对 |
 | 涉及命名与领域术语 | 0034 |
 | 改后端日志事件名或错误码 | 无独立规范，见第 5 节；日志规范待业务服务定稿后另立条目 |
 
@@ -175,7 +169,7 @@ design 只允许四个字段，不许增加：
 
 根目录 `TODO.md` 是重构期间的任务清单，只回答「做什么、怎么算做完」，**不是规范、不是决策来源**。开工重构任务前读一次，不要在其中找约束或理由。
 
-`docs/` 下只有 `DECISIONS.md`、`decisions/`、`research/` 三处，没有第四处。
+`docs/` 的入口为 `ARCHITECTURE.md`、`DECISIONS.md`、`decisions/`、`research/`。
 
 - **禁止 glob 或批量读取** `docs/decisions/` 和 `docs/research/`。先索引，后下钻。
 - 调研文档是参考资料，不是约束。其中内容只有写进第 5 节或 `docs/decisions/` 才对你生效。
