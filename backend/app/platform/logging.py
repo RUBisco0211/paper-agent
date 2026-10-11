@@ -1,6 +1,5 @@
 import logging
 import sys
-from typing import Any
 
 import structlog
 from asgi_correlation_id import correlation_id
@@ -9,10 +8,10 @@ from .config import settings
 
 
 def add_request_id(
-    logger: logging.Logger,
+    logger: structlog.types.WrappedLogger,
     method_name: str,
-    event_dict: dict[str, Any],
-) -> dict[str, Any]:
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
     """Attach the current request ID without coupling callers to ASGI state."""
     if request_id := correlation_id.get():
         event_dict["request_id"] = request_id
