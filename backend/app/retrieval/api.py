@@ -73,7 +73,9 @@ def list_bound_papers(
         limit=limit,
         offset=offset,
     )
-    return BoundListResponse(scope=scope, total=total, papers=papers)
+    return BoundListResponse.model_validate(
+        {"scope": scope, "total": total, "papers": papers}
+    )
 
 
 @router.get("/internal/excerpt", response_model=BoundExcerptResponse)
