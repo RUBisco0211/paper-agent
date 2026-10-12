@@ -302,20 +302,21 @@ PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的
 
 ## Agent 执行
 
-Agent 回合由 `app/agent/scope.py` 执行。`GET /v1/llm-catalog` 从 AgentScope
-Model Card 返回 Provider 与 active 模型；用户从目录选择并只填写 API Key。后端校验选择后创建
-AgentScope 原生模型，并挂载三个只读工具。
+Agent 回合由独立的 `agent_service` 使用 AgentScope 执行。业务服务的 `GET /v1/llm-catalog`
+从 AgentScope Model Card 返回可选 Provider 与 active 模型；会话配置引用用户的 Credential，
+不携带明文 API Key。`PaperAgent` 固定装配以下工具组，运行中不切换工具列表：
 
-| 工具 | 作用 | 范围 |
+| 工具组 | 工具 | 作用 |
 |---|---|---|
-| `list_papers` | 列出会话范围内的文献与可用能力 | 会话范围（全局/项目/单篇文献） |
-| `search_papers` | 混合检索并登记 Citation，返回可引用的证据 | 同上 |
-| `get_paper_excerpt` | 按 citation_id 展开原文片段与页码 | 同上，解析时再校验会话归属 |
+| 文献阅读 | `list_papers`、`search_papers`、`get_paper_excerpt` | 列出授权文献、检索并登记证据、按已登记引用读取原文 |
+| 库外发现与入库 | `discover_papers`、`import_selected_papers` | 查找库外候选；经用户授权后入库 |
+| 用户交互 | `ask_user` | 暂停回复并收集用户答案 |
+| 系统功能 | `create_scheduled_task` | 经用户授权后创建定时任务 |
 
-- 范围来自会话上下文，**不由模型参数决定**；模型只能用 `search_papers` 登记过的 citation_id 引用原文
-- 工具调用写 `tool_result` Entry，回答携带的 citation_id 写进 Assistant Entry，前端据此渲染可点击引用
-- `AGENT_MAX_ITERS`（默认 8）限制工具轮次，`AGENT_TURN_TIMEOUT_SECONDS`（默认 240s）限制单回合
-- Provider 和模型不能自由输入，Base URL 不开放；LLM Key 不落库、不进日志
+- 文献与项目范围由服务端按会话绑定注入，**不由模型参数决定**；只有已登记的证据才能引用。
+- 入库与创建定时任务默认逐次请求用户授权，明确配置为总是允许时才跳过审查。
+- 会话消息和工具结果由 AgentScope 持久化；业务服务只通过 `session_id` 关联会话与已登记引用。
+- Provider 与模型只能从服务端目录选择；Base URL 受服务端白名单约束。
 
 ## 数据流向
 
@@ -325,4 +326,4 @@ AgentScope 原生模型，并挂载三个只读工具。
 - Chunk 文本发往 Embedding 服务生成向量；
 - 用户问题与检索到的论文证据发往用户选择的 LLM Provider。
 
-LLM API Key 保存在当前浏览器并随启动/恢复请求传入，不写入数据库、日志、对象存储或队列。MinerU 与 Embedding 仍由部署者通过环境变量固定。
+LLM API Key 由 AgentScope Credential 存储适配层加密后保存在会话服务数据库中；浏览器只在创建或更新凭据时提交 Key，列表与更新响应不回传明文。Key 不进入日志、对象存储或任务队列。MinerU 与 Embedding 仍由部署者通过环境变量固定。
