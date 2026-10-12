@@ -49,7 +49,7 @@
 | 0040 | api, security, frontend | 用户读取会话绑定与已登记引用，前端按 session_id 拼接 | 当前 | [0040-bound-session-read-apis.md](decisions/0040-bound-session-read-apis.md) |
 | 0042 | agent, product, ingest | 入读流程完成后增加基于 MinerU Markdown 的有界原文读取工具 | 当前 | [0042-bounded-paper-original-read.md](decisions/0042-bounded-paper-original-read.md) |
 | 0043 | api, security, frontend | 会话与项目删除先清理 AgentScope，再清理业务绑定与引用 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
-| 0045 | frontend, product | 全局导航保活、对话 tab 工作区、项目文献侧栏、会话草稿与右侧消息快捷栏 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
+| 0045 | frontend, product | 全局导航保活、单会话工作区、项目文献侧栏、会话草稿与右侧消息快捷栏 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
 | 0049 | product, agent, data, frontend | 定时任务范围、频率、独立运行会话、Agent 创建工具及月视图交互 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
 | 0053 | frontend, product | 授权 PDF 用 PDF.js 在页面内渲染并支持引用页定位、翻页与缩放 | 当前 | [0053-embedded-pdf-rendering.md](decisions/0053-embedded-pdf-rendering.md) |
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |

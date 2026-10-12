@@ -50,7 +50,7 @@ export function NewChatPage() {
       pendingSession.current = session
       await chatApi.trigger({ agent_id: session.agentId, session_id: session.sessionId, input: message })
       await queryClient.invalidateQueries({ queryKey: ["bound-sessions"] })
-      navigate(`/chat/${session.agentId}/${session.sessionId}`, { replace: true, state: { replaceDraftTab: location.pathname } })
+      navigate(`/chat/${session.agentId}/${session.sessionId}`, { replace: true })
     } catch (cause) {
       setError(describeError(cause))
       setRetryText(blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n"))

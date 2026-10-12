@@ -1,34 +1,27 @@
 import { useQuery } from "@tanstack/react-query"
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { usePanelRef } from "react-resizable-panels"
-import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
-import { UNSAFE_LocationContext, useLocation, useNavigate, useOutlet } from "react-router-dom"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useLocation, useNavigate, useOutlet } from "react-router-dom"
 
 import { useApi } from "@/lib/api/provider"
-import { useAuth } from "@/lib/auth/provider"
 import { listBoundSessions } from "@/lib/agent-sessions"
+import { Button } from "@upstream/components/ui/button"
 import { SidebarProvider } from "@upstream/components/ui/sidebar"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@upstream/components/ui/resizable"
 import { ChatSidebar } from "./ChatSidebar"
-import { ChatTabToolbar } from "./ChatTabToolbar"
 import { ChatQuoteContext, type ChatQuoteReceiver, type PaperQuoteOpener } from "./ChatQuoteContext"
 import type { QuoteReference } from "@upstream/components/chat/quote-references"
 import { ProjectPapersPanel } from "./ProjectPapersPanel"
 import { chatPath } from "./chat-view"
-import { isChatTabPath, isDraftTabPath, readChatTabs, closeChatTab, replaceDraftTab } from "./chat-tabs"
 
 export function ChatPage() {
   const { api } = useApi()
-  const { user } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const outlet = useOutlet()
-  const locationContext = useContext(UNSAFE_LocationContext)
-  const cachedPages = useRef(new Map<string, { element: ReactNode; locationContext: typeof locationContext }>())
   const mainRef = useRef<HTMLDivElement>(null)
   const previousPath = useRef<string | null>(null)
-  const closingPath = useRef<string | null>(null)
-  const storageKey = `paper-agent:chat-tabs:${user?.id ?? "anonymous"}`
-  const [tabs, setTabs] = useState(() => readChatTabs(localStorage.getItem(storageKey)))
   const [leftOpen, setLeftOpen] = useState(true)
   const [papersOpen, setPapersOpen] = useState(true)
   const [readingPaper, setReadingPaper] = useState(false)
@@ -57,39 +50,12 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!sessions.isSuccess) return
-    if (closingPath.current === location.pathname) return
-    closingPath.current = null
-    const available = new Set(sessions.data.map(chatPath))
-    const valid = (path: string) => isDraftTabPath(path) || available.has(path)
-    if (location.pathname === "/chat") {
-      const restored = [tabs.activePath, ...tabs.paths].find(valid)
-      if (restored) navigate(restored, { replace: true })
-      return
+    const path = location.pathname
+    if (/^\/chat\/[^/]+\/[^/]+$/.test(path) && !path.startsWith("/chat/project/") &&
+        !sessions.data.some((session) => chatPath(session) === path)) {
+      navigate("/chat", { replace: true })
     }
-    if (isChatTabPath(location.pathname) && !valid(location.pathname)) {
-      navigate([tabs.activePath, ...tabs.paths].find(valid) ?? "/chat", { replace: true })
-      return
-    }
-    const replacing = (location.state as { replaceDraftTab?: string } | null)?.replaceDraftTab
-    setTabs((current) => {
-      let paths = current.paths.filter(valid)
-      if (replacing && available.has(location.pathname)) paths = replaceDraftTab(paths, replacing, location.pathname)
-      else if (isChatTabPath(location.pathname) && valid(location.pathname) && !paths.includes(location.pathname)) paths = [...paths, location.pathname]
-      const activePath = paths.includes(location.pathname) ? location.pathname : paths.includes(current.activePath) ? current.activePath : paths[0] ?? "/chat"
-      return current.activePath === activePath && current.paths.length === paths.length && current.paths.every((path, index) => path === paths[index]) ? current : { paths, activePath }
-    })
-  }, [location.pathname, location.state, sessions.isSuccess, sessions.data, navigate, tabs.paths])
-
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(tabs))
-  }, [storageKey, tabs])
-
-  function closeTab(path: string) {
-    const next = closeChatTab(tabs.paths, path, location.pathname)
-    closingPath.current = path
-    setTabs(next)
-    if (path === location.pathname) navigate(next.activePath, { replace: true })
-  }
+  }, [location.pathname, sessions.isSuccess, sessions.data, navigate])
 
   const projectRouteId = location.pathname.startsWith("/chat/project/") ? location.pathname.split("/")[3] : null
   const activeSession = sessions.data?.find((item) => chatPath(item) === location.pathname)
@@ -142,23 +108,18 @@ export function ChatPage() {
     return () => node.classList.remove("route-page-enter")
   }, [location.pathname])
 
-  if (isChatTabPath(location.pathname) && outlet && closingPath.current !== location.pathname) {
-    cachedPages.current.set(location.pathname, { element: outlet, locationContext })
-  }
-  for (const path of cachedPages.current.keys()) {
-    if (!tabs.paths.includes(path) && path !== location.pathname) cachedPages.current.delete(path)
-  }
+  const title = location.pathname === "/chat/new" ? "新会话"
+    : activeSession?.session.session.config.name || "对话"
   const main = <div ref={mainRef} className="h-full min-w-0 overflow-hidden bg-background">
-    {Array.from(cachedPages.current, ([path, entry]) => (tabs.paths.includes(path) || path === location.pathname && closingPath.current !== path) &&
-      <div key={path} aria-hidden={path !== location.pathname} style={{ display: path === location.pathname ? "block" : "none" }} className="h-full min-h-0">
-        <UNSAFE_LocationContext.Provider value={entry.locationContext}>{entry.element}</UNSAFE_LocationContext.Provider>
-      </div>)}
-    {!isChatTabPath(location.pathname) && location.pathname !== "/chat" && outlet}
+    {outlet}
   </div>
 
   return <ChatQuoteContext.Provider value={quoteBridge}><SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full min-h-0 w-full flex-col">
-      <ChatTabToolbar paths={tabs.paths} activePath={location.pathname} sessions={sessions.data ?? []} leftOpen={leftOpen} onToggleLeft={() => setLeftOpen((open) => !open)} onSelect={(path) => navigate(path)} onClose={closeTab} />
+      <header aria-label="会话工具栏" className="flex h-12 shrink-0 items-center gap-3 border-b bg-[var(--app-rail-background)] px-3 text-foreground">
+        <Button variant="ghost" size="icon-sm" aria-label={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} title={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} onClick={() => setLeftOpen((open) => !open)}>{leftOpen ? <PanelLeftClose /> : <PanelLeftOpen />}</Button>
+        <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+      </header>
       <div className="flex min-h-0 flex-1">
         <div aria-hidden={!leftOpen} inert={!leftOpen} className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none ${leftOpen ? "w-64 opacity-100" : "w-0 opacity-0"}`}>
           <ChatSidebar currentProjectId={projectId} papersOpen={papersOpen} onTogglePapers={() => setPapersOpen((open) => !open)} />
