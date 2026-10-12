@@ -7,7 +7,7 @@
 
 ## DECISION
 
-交互会话的 Agent 可调用 `ask_user`，一次提出最多三道单选、多选或自由输入问题。该工具使用 AgentScope 的外部执行机制暂停当前回复；前端使用现有 `@shadcn/react` Questionnaire 呈现，用户提交答案后以 `ExternalExecutionResultEvent` 返回对应的 tool call，同一回复继续。答案只进入该会话的工具结果，不另建问卷表；重复提交和无效问题需在前端阻止。
+交互会话的 Agent 可调用 `ask_user`，一次提出最多三道单选、多选或自由输入问题。该工具使用 AgentScope 的外部执行机制暂停当前回复；前端使用现有 `@shadcn/react` Questionnaire 呈现，用户提交答案后以 `ExternalExecutionResultEvent` 返回对应的 tool call，同一回复继续。答案只进入该会话的工具结果，不另建问卷表；重复提交和无效问题需在前端阻止。历史会话的可折叠工具调用块按问题显示已提交的答案。
 
 ## REJECTED
 
