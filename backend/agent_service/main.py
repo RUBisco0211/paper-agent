@@ -14,11 +14,11 @@ from sqlalchemy.engine import make_url
 from app.platform.config import settings
 
 from .auth import get_agent_service_user_id
-from .credential_storage import EncryptedCredentialStorage
 from .paper_agent import PaperAgent
-from .schedule_api import router as tool_schedule_router
 from .quoted_chat import router as quoted_chat_router
-from .tools import build_agent_tools, prepare_schedule_scope
+from .schedule_api import router as tool_schedule_router
+from .schedule_notifications import ScheduleNotificationStorage
+from .tools import build_agent_tools
 from .tools.request import business_request
 
 
@@ -28,7 +28,7 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
         raise RuntimeError("JWT_SECRET_KEY must be configured for agent_service")
     if settings.environment != "development" and len(settings.agent_internal_key) < 32:
         raise RuntimeError("AGENT_INTERNAL_KEY must be configured for agent_service")
-    storage = EncryptedCredentialStorage(
+    storage = ScheduleNotificationStorage(
         database_url,
         key_provider=lambda: settings.credential_master_key.get_secret_value(),
         create_tables=False,
@@ -36,7 +36,6 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
     )
 
     async def scoped_paper_tools(user_id: str, agent_id: str, session_id: str):
-        await prepare_schedule_scope(storage, user_id, agent_id, session_id)
         policy = await business_request(
             "GET", "tool-authorizations", params={"user_id": user_id}
         )

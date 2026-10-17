@@ -21,8 +21,10 @@ def normalize_schedule_time(value: str) -> str:
         raise ValueError("请给出明确的执行时间")
     period, hour_text, colon_minute, spoken_minute = match.groups()
     hour = int(hour_text)
-    minute = 30 if spoken_minute == "半" else int(
-        colon_minute or (spoken_minute or "0").removesuffix("分")
+    minute = (
+        30
+        if spoken_minute == "半"
+        else int(colon_minute or (spoken_minute or "0").removesuffix("分"))
     )
     if period in {"下午", "晚上"} and 1 <= hour <= 11:
         hour += 12
@@ -41,6 +43,7 @@ def build_schedule_tool(
         prompt: str,
         time: str,
         weekdays: list[str] | None = None,
+        notify_email: bool = False,
     ) -> dict:
         """Create a recurring task only when the user explicitly asks for one.
 
@@ -50,7 +53,9 @@ def build_schedule_tool(
         for a timezone: the system uses the user's saved local timezone.
         `weekdays` uses mon,tue,wed,thu,fri,sat,sun; omit it or use [] for every day.
         Translate explicit weekdays, workdays, or weekends yourself. The
-        current session fixes the user and project scope.
+        current session fixes the user and project scope. Set notify_email=True
+        only when the user requests email notification of the result. The system
+        sends only to the owner's verified email; never ask for a recipient.
         """
         try:
             return await business_request(
@@ -64,6 +69,7 @@ def build_schedule_tool(
                     "prompt": prompt,
                     "time": normalize_schedule_time(time),
                     "weekdays": weekdays or _DAILY,
+                    "notify_email": notify_email,
                 },
             )
         except httpx.HTTPError as exc:

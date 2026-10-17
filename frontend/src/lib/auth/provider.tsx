@@ -11,7 +11,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
-import { ApiError, type User } from "@/lib/api"
+import { ApiError, type User, type RegisterInput } from "@/lib/api"
 import { useApi } from "@/lib/api/provider"
 
 type AuthStatus = "loading" | "authenticated" | "anonymous"
@@ -20,11 +20,7 @@ interface AuthContextValue {
   status: AuthStatus
   user: User | null
   login: (email: string, password: string) => Promise<void>
-  register: (input: {
-    email: string
-    password: string
-    display_name?: string
-  }) => Promise<void>
+  register: (input: RegisterInput) => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -90,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 
   const register = useCallback(
-    async (input: { email: string; password: string; display_name?: string }) => {
+    async (input: RegisterInput) => {
       const session = await api.auth.register(input)
       queryClient.clear()
       tokens.set(session)

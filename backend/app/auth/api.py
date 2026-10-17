@@ -9,8 +9,14 @@ from .depends import AuthServiceDep, CurrentUser
 from .schemas import (
     AccessTokenResponse,
     AuthSessionResponse,
+    EmailCodeRequest,
+    EmailCodeResponse,
+    EmailCodeVerifyRequest,
+    EmailCodeVerifyResponse,
     LoginRequest,
+    PasswordResetRequest,
     RegisterRequest,
+    SessionStatusResponse,
     TimezoneRead,
     TimezoneUpdate,
     ToolAuthorizationRead,
@@ -77,12 +83,60 @@ def register(
     service: AuthServiceDep,
 ) -> AuthSessionResponse:
     issued = service.register(
-        email=payload.email,
+        verification_token=payload.verification_token,
         password=payload.password,
+        password_confirmation=payload.password_confirmation,
         display_name=payload.display_name,
     )
     _set_refresh_cookie(response, issued)
     return _session_response(issued)
+
+
+@router.post("/email-codes", response_model=EmailCodeResponse)
+def request_email_code(
+    payload: EmailCodeRequest, request: Request, service: AuthServiceDep
+) -> EmailCodeResponse:
+    challenge_id = service.request_email_code(
+        email=payload.email,
+        purpose=payload.purpose,
+        ip=request.client.host if request.client else "unknown",
+    )
+    return EmailCodeResponse(
+        challenge_id=challenge_id,
+        retry_after=settings.email_resend_cooldown_seconds,
+        expires_in=settings.email_verification_ttl_seconds,
+    )
+
+
+@router.post("/email-codes/verify", response_model=EmailCodeVerifyResponse)
+def verify_email_code(
+    payload: EmailCodeVerifyRequest, service: AuthServiceDep
+) -> EmailCodeVerifyResponse:
+    token = service.verify_email_code(
+        challenge_id=payload.challenge_id, code=payload.code, purpose=payload.purpose
+    )
+    return EmailCodeVerifyResponse(
+        verification_token=token, expires_in=settings.email_verification_ttl_seconds
+    )
+
+
+@router.post("/password-reset", status_code=204)
+def reset_password(
+    payload: PasswordResetRequest, response: Response, service: AuthServiceDep
+) -> Response:
+    service.reset_password(
+        verification_token=payload.verification_token,
+        password=payload.password,
+        password_confirmation=payload.password_confirmation,
+    )
+    _clear_refresh_cookie(response)
+    response.status_code = 204
+    return response
+
+
+@router.get("/session-status", response_model=SessionStatusResponse)
+def session_status(user: CurrentUser) -> SessionStatusResponse:
+    return SessionStatusResponse(user_id=str(user.id))
 
 
 @router.post(

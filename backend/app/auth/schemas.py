@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -6,10 +7,42 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from .domain import User
 
 
-class RegisterRequest(BaseModel):
+class EmailCodeRequest(BaseModel):
     email: EmailStr
+    purpose: Literal["register", "password_reset"]
+
+
+class EmailCodeResponse(BaseModel):
+    challenge_id: str
+    retry_after: int
+    expires_in: int
+
+
+class EmailCodeVerifyRequest(BaseModel):
+    challenge_id: str = Field(min_length=1, max_length=128)
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    purpose: Literal["register", "password_reset"]
+
+
+class EmailCodeVerifyResponse(BaseModel):
+    verification_token: str
+    expires_in: int
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    verification_token: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=128)
+    password_confirmation: str = Field(min_length=8, max_length=128)
+
+
+class RegisterRequest(PasswordResetRequest):
     display_name: str = Field(default="", max_length=120)
+
+
+class SessionStatusResponse(BaseModel):
+    user_id: str
 
 
 class LoginRequest(BaseModel):

@@ -78,6 +78,7 @@ function scheduleDraft(input: string): ReviewedSchedule | undefined {
     return {
       name: item.name, prompt: item.prompt, time: item.time,
       weekdays: Array.isArray(item.weekdays) ? item.weekdays : ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      notify_email: item.notify_email === true,
     }
   } catch { return undefined }
 }

@@ -104,3 +104,17 @@ it("keeps an import call pending after closing review and confirms only inside t
   await userEvent.click(screen.getByRole("button", { name: "确认入库" }))
   expect(importState.confirm).toHaveBeenCalledWith(expect.objectContaining({ id: "call-1" }), true, "reply-1")
 })
+
+it("schedule review resumes the same tool with the actual notification choice when the user edits the draft", async () => {
+  importState.confirm.mockClear()
+  importState.messages = [{ id: "reply-task", role: "assistant", content: [
+    { type: "tool_call", id: "call-task", name: "create_scheduled_task", state: "asking", input: JSON.stringify({ name: "初稿", prompt: "总结", time: "09:00", notify_email: true }) },
+  ] }]
+  const run = { id: "run-1", agent_id: "agent-1", source_schedule_id: "task-1", config: { name: "问候" } }
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><PaperChatPage scheduledRun={run as SessionRecord} scheduledScope="全局" /></MemoryRouter></QueryClientProvider>)
+  await userEvent.click(screen.getByRole("button", { name: "查看并确认" }))
+  expect(screen.getByRole("checkbox", { name: "邮件通知" }).getAttribute("aria-checked")).toBe("true")
+  await userEvent.click(screen.getByRole("checkbox", { name: "邮件通知" }))
+  await userEvent.click(screen.getByRole("button", { name: "确认创建" }))
+  expect(importState.confirm).toHaveBeenCalledWith(expect.objectContaining({ id: "call-task", name: "create_scheduled_task", input: JSON.stringify({ name: "初稿", prompt: "总结", time: "09:00", weekdays: ["sun", "mon", "tue", "wed", "thu", "fri", "sat"], notify_email: false }) }), true, "reply-task")
+})

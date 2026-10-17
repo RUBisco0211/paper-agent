@@ -24,7 +24,12 @@ class AuthStore(Protocol):
     def get_user(self, user_id: UUID) -> User | None: ...
 
     def add_user(
-        self, *, email: str, password_hash: str, display_name: str
+        self,
+        *,
+        email: str,
+        password_hash: str,
+        display_name: str,
+        email_verified_at: datetime,
     ) -> User: ...
 
     def add_auth_session(
@@ -46,5 +51,27 @@ class AuthStore(Protocol):
     def consume_refresh_token(
         self, token_id: UUID, *, consumed_at: datetime
     ) -> None: ...
+
+    def get_user_for_update(self, user_id: UUID) -> User | None: ...
+
+    def update_password_hash(self, user_id: UUID, password_hash: str) -> None: ...
+
+    def revoke_user_sessions(self, user_id: UUID, *, revoked_at: datetime) -> None: ...
+
+    def enqueue_verification_email(
+        self,
+        *,
+        recipient: str,
+        code: str,
+        purpose: str,
+        dedupe_key: str,
+        expires_at: datetime,
+    ) -> None: ...
+
+    def enqueue_password_reset_email(
+        self, *, recipient: str, dedupe_key: str
+    ) -> None: ...
+
+    def rollback(self) -> None: ...
 
     def commit(self) -> None: ...

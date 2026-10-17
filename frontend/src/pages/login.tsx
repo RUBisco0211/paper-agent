@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -16,12 +16,15 @@ export function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const pending = useRef(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const redirectTo = (location.state as { from?: string } | null)?.from ?? "/library"
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
+    if (pending.current) return
+    pending.current = true
     setSubmitting(true)
     setErrors({})
     try {
@@ -34,6 +37,7 @@ export function LoginPage() {
         notifyError(error, "登录失败")
       }
     } finally {
+      pending.current = false
       setSubmitting(false)
     }
   }
@@ -78,6 +82,7 @@ export function LoginPage() {
               {submitting ? <Spinner data-icon="inline-start" /> : null}
               登录
             </Button>
+            <Button variant="link" asChild><Link to="/password-reset">忘记密码？</Link></Button>
             <p className="text-muted-foreground text-center text-sm">
               还没有账号？{" "}
               <Link className="text-foreground underline" to="/register">

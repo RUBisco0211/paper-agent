@@ -58,9 +58,26 @@ export interface AuthSession extends AccessToken {
   user: User
 }
 
-export interface RegisterInput {
-  email: string
+export type EmailCodePurpose = "register" | "password_reset"
+
+export interface EmailCodeChallenge {
+  challenge_id: string
+  retry_after: number
+  expires_in: number
+}
+
+export interface EmailVerification {
+  verification_token: string
+  expires_in: number
+}
+
+export interface PasswordVerificationInput {
+  verification_token: string
   password: string
+  password_confirmation: string
+}
+
+export interface RegisterInput extends PasswordVerificationInput {
   display_name?: string
 }
 

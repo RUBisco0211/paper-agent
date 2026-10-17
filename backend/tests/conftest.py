@@ -7,8 +7,13 @@ created on demand, migrated with Alembic and truncated between tests.
 
 import io
 import os
+import shutil
+import subprocess
+import tempfile
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from alembic.config import Config
@@ -169,13 +174,119 @@ def storage(storage_root: Path) -> Iterator[ObjectStorage]:
             live.delete_prefix(prefix)
 
 
+@pytest.fixture(scope="session")
+def auth_redis(tmp_path_factory):
+    from redis import Redis
+    from redis.exceptions import ConnectionError
+
+    url = os.environ.get("PAPER_AGENT_TEST_REDIS_URL")
+    if url:
+        with Redis.from_url(url, socket_connect_timeout=3, socket_timeout=3) as redis:
+            redis.ping()
+            yield redis
+        return
+
+    executable = shutil.which("redis-server")
+    if executable is None:
+        raise RuntimeError("Auth integration tests require redis-server")
+    root = tmp_path_factory.mktemp("auth-redis")
+    socket_dir = tempfile.TemporaryDirectory(prefix="auth-redis-", dir="/tmp")
+    socket = Path(socket_dir.name) / "redis.sock"
+    process = subprocess.Popen(
+        [
+            executable,
+            "--port",
+            "0",
+            "--unixsocket",
+            str(socket),
+            "--save",
+            "",
+            "--appendonly",
+            "no",
+            "--dir",
+            str(root),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    redis = Redis(unix_socket_path=str(socket), socket_timeout=3)
+    try:
+        for _ in range(100):
+            try:
+                if redis.ping():
+                    break
+            except ConnectionError as exc:
+                if process.poll() is not None:
+                    raise RuntimeError(
+                        "Test Redis exited before becoming ready"
+                    ) from exc
+                time.sleep(0.05)
+        else:
+            raise RuntimeError("Test Redis did not become ready")
+        yield redis
+    finally:
+        redis.close()
+        process.terminate()
+        process.wait(timeout=5)
+        socket_dir.cleanup()
+
+
+@pytest.fixture
+def email_verification_store(auth_redis, monkeypatch):
+    from app.auth.repo import EmailVerificationStore
+
+    # Contract settings are supplied by the parallel integration task.
+    for name, value in [
+        ("email_verification_ttl_seconds", 600),
+        ("email_resend_cooldown_seconds", 60),
+        ("email_verification_max_attempts", 5),
+    ]:
+        if not hasattr(settings, name):
+            monkeypatch.setattr(type(settings), name, value, raising=False)
+    store = EmailVerificationStore(
+        auth_redis,
+        secret="isolated-test-email-secret",
+        namespace="test-auth:{" + uuid4().hex + "}",
+    )
+    yield store
+    keys = list(auth_redis.scan_iter(match=store.namespace + ":*"))
+    if keys:
+        auth_redis.delete(*keys)
+
+
+@pytest.fixture
+def auth_emails(monkeypatch):
+    from app.auth.repo import AuthRepository
+
+    messages = []
+
+    def enqueue_verification(repository, **message):
+        messages.append(dict(kind="verification", **message))
+
+    def enqueue_reset(repository, **message):
+        messages.append(dict(kind="password_reset", **message))
+
+    monkeypatch.setattr(
+        AuthRepository, "enqueue_verification_email", enqueue_verification
+    )
+    monkeypatch.setattr(AuthRepository, "enqueue_password_reset_email", enqueue_reset)
+    return messages
+
+
 @pytest.fixture
 def client(
     session_factory: sessionmaker[Session],
     storage: ObjectStorage,
     clean_tables: None,
+    email_verification_store,
+    auth_emails,
 ) -> Iterator[TestClient]:
     app = create_app()
+    from app.auth.depends import get_email_verification_store
+
+    app.dependency_overrides[get_email_verification_store] = lambda: (
+        email_verification_store
+    )
 
     def override_session() -> Iterator[Session]:
         with session_factory() as session:
@@ -257,7 +368,9 @@ def auth_headers(access_token: str) -> dict[str, str]:
 
 
 @pytest.fixture
-def register_user(client: TestClient, api_prefix: str) -> Callable[..., dict]:
+def register_user(
+    client: TestClient, api_prefix: str, auth_emails
+) -> Callable[..., dict]:
     """Register a user and return the parsed session payload."""
 
     def _register(
@@ -265,11 +378,26 @@ def register_user(client: TestClient, api_prefix: str) -> Callable[..., dict]:
         password: str = "correct-horse-battery",
         display_name: str = "Reader",
     ) -> dict:
+        requested = client.post(
+            f"{api_prefix}/auth/email-codes",
+            json={"email": email, "purpose": "register"},
+        )
+        assert requested.status_code == 200, requested.text
+        verified = client.post(
+            f"{api_prefix}/auth/email-codes/verify",
+            json={
+                "challenge_id": requested.json()["challenge_id"],
+                "code": auth_emails[-1]["code"],
+                "purpose": "register",
+            },
+        )
+        assert verified.status_code == 200, verified.text
         response = client.post(
             f"{api_prefix}/auth/register",
             json={
-                "email": email,
+                "verification_token": verified.json()["verification_token"],
                 "password": password,
+                "password_confirmation": password,
                 "display_name": display_name,
             },
         )

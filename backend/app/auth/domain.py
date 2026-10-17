@@ -44,6 +44,7 @@ class User:
     display_name: str
     created_at: datetime
     updated_at: datetime
+    email_verified_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)

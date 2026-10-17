@@ -8,6 +8,8 @@ from .schemas import (
     AgentScheduleRead,
     ScheduleBindingCreate,
     ScheduleBindingRead,
+    ScheduleNotificationUpdate,
+    ScheduleResult,
     ScheduleSessionEnsure,
 )
 
@@ -38,6 +40,7 @@ def create_agent_schedule(
         timezone=timezone,
         time=payload.time,
         weekdays=payload.weekdays,
+        notify_email=binding.notify_email,
     )
 
 
@@ -55,9 +58,12 @@ def create_schedule_binding(
         schedule_id=payload.schedule_id,
         user_id=user.id,
         project_id=payload.project_id,
+        notify_email=payload.notify_email,
     )
     return ScheduleBindingRead(
-        schedule_id=record.schedule_id, project_id=record.project_id
+        schedule_id=record.schedule_id,
+        project_id=record.project_id,
+        notify_email=record.notify_email,
     )
 
 
@@ -68,10 +74,41 @@ def list_schedule_bindings(
 ) -> list[ScheduleBindingRead]:
     return [
         ScheduleBindingRead(
-            schedule_id=record.schedule_id, project_id=record.project_id
+            schedule_id=record.schedule_id,
+            project_id=record.project_id,
+            notify_email=record.notify_email,
         )
         for record in service.list_for_user(user_id=user.id)
     ]
+
+
+@router.patch("/schedules/{schedule_id}", response_model=ScheduleBindingRead)
+def update_schedule_notification(
+    schedule_id: str,
+    payload: ScheduleNotificationUpdate,
+    user: CurrentUser,
+    service: ScheduleBindingServiceDep,
+) -> ScheduleBindingRead:
+    record = service.update_notification(
+        schedule_id=schedule_id,
+        user_id=user.id,
+        notify_email=payload.notify_email,
+    )
+    return ScheduleBindingRead(
+        schedule_id=record.schedule_id,
+        project_id=record.project_id,
+        notify_email=record.notify_email,
+    )
+
+
+@router.post("/internal/schedule-results")
+def notify_schedule_result(
+    payload: ScheduleResult,
+    _auth: AgentInternalAuth,
+    service: ScheduleBindingServiceDep,
+) -> dict:
+    enqueued = service.notify_result(**payload.model_dump())
+    return {"accepted": True, "notify_email": enqueued}
 
 
 @router.delete("/schedule-bindings/{schedule_id}", status_code=204)
@@ -96,5 +133,7 @@ def ensure_schedule_session(
         user_id=payload.user_id,
     )
     return ScheduleBindingRead(
-        schedule_id=record.schedule_id, project_id=record.project_id
+        schedule_id=record.schedule_id,
+        project_id=record.project_id,
+        notify_email=record.notify_email,
     )

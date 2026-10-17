@@ -10,7 +10,7 @@ import { PaperCalendarPage } from "./PaperCalendarPage"
 
 vi.mock("@/lib/api/provider", () => ({ useApi: () => ({ api: { projects: { list: async () => ({ items: [], total: 0 }) } } }) }))
 vi.mock("@/lib/project-schedules", () => ({
-  listProjectSchedules: async () => [{ projectId: null, schedule: { id: "task-1", agent_id: "agent-1", data: { name: "问候", enabled: true, cron_expression: "0 10 * * *", started_at: "2026-10-07T00:00:00Z", timezone: "Asia/Shanghai" } } }],
+  listProjectSchedules: async () => [{ projectId: null, notify_email: false, schedule: { id: "task-1", agent_id: "agent-1", data: { name: "问候", enabled: true, cron_expression: "0 10 * * *", started_at: "2026-10-07T00:00:00Z", timezone: "Asia/Shanghai" } } }],
 }))
 vi.mock("@upstream/api/schedule", () => ({ scheduleApi: { listSessions: async () => ({ sessions: [{ id: "run-1", agent_id: "agent-1", source_schedule_id: "task-1", created_at: "2026-10-07T02:00:00", config: { name: "问候" } }], total: 1 }) } }))
 vi.mock("@upstream/pages/chat/PaperChatPage", () => ({ PaperChatPage: ({ scheduledRun }: { scheduledRun: { id: string } }) => <div>运行会话 {scheduledRun.id}</div> }))
