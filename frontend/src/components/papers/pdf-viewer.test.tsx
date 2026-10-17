@@ -157,3 +157,35 @@ it("zooms with a modifier wheel and scrolls horizontally with shift wheel", asyn
   fireEvent.keyDown(region, { shiftKey: true, key: "ArrowRight" })
   expect(region.scrollLeft).toBe(160)
 })
+
+it("uses quote theme colors while preserving white paper when a saved PDF selection is located", async () => {
+  renderPdf(
+    <PdfViewer
+      paperId="paper-1"
+      target={{ page: 2, rects: [[0.1, 0.2, 0.4, 0.25]] }}
+    />,
+  );
+  const region = await screen.findByLabelText("引用文本位置");
+  expect(region.classList.contains("paper-pdf-quote")).toBe(true);
+  const paper = region.closest("[data-paper-pdf-page]")!;
+  expect(paper.className).toContain("bg-white");
+  expect(paper.querySelector("canvas")!.className).toContain("bg-white");
+  expect(region.style.left).toBe("10%");
+  expect(region.style.top).toBe("20%");
+});
+
+it("uses the quote accent when a parsed block is located on the PDF", async () => {
+  renderPdf(
+    <PdfViewer
+      paperId="paper-1"
+      target={{
+        page: 2,
+        bbox: [100, 200, 500, 300],
+        pageSize: [1000, 1000],
+        coordinateSystem: "normalized",
+      }}
+    />,
+  );
+  const region = await screen.findByLabelText("所选片段位置");
+  expect(region.classList.contains("paper-pdf-location")).toBe(true);
+});

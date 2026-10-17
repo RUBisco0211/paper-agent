@@ -70,13 +70,13 @@ export function AskUserQuestionnaire({ toolCall, onAnswer }: {
   }
 
   if (!questions.length) return (
-    <div className="rounded-2xl border bg-background p-4 text-sm">
+    <div className="rounded-lg border bg-background p-4 text-sm">
       <p>问题无法显示</p>
       <Button size="sm" className="mt-3" disabled={submitting} onClick={() => void onAnswer({ error: "invalid_questions" })}>请重新提问</Button>
     </div>
   )
 
-  return <div className="rounded-2xl border bg-background p-4 shadow-sm">
+  return <div className="rounded-lg border bg-background p-4 shadow-sm">
     <Questionnaire.Root items={questions.map((question) => ({ name: question.name, required: question.required, choices: question.options }))} onSubmit={(event) => void submit(event)}>
       <Questionnaire.Progress className="mb-3 text-xs text-muted-foreground" />
       {questions.map((question) => <Questionnaire.Item key={question.name} name={question.name} required={question.required} multiple={question.type === "multiple"} className="flex flex-col gap-3 border-0 p-0">

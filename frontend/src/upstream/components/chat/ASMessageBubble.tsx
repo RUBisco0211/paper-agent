@@ -562,7 +562,7 @@ export function ASMessageBubble({ message, onQuote, onOpenReference, annotations
 											ref={(node) => { const blockIndex = message.content.findIndex((item) => item.id === ('id' in block ? block.id : undefined)); if (blockIndex >= 0) { if (node) textRoots.current.set(blockIndex, node); else textRoots.current.delete(blockIndex) } }}
 											onContextMenu={(event) => captureSelection(event.currentTarget, block)}><ASBlock block={block} /></div>
 									</ContextMenuPrimitive.Trigger>
-									<ContextMenuPrimitive.Portal><ContextMenuPrimitive.Content onCloseAutoFocus={(event) => { if (editorHost) { event.preventDefault(); commentInputRef.current?.focus() } }} className="z-50 min-w-32 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10">
+									<ContextMenuPrimitive.Portal><ContextMenuPrimitive.Content onCloseAutoFocus={(event) => { if (editorHost) { event.preventDefault(); commentInputRef.current?.focus() } }} className="floating-surface z-50 min-w-(--menu-min-width) p-(--menu-padding)">
 										<ContextMenuPrimitive.Item disabled={!selection || block.type !== 'text'} onSelect={beginQuote} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden focus:bg-accent data-disabled:opacity-50"><MessageSquareText className="size-4" />评论</ContextMenuPrimitive.Item>
 										<ContextMenuPrimitive.Item disabled={!selection || block.type !== 'text'} onSelect={() => { if (selection) void navigator.clipboard.writeText(selection.text).then(() => toast.success('已复制')).catch(() => toast.error('复制失败，请重试')) }} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-hidden focus:bg-accent data-disabled:opacity-50"><Copy className="size-4" />复制</ContextMenuPrimitive.Item>
 									</ContextMenuPrimitive.Content></ContextMenuPrimitive.Portal>
@@ -587,7 +587,7 @@ export function ASMessageBubble({ message, onQuote, onOpenReference, annotations
 				{isError && (
 					<Alert
 						variant="destructive"
-						className="m-2 w-[calc(100%-1rem)] border-red-200 bg-red-50 text-destructive dark:border-red-900 dark:bg-red-950 dark:text-red-50"
+						className="m-2 w-[calc(100%-1rem)]"
 					>
 						<TriangleAlert />
 						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>

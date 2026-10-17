@@ -10,10 +10,10 @@ import { formatNumber } from '@upstream/utils/common.ts';
 
 export function ToolStateIcon({ state }: { state: ToolResultBlock['state'] | undefined }) {
 	if (state === 'success') {
-		return <Check className="size-3 text-emerald-600 dark:text-emerald-400 shrink-0" />;
+		return <Check className="size-3 text-success shrink-0" />;
 	}
 	if (state === 'error') {
-		return <X className="size-3 text-red-600 dark:text-red-400  shrink-0" />;
+		return <X className="size-3 text-destructive shrink-0" />;
 	}
 	if (state === 'interrupted' || state === 'denied') {
 		return <Ban className="size-3 !h-3 min-h-3 shrink-0" />;
@@ -211,12 +211,12 @@ export function DiffStats({
 	if (insertions === 0 && deletions === 0) return null;
 	return (
 		<div className={cn('flex items-center gap-0.5', className)}>
-			<div className="flex items-center text-emerald-600 dark:text-emerald-400">
+			<div className="flex items-center text-success">
 				<Plus className="size-2.5 stroke-2" />
 				{formatNumber(insertions)}
 			</div>
 
-			<div className="flex items-center text-red-600 dark:text-red-400">
+			<div className="flex items-center text-destructive">
 				<Minus className="size-2.5 stroke-2" />
 				{formatNumber(deletions)}
 			</div>

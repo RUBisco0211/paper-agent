@@ -287,7 +287,7 @@ export function PaperDetailSheet({
                           (failed ? "处理失败，可重试" : null)
                         return <li key={stage.stage} className="flex gap-3">
                           <div className="flex w-6 shrink-0 flex-col items-center">
-                            <span className={`flex size-6 items-center justify-center rounded-full border ${
+                            <span className={`flex size-6 items-center justify-center rounded-md border ${
                               failed ? "border-destructive bg-destructive/10 text-destructive"
                                 : complete ? "border-primary bg-primary text-primary-foreground"
                                   : active ? "border-primary bg-primary/10 text-primary"

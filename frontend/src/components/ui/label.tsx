@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "cn"
+import { cn } from "@upstream/lib/utils"
 import { Label as LabelPrimitive } from "radix-ui"
 
 function Label({
@@ -10,7 +10,7 @@ function Label({
     <LabelPrimitive.Root
       data-slot="label"
       className={cn(
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+        "flex items-center gap-(--control-gap-lg) text-label leading-none font-normal text-muted-foreground uppercase tracking-label select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-(--disabled-opacity) peer-disabled:cursor-not-allowed peer-disabled:opacity-(--disabled-opacity)",
         className
       )}
       {...props}

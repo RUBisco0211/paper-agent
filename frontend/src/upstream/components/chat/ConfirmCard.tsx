@@ -73,13 +73,13 @@ export function ConfirmCard({
 	}, [handleConfirm, selected, options, toolCall.suggested_rules]);
 
 	return (
-		<div className="bg-muted ring ring-border rounded-[22px] w-full px-6 py-5 space-y-4 text-sm overflow-hidden">
+		<div data-slot="tool-confirmation" className="bg-muted ring ring-border rounded-lg w-full space-y-4 text-sm overflow-hidden">
 			<div className="flex flex-col gap-y-2 max-w-full">
 				<strong className="text-secondary-foreground">{getDisplayName(toolCall, t)}</strong>
 				{/* Capped so a long tool input (raw JSON for MCP tools) cannot
 				    grow the card past the viewport — it floats above the
 				    composer and is out of flow, so nothing else clips it. */}
-				<div className="px-4 py-2 bg-white rounded-sm max-w-full max-h-[200px] overflow-y-auto">
+				<div data-slot="tool-preview" className="px-4 py-2 bg-background rounded-md max-w-full overflow-y-auto">
 					{renderConfirmBody(toolCall, t)}
 				</div>
 			</div>

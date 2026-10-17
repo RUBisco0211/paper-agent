@@ -68,6 +68,7 @@
 | 0075 | agent, frontend, product | Agent 提问由 Questionnaire 接续同一工具调用 | 当前 | [0075-ask-user-questionnaire-and-simple-library-layout.md](decisions/0075-ask-user-questionnaire-and-simple-library-layout.md) |
 | 0078 | data, security, agent | 用户偏好与浏览器时区按用户单行存业务库 JSONB；原子局部更新，无对象存储或 Redis | 当前 | [0078-user-settings-jsonb.md](decisions/0078-user-settings-jsonb.md) |
 | 0079 | agent, frontend, data, security | 输入框 `@` 资源、`$` Skill、`/` 流程；选中评论统一外层与带类型定位 | 当前 | [0079-composer-references-and-invocations.md](decisions/0079-composer-references-and-invocations.md) |
+| 0080 | frontend | SMUI 深浅主题、等宽字体与方角；视觉集中在 token、基础组件与共享 variants | 当前 | [0080-smui-theme.md](decisions/0080-smui-theme.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`
@@ -94,7 +95,7 @@
 |---|---|
 | 改动 Agent 后端、会话、检索或凭据接入 | 0006、0007–0016 中相关项、0015、0026、0035–0037、0049、0070、0072、0075、0078 |
 | 改动产品功能范围、文献 / 摄取 / 引用行为 | 0018–0034 中相关项、0049、0056–0063、0070、0072 |
-| 改前端文案或界面 | 0014、0032、0033、0045、0049、0055；文献阅读见 0057–0066 |
+| 改前端文案或界面 | 0014、0032、0033、0045、0049、0055、0080；文献阅读见 0057–0066 |
 | 涉及领域术语与命名 | 0034 |
 | 改包结构、入口或依赖方向 | [ARCHITECTURE.md](ARCHITECTURE.md) 与 0003、0006 |
 

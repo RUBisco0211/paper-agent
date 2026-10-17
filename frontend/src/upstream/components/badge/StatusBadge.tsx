@@ -3,7 +3,6 @@ import { CheckCircle, XCircle } from 'lucide-react';
 import { Badge } from '@upstream/components/ui/badge';
 import { Spinner } from '@upstream/components/ui/spinner';
 import { useTranslation } from '@upstream/i18n/useI18n';
-import { cn } from '@upstream/lib/utils';
 
 /**
  * Displays a status badge with icon and label based on execution status.
@@ -30,24 +29,15 @@ export function StatusBadge({
 			);
 		case 'completed':
 			return (
-				<Badge
-					className={cn(
-						'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300',
-						className,
-					)}
-				>
-					<CheckCircle className="size-5" />
+				<Badge variant="success" className={className}>
+					<CheckCircle />
 					{t('common.completed')}
 				</Badge>
 			);
 		case 'failed':
 			return (
-				<Badge
-					className={cn(
-						'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 border-none',
-					)}
-				>
-					<XCircle className="size-5" />
+				<Badge variant="destructive">
+					<XCircle />
 					{t('common.failed')}
 				</Badge>
 			);

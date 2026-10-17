@@ -73,7 +73,7 @@ function DateCell({ day, isToday, events, onEventClick, moreText }: DateCellProp
 					<div
 						className={`text-sm ${
 							isToday
-								? 'bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center'
+								? 'bg-primary text-primary-foreground rounded-md w-6 h-6 flex items-center justify-center'
 								: ''
 						}`}
 					>
@@ -94,7 +94,7 @@ function DateCell({ day, isToday, events, onEventClick, moreText }: DateCellProp
 						}}
 					>
 						<div className="flex flex-row flex-1 items-center gap-x-1 overflow-hidden">
-							<div className="w-1 min-w-1 max-w-1 bg-primary border-primary h-full rounded" />
+							<div className="w-1 min-w-1 max-w-1 bg-primary border-primary h-full rounded-md" />
 							<span className="truncate">{event.title}</span>
 						</div>
 						<span>{event.time}</span>

@@ -34,12 +34,12 @@ const LABEL: Record<Status, string> = {
   idle: "待补全文",
 }
 
-const STYLE: Record<Status, string> = {
-  done: "border-success/30 bg-success/10 text-success",
-  failed: "border-destructive/30 bg-destructive/10 text-destructive",
-  pending: "border-warning/30 bg-warning/10 text-warning",
-  idle: "",
-}
+const VARIANT = {
+  done: "success",
+  failed: "destructive",
+  pending: "warning",
+  idle: "outline",
+} as const
 
 export function PaperStatusBadge({
   capabilities,
@@ -49,7 +49,7 @@ export function PaperStatusBadge({
   processing: ProcessingState
 }) {
   const status = paperStatus(capabilities, processing)
-  return <Badge variant="outline" className={STYLE[status]}>{LABEL[status]}</Badge>
+  return <Badge variant={VARIANT[status]}>{LABEL[status]}</Badge>
 }
 
 const STAGE_LABELS: Record<string, string> = {
