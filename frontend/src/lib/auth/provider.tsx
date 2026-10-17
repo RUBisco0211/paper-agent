@@ -22,6 +22,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>
   register: (input: RegisterInput) => Promise<void>
   logout: () => Promise<void>
+  clearSession: () => void
   refreshUser: () => Promise<void>
 }
 
@@ -96,6 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api, queryClient, tokens],
   )
 
+  const clearSession = useCallback(() => {
+    tokens.clear()
+    queryClient.clear()
+    setUser(null)
+    setStatus("anonymous")
+  }, [queryClient, tokens])
+
   const logout = useCallback(async () => {
     try {
       await api.auth.logout()
@@ -105,16 +113,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw error
       }
     } finally {
-      tokens.clear()
-      queryClient.clear()
-      setUser(null)
-      setStatus("anonymous")
+      clearSession()
     }
-  }, [api, queryClient, tokens])
+  }, [api, clearSession])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, login, register, logout, refreshUser: loadUser }),
-    [status, user, login, register, logout, loadUser],
+    () => ({
+      status,
+      user,
+      login,
+      register,
+      logout,
+      clearSession,
+      refreshUser: loadUser,
+    }),
+    [status, user, login, register, logout, clearSession, loadUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

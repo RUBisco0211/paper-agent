@@ -20,13 +20,14 @@ import { fieldErrors, notifySuccess } from "@/lib/errors";
 type Challenge = { id: string; expiresAt: number };
 type Verification = { token: string; expiresAt: number };
 
-export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
+export function EmailAuthPage({ purpose, initialEmail }: { purpose: EmailCodePurpose; initialEmail?: string }) {
   const { api } = useApi();
-  const { register } = useAuth();
+  const { register, clearSession } = useAuth();
   const navigate = useNavigate();
   const isRegister = purpose === "register";
-  const [step, setStep] = useState<"email" | "code" | "password">("email");
-  const [email, setEmail] = useState("");
+  const lockedEmail = Boolean(initialEmail);
+  const [step, setStep] = useState<"email" | "code" | "password">(lockedEmail ? "code" : "email");
+  const [email, setEmail] = useState(initialEmail ?? "");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
@@ -51,6 +52,45 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (initialEmail) setEmail(initialEmail);
+  }, [initialEmail]);
+
+  function readChallenge(address: string) {
+    const raw = window.sessionStorage.getItem(challengeKey(address));
+    if (!raw) return null;
+    try {
+      const stored = JSON.parse(raw) as Challenge;
+      if (stored.expiresAt > Date.now()) return stored;
+    } catch {
+      // Invalid storage is treated as missing.
+    }
+    window.sessionStorage.removeItem(challengeKey(address));
+    return null;
+  }
+
+  useEffect(() => {
+    if (!initialEmail) return;
+    const until = Number(window.sessionStorage.getItem(cooldownKey(initialEmail)) ?? 0);
+    if (until > Date.now()) {
+      setRetryAt(until);
+      setNow(Date.now());
+    }
+    const stored = readChallenge(initialEmail);
+    if (stored) {
+      setChallenge(stored);
+      setStep("code");
+    }
+  }, [initialEmail]);
+
+  function cooldownKey(address: string) {
+    return `paper-agent:email-code-cooldown:${purpose}:${address.trim().toLowerCase()}`;
+  }
+
+  function challengeKey(address: string) {
+    return `paper-agent:email-code-challenge:${purpose}:${address.trim().toLowerCase()}`;
+  }
+
   function clearPasswords() {
     setPassword("");
     setConfirmation("");
@@ -67,7 +107,7 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
   }, [now, verification]);
 
   function changeEmail() {
-    if (busy.current) return;
+    if (busy.current || lockedEmail) return;
     setStep("email");
     setChallenge(null);
     setVerification(null);
@@ -102,7 +142,9 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
         const details = cause.details as { retry_after?: unknown } | null;
         const delay =
           typeof details?.retry_after === "number" ? details.retry_after : 60;
-        setRetryAt(Date.now() + delay * 1000);
+        const until = Date.now() + delay * 1000;
+        setRetryAt(until);
+        window.sessionStorage.setItem(cooldownKey(email), String(until));
         setNow(Date.now());
         setError("发送过于频繁，请在倒计时结束后重试");
       } else if (
@@ -142,11 +184,18 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
       if (!mounted.current) return;
       const timestamp = Date.now();
       setEmail(address);
-      setChallenge({
+      const nextChallenge = {
         id: result.challenge_id,
         expiresAt: timestamp + result.expires_in * 1000,
-      });
-      setRetryAt(timestamp + result.retry_after * 1000);
+      };
+      setChallenge(nextChallenge);
+      window.sessionStorage.setItem(
+        challengeKey(address),
+        JSON.stringify(nextChallenge),
+      );
+      const until = timestamp + result.retry_after * 1000;
+      setRetryAt(until);
+      window.sessionStorage.setItem(cooldownKey(address), String(until));
       setNow(timestamp);
       setVerification(null);
       setCode("");
@@ -163,7 +212,14 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
       return;
     }
     if (step === "code") {
-      if (!challenge || Date.now() >= challenge.expiresAt) {
+      const activeChallenge = readChallenge(email) ?? challenge;
+      if (!activeChallenge) {
+        setError("请先发送验证码");
+        return;
+      }
+      if (Date.now() >= activeChallenge.expiresAt) {
+        window.sessionStorage.removeItem(challengeKey(email));
+        setChallenge(null);
         setError("验证码已过期，请重新发送验证码");
         return;
       }
@@ -171,9 +227,10 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
         setErrors({ code: "请输入 6 位数字验证码" });
         return;
       }
+      setChallenge(activeChallenge);
       await run(async () => {
         const result = await api.auth.verifyCode({
-          challenge_id: challenge.id,
+          challenge_id: activeChallenge.id,
           code,
           purpose,
         });
@@ -182,6 +239,7 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
           token: result.verification_token,
           expiresAt: Date.now() + result.expires_in * 1000,
         });
+        window.sessionStorage.removeItem(challengeKey(email));
         setCode("");
         setStep("password");
       });
@@ -215,6 +273,7 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
         });
       } else {
         await api.auth.resetPassword(input);
+        clearSession();
       }
       if (!mounted.current) return;
       setVerification(null);
@@ -239,12 +298,18 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
           >
             <FieldDescription>
               {step === "email"
-                ? "1 / 3 · 输入邮箱"
+                ? lockedEmail
+                  ? "1 / 2 · 确认邮箱"
+                  : "1 / 3 · 输入邮箱"
                 : step === "code"
-                  ? "2 / 3 · 验证邮箱"
-                  : "3 / 3 · 设置密码"}
+                  ? lockedEmail
+                    ? "1 / 2 · 验证邮箱"
+                    : "2 / 3 · 验证邮箱"
+                  : lockedEmail
+                    ? "2 / 2 · 设置密码"
+                    : "3 / 3 · 设置密码"}
             </FieldDescription>
-            {step !== "email" && (
+            {step !== "email" && !lockedEmail && (
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 truncate">{email}</span>
                 <Button
@@ -275,9 +340,16 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
                       setError("");
                     }}
                     disabled={submitting}
+                    readOnly={lockedEmail}
                     aria-invalid={Boolean(errors.email)}
+                    aria-readonly={lockedEmail}
                     required
                   />
+                  {lockedEmail && (
+                    <FieldDescription>
+                      将向当前登录邮箱发送验证码
+                    </FieldDescription>
+                  )}
                   <FieldError>{errors.email}</FieldError>
                 </Field>
               )}
@@ -302,6 +374,17 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
                     aria-invalid={Boolean(errors.code)}
                     required
                   />
+                  {lockedEmail && (
+                    <FieldDescription>
+                      {challenge
+                        ? challenge.expiresAt > now
+                          ? `验证码已发送到 ${email}`
+                          : "验证码已过期，请重新发送"
+                        : retrySeconds > 0
+                          ? `验证码已发送，请等待 ${retrySeconds} 秒后重新发送`
+                          : `验证码将发送到 ${email}`}
+                    </FieldDescription>
+                  )}
                   <FieldDescription>
                     输入邮件中的 6 位验证码，10 分钟内有效
                   </FieldDescription>
@@ -389,7 +472,9 @@ export function EmailAuthPage({ purpose }: { purpose: EmailCodePurpose }) {
               >
                 {retrySeconds > 0
                   ? `${retrySeconds} 秒后重发`
-                  : "重新发送验证码"}
+                  : challenge
+                    ? "重新发送验证码"
+                    : "发送验证码"}
               </Button>
             )}
             <Button variant="link" asChild>

@@ -24,3 +24,14 @@ it("returns to the last visited chat route after switching sidebar sections", as
 
   expect(screen.getByTestId("path").textContent).toBe("/chat/agent/session")
 })
+
+it("opens password reset from the account menu when the user selects it", async () => {
+  render(<MemoryRouter initialEntries={["/library"]}>
+    <TooltipProvider><SidebarProvider><AppSidebar /><Path /></SidebarProvider></TooltipProvider>
+  </MemoryRouter>)
+
+  await userEvent.click(screen.getByRole("button", { name: "账户" }))
+  await userEvent.click(await screen.findByRole("menuitem", { name: /重置密码/ }))
+
+  expect(screen.getByTestId("path").textContent).toBe("/password-reset")
+})
