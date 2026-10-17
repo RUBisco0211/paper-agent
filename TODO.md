@@ -8,8 +8,8 @@
 
 1. `AGENTS.md` —— 项目背景、硬约束、Never do
 2. `docs/DECISIONS.md` —— 索引，重点看 0006–0016（架构）、0018–0034（业务与前端）
-3. `docs/research/agentscope-agent-service.md` —— agent_service 能力边界与源码锚点
-4. `docs/research/agentscope-web-ui.md` —— 前端基座与四个改造锚点
+3. `docs/research/agentscope/agentscope-agent-service.md` —— agent_service 能力边界与源码锚点
+4. `docs/research/agentscope/agentscope-web-ui.md` —— 前端基座与四个改造锚点
 
 ## 目标形态（一图）
 

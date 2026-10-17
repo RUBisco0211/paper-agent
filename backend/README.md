@@ -2,7 +2,7 @@
 
 Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理任务和混合检索；AgentScope 会话服务与文献解析 worker 分别运行在独立进程。
 
-功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md)，包与依赖边界见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，技术选型见 [../docs/research/technical-stack.md](../docs/research/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
+功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md)，包与依赖边界见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，技术选型见 [../docs/research/platform/technical-stack.md](../docs/research/platform/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
 
 ## 本地依赖
 

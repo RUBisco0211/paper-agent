@@ -2,7 +2,7 @@
 
 - 日期：2026-10-17；Issue：[#1](https://github.com/RUBisco0211/paper-agent/issues/1)；分支：`feature/smui-theme`。
 - 结论：主题迁移与本轮适用验证已完成，等待用户 review / 合并；不表示真实 LLM 全链路重新验收通过。
-- 主题依据：[0080](../decisions/0080-smui-theme.md)；官方配色来源：[SMUI src/globals.css，固定版本 b917de0](https://github.com/statico/smui/blob/b917de0283e3edc8d1689083d02e29eef2acb1bf/src/globals.css)、[官方 skill](https://smui.statico.io/skill.md)。
+- 主题依据：[0080](../../decisions/0080-smui-theme.md)；官方配色来源：[SMUI src/globals.css，固定版本 b917de0](https://github.com/statico/smui/blob/b917de0283e3edc8d1689083d02e29eef2acb1bf/src/globals.css)、[官方 skill](https://smui.statico.io/skill.md)。
 
 ## 自动验证
 

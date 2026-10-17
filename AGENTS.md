@@ -3,7 +3,7 @@
 > 每次会话自动读取。本项目唯一的常驻约束文件。
 > 决策 → `docs/DECISIONS.md`（索引）+ `docs/decisions/NNNN-*.md`（正文）
 > 代码架构 → `docs/ARCHITECTURE.md`（按需读取）
-> 调研 → `docs/research/`
+> 调研 → `docs/research/README.md`（分类索引）
 > 流程总纲 → `WORKFLOW.md`，你不需要读它。
 > 超过 200 行时，把最长的一节抽成 `docs/xxx.md`，并在第 12 节登记。
 
@@ -152,7 +152,7 @@ design 只允许四个字段，不许增加：
 
 | 触发场景 | 读 |
 |---|---|
-| **改动 Agent 后端、会话、检索或凭据接入** | `docs/DECISIONS.md` 中 0006–0016、0035–0037、0049、0070、0072、0075、0078，再按需读 `docs/research/agentscope-agent-service.md` |
+| **改动 Agent 后端、会话、检索或凭据接入** | `docs/DECISIONS.md` 中 0006–0016、0035–0037、0049、0070、0072、0075、0078，再按需读 `docs/research/agentscope/agentscope-agent-service.md` |
 | **改动产品功能范围、文献 / 摄取 / 引用行为** | `docs/DECISIONS.md` 中 0018–0034 |
 | **改任何前端代码或文案** | 0014（基座）、0032（文案）、0033（扩展边界）、0045（导航与对话）、0049（定时任务）、0055（弹窗）、0080（SMUI 与集中式样式）；按页面查 `docs/DECISIONS.md` |
 | **改包结构、依赖方向或路由入口** | `docs/ARCHITECTURE.md`，按实际代码核对 |
@@ -164,13 +164,13 @@ design 只允许四个字段，不许增加：
 | 触发场景 | 读 |
 |---|---|
 | 需要某条决策的细节 | 先读 `docs/DECISIONS.md` 索引，再只读那一条 `docs/decisions/NNNN-*.md` |
-| 涉及已调研过的主题 | `docs/research/` 下对应文件（技术栈 / SSE / LLM 模型目录 / Agentero / AI 开发工作流 / **agentscope agent_service** / **agentscope web_ui 前端基座**） |
+| 涉及已调研过的主题 | 先读 `docs/research/README.md` 分类索引，再按主题读取对应文档 |
 
 ### C. 工作态（生命周期有限，重构完成后删除）
 
 根目录 `TODO.md` 是重构期间的任务清单，只回答「做什么、怎么算做完」，**不是规范、不是决策来源**。开工重构任务前读一次，不要在其中找约束或理由。
 
-`docs/` 的入口为 `ARCHITECTURE.md`、`DECISIONS.md`、`decisions/`、`research/`。
+`docs/` 的入口为 `ARCHITECTURE.md`、`DECISIONS.md`、`decisions/`、`research/README.md`。
 
 - **禁止 glob 或批量读取** `docs/decisions/` 和 `docs/research/`。先索引，后下钻。
 - 调研文档是参考资料，不是约束。其中内容只有写进第 5 节或 `docs/decisions/` 才对你生效。

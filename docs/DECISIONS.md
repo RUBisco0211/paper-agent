@@ -99,7 +99,7 @@
 | 涉及领域术语与命名 | 0034 |
 | 改包结构、入口或依赖方向 | [ARCHITECTURE.md](ARCHITECTURE.md) 与 0003、0006 |
 
-`docs/` 的入口为 [ARCHITECTURE.md](ARCHITECTURE.md)、`DECISIONS.md`、`decisions/`、`research/`。
+`docs/` 的入口为 [ARCHITECTURE.md](ARCHITECTURE.md)、`DECISIONS.md`、`decisions/`、[调研分类索引](research/README.md)。
 
 ## 新增一条决策
 

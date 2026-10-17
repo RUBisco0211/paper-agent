@@ -99,4 +99,4 @@ TanStack Query：`staleTime 60s`、`retry: 1`、无轮询。会话列表 `staleT
 - [examples/web_ui](https://github.com/agentscope-ai/agentscope/tree/main/examples/web_ui)
 - 源码锚点：`frontend/src/api/client.ts`（fetch 与 SSE）、`api/session.ts`（`streamEvents`）、`hooks/useMessages.ts`（历史 + 流 + `appendEvent`）、`components/chat/ASMessageBubble.tsx`（气泡与 tool_call_group）、`components/chat/tool-renderers/index.tsx`（renderer 注册表）、`pages/chat/index.tsx`（会话列表分组）、`components/layout/AppSidebar.tsx`（icon rail）
 - 后端事件定义：`src/agentscope/event/_event.py`（`EventType`）
-- 相关决策：[0014 前端基于 web_ui](../decisions/0014-frontend-on-web-ui.md)、[0033 底座 + 扩展](../decisions/0033-frontend-extend-web-ui.md)、[0013 不做 Node BFF](../decisions/0013-no-node-bff.md)
+- 相关决策：[0014 前端基于 web_ui](../../decisions/0014-frontend-on-web-ui.md)、[0033 底座 + 扩展](../../decisions/0033-frontend-extend-web-ui.md)、[0013 不做 Node BFF](../../decisions/0013-no-node-bff.md)

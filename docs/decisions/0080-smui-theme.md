@@ -27,7 +27,7 @@
 
 ## RATIONALE
 
-Issue #1 的 design 已获用户确认；以既有 token 与基础组件作为集中边界，既统一视觉，也避免重写流式会话与引用功能。验证范围与截图见 [验收记录](../research/smui-theme-validation.md)。
+Issue #1 的 design 已获用户确认；以既有 token 与基础组件作为集中边界，既统一视觉，也避免重写流式会话与引用功能。验证范围与截图见 [验收记录](../research/smui/smui-theme-validation.md)。
 
 ## OUT OF SCOPE
 

@@ -18,11 +18,7 @@ docs/       产品契约、架构基线、决策记录与调研
 | [WORKFLOW.md](WORKFLOW.md) | 给人看的流程总纲：任务分档、七阶段与检查点 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 前后端运行入口、包结构和依赖边界 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策索引（正文一条一文件） |
-| [docs/research/technical-stack.md](docs/research/technical-stack.md) | ORM、日志、中间件选型 |
-| [docs/research/sse-transport.md](docs/research/sse-transport.md) | SSE 传输与事件模型 |
-| [docs/research/llm-model-catalog.md](docs/research/llm-model-catalog.md) | 模型目录与 LLM 请求层选型 |
-| [docs/research/agentero-paper-workflow.md](docs/research/agentero-paper-workflow.md) | 论文解析、元数据与 Agent 工具调研 |
-| [docs/research/ai-development-workflows.md](docs/research/ai-development-workflows.md) | AI 辅助开发的规范与进度管理调研 |
+| [docs/research/README.md](docs/research/README.md) | 分类调研索引：AgentScope、SMUI、平台技术、LLM、文献工作流与 AI 开发 |
 | [.env.example](.env.example) | compose 变量（HF 端点、TEI 镜像、向量模型） |
 
 按场景找决策：`docs/DECISIONS.md` 底部有「按触发场景找」的对照表。
