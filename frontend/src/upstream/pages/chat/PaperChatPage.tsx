@@ -286,7 +286,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   return (
     <DiscoveryImportContext.Provider value={importSelected}><CitationProvider onOpen={(id) => void openCitation(id)}>
       <main className="flex h-full min-h-0 flex-col">
-        {scheduledRun && <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
+        {scheduledRun && <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-2">
             {scheduledRun && <Button asChild variant="ghost" size="icon-sm"><Link to="/scheduled" aria-label="返回月视图"><ArrowLeft className="size-4" /></Link></Button>}
             <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
@@ -302,7 +302,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         {historyInterrupted && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">上次回答已中断，请重新提问</p>}
         <div className="min-h-0 flex-1">
           <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-            <MessageScroller><MessageScrollerViewport className="no-scrollbar ![scrollbar-width:none] ![scrollbar-gutter:auto]"><MessageScrollerContent className="mx-auto max-w-3xl p-5">
+            <MessageScroller><MessageScrollerViewport className="no-scrollbar ![scrollbar-width:none] ![scrollbar-gutter:auto]"><MessageScrollerContent className="mx-auto max-w-(--chat-content-max-width) p-5">
               {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : msgs.length === 0 ? <p className="py-16 text-center text-xl">向文献提问</p> : msgs.map((message) => (
                 <MessageScrollerItem key={message.id} messageId={message.id}>
                   <QuotedMessage message={message} annotations={messageAnnotations.get(message.id) ?? NO_ANNOTATIONS} activeAnnotationKey={activeAnnotationKey} onShowAnnotation={setActiveAnnotationKey} onHideAnnotation={() => setActiveAnnotationKey(null)} sessionId={sessionId} onUserConfirm={onUserConfirm} onQuote={addPendingQuote} />
@@ -311,11 +311,11 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
             </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /></MessageScroller>
           </MessageScrollerProvider>
         </div>
-        {pendingQuestion && <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+        {pendingQuestion && <div className="mx-auto w-full max-w-(--chat-content-max-width) px-4 pb-2">
           <AskUserQuestionnaire key={pendingQuestion.toolCall.id} toolCall={pendingQuestion.toolCall} onAnswer={(answers) => onExternalAnswer(pendingQuestion.toolCall, pendingQuestion.replyId, answers)} />
         </div>}
-        {pendingWrite && <div className="mx-auto w-full max-w-3xl px-4 pb-2 text-sm">
-          <div className="space-y-3 rounded-lg bg-muted px-6 py-5 ring-1 ring-border">
+        {pendingWrite && <div className="mx-auto w-full max-w-(--chat-content-max-width) px-4 pb-2 text-sm">
+          <div data-slot="tool-confirmation" className="space-y-3 rounded-lg bg-muted ring-1 ring-border">
             <strong>{pendingWrite.toolCall.name === "import_selected_papers" ? "文献入库等待确认" : "定时任务等待确认"}</strong>
             <p className="text-muted-foreground">查看内容后确认，或拒绝本次操作。</p>
             <div className="flex items-center gap-2">
@@ -325,12 +325,12 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
             {reviewError && <p role="alert" className="text-destructive">{reviewError}</p>}
           </div>
         </div>}
-        <div className="mx-auto w-full max-w-3xl p-4">
+        <div className="mx-auto w-full max-w-(--chat-content-max-width) p-4">
           <TextInput
-            className="w-full rounded-lg bg-muted p-1"
+            className="w-full"
             headerSlot={<div className="flex items-center gap-2 px-2 py-1">
               <Select value={selectedModel} onValueChange={(value) => void changeModel(value)} disabled={changingModel || phase !== "idle"}>
-                <SelectTrigger className="h-8 max-w-56 border-0 bg-transparent text-xs"><SelectValue placeholder="选择模型" /></SelectTrigger>
+                <SelectTrigger className="max-w-56"><SelectValue placeholder="选择模型" /></SelectTrigger>
                 <SelectContent>{models.data?.map((item) => <SelectItem key={`${item.credential_id}:${item.model}`} value={`${item.credential_id}:${item.model}`}>{item.type.replace(/_credential$/, "")} · {item.model}</SelectItem>)}</SelectContent>
               </Select>
               {availableEfforts.length > 0 && <Select value={selectedEffort} onValueChange={(value) => void changeEffort(value)} disabled={changingModel || phase !== "idle"}>

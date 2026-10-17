@@ -195,7 +195,7 @@ const ChatContentComponent: React.FC<ChatContentProps> = ({
 						)}
 					</FlipCard>
 					<TextInput
-						className="min-w-full max-w-full w-full rounded-lg bg-muted p-1"
+						className="min-w-full max-w-full w-full"
 						onSend={onSend}
 						disabled={disabled}
 						autoComplete={autoComplete}

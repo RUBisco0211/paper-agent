@@ -4,30 +4,30 @@ import { cn } from "@upstream/lib/utils"
 import { Slot } from "radix-ui"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-ui font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-(--control-gap-lg) rounded-md text-ui font-medium whitespace-nowrap transition-all duration-(--motion-duration-hover) ease-(--motion-ease-standard) outline-none focus-visible:border-ring focus-visible:ring-(length:--focus-ring-width) focus-visible:ring-(--focus-ring-color) disabled:pointer-events-none disabled:opacity-(--disabled-opacity) aria-invalid:border-destructive aria-invalid:ring-(--destructive-ring) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-(--icon-size-md)",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        default: "bg-primary text-primary-foreground hover:bg-(--control-primary-hover-bg)",
         destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40",
+          "bg-destructive text-destructive-foreground hover:bg-(--destructive-solid-hover-bg) focus-visible:ring-(--destructive-ring)",
         outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border border-(--control-outline-border) bg-(--control-outline-bg) shadow-xs hover:bg-(--control-outline-hover-bg) hover:text-accent-foreground",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+          "bg-secondary text-secondary-foreground hover:bg-(--control-secondary-hover-bg)",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+          "hover:bg-(--control-ghost-hover-bg) hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
-        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-8",
-        "icon-lg": "size-10",
+        default: "h-(--control-height-lg) px-(--button-padding-md) py-2 has-[>svg]:px-(--button-padding-xs)",
+        xs: "h-(--control-height-xs) gap-(--control-gap-sm) rounded-md px-(--button-padding-xs) text-xs has-[>svg]:px-(--control-gap-md) [&_svg:not([class*='size-'])]:size-(--icon-size-xs)",
+        sm: "h-(--control-height-md) gap-(--control-gap-md) rounded-md px-(--button-padding-sm) has-[>svg]:px-(--button-padding-xs)",
+        lg: "h-(--control-height-xl) rounded-md px-(--button-padding-lg) has-[>svg]:px-(--button-padding-md)",
+        icon: "size-(--control-height-lg)",
+        "icon-xs": "size-(--control-height-xs) rounded-md [&_svg:not([class*='size-'])]:size-(--icon-size-xs)",
+        "icon-sm": "size-(--control-height-md)",
+        "icon-lg": "size-(--control-height-xl)",
       },
     },
     defaultVariants: {

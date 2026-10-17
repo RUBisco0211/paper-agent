@@ -22,9 +22,6 @@ import { PanelLeftIcon } from 'lucide-react';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = '16rem';
-const SIDEBAR_WIDTH_MOBILE = '18rem';
-const SIDEBAR_WIDTH_ICON = '3rem';
 const SIDEBAR_KEYBOARD_SHORTCUT = 'b';
 
 type SidebarContextProps = {
@@ -122,13 +119,7 @@ function SidebarProvider({
 		<SidebarContext.Provider value={contextValue}>
 			<div
 				data-slot="sidebar-wrapper"
-				style={
-					{
-						'--sidebar-width': SIDEBAR_WIDTH,
-						'--sidebar-width-icon': SIDEBAR_WIDTH_ICON,
-						...style,
-					} as React.CSSProperties
-				}
+				style={style}
 				className={cn(
 					'group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar',
 					className,
@@ -179,12 +170,7 @@ function Sidebar({
 					data-sidebar="sidebar"
 					data-slot="sidebar"
 					data-mobile="true"
-					className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-					style={
-						{
-							'--sidebar-width': SIDEBAR_WIDTH_MOBILE,
-						} as React.CSSProperties
-					}
+					className="w-(--sidebar-width-mobile) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
 					side={side}
 				>
 					<SheetHeader className="sr-only">
@@ -210,7 +196,7 @@ function Sidebar({
 			<div
 				data-slot="sidebar-gap"
 				className={cn(
-					'relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear',
+					'relative w-(--sidebar-width) bg-transparent transition-[width] duration-(--motion-duration-normal) ease-(--motion-ease-standard)',
 					'group-data-[collapsible=offcanvas]:w-0',
 					'group-data-[side=right]:rotate-180',
 					variant === 'floating' || variant === 'inset'
@@ -222,7 +208,7 @@ function Sidebar({
 				data-slot="sidebar-container"
 				data-side={side}
 				className={cn(
-					'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex',
+					'fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-(--motion-duration-normal) ease-(--motion-ease-standard) data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex',
 					// Adjust the padding for floating and inset variants.
 					variant === 'floating' || variant === 'inset'
 						? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]'
@@ -384,7 +370,7 @@ function SidebarGroupLabel({
 			data-slot="sidebar-group-label"
 			data-sidebar="group-label"
 			className={cn(
-				'font-mono flex h-8 shrink-0 items-center rounded-md px-2 text-[11px] font-medium text-text-tertiary ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0',
+				'font-mono flex h-8 shrink-0 items-center rounded-md px-2 text-label font-medium text-text-tertiary ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-(--motion-duration-normal) ease-(--motion-ease-standard) group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0',
 				'uppercase',
 				className,
 			)}

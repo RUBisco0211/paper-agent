@@ -166,8 +166,8 @@ export function ChatSidebar({ currentProjectId = null, papersOpen = false, onTog
   const globalSessions = all.filter((item) => item.binding.project_id === null)
 
   return (
-    <Sidebar collapsible="none" className="border-r">
-      <SidebarHeader className="h-12 justify-center px-4 font-semibold tracking-tight">对话</SidebarHeader>
+    <Sidebar collapsible="none" className="w-(--chat-sidebar-width) border-r">
+      <SidebarHeader className="h-(--app-toolbar-height) justify-center px-4 font-semibold tracking-tight">对话</SidebarHeader>
       <SidebarContent>
         <SidebarGroup className="pt-0">
           <CreateProjectDialog trigger={<Button variant="ghost" className="w-full justify-start gap-2" aria-label="新建项目"><Plus className="size-4" />新建项目</Button>} onCreated={(id) => { void queryClient.invalidateQueries({ queryKey: ["sidebar-projects"] }); void queryClient.invalidateQueries({ queryKey: ["calendar-projects"] }); navigate(`/chat/project/${id}`) }} />

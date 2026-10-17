@@ -16,12 +16,14 @@ body,
 }
 
 svg.lucide {
-    stroke-width: 1.7;
+    stroke-width: var(--icon-stroke-width);
 }
 
-/* SMUI src/globals.css (Snow Storm / Polar Night), adapted to Tailwind 4's
-   complete-color tokens. Extended palette values remain raw HSL as in skill.md. */
+/* 变量目录：一、基础主题；二、控件；三、状态；四、浮层；五、Tabs；
+   六、应用布局；七、输入与工具；八、动效；九、引用。
+   标准颜色为完整 CSS 色值；SMUI 扩展色保留裸 HSL，统一在 @theme 映射。 */
 :root {
+    /* 一、基础主题：全局颜色、字体角色和圆角体系。 */
     color-scheme: light;
     --radius: 0rem;
     --background: hsl(218 27% 94%);
@@ -72,7 +74,7 @@ svg.lucide {
     --smui-surface-3: 219 20% 76%;
     --smui-border-hover: 220 17% 50%;
 
-    /* Status ink stays readable on 10–20% tinted card/popover surfaces. */
+    /* 状态文字须在普通背景及 10–20% 叠色表面保持可读。 */
     --success: hsl(92 35% 24%);
     --warning: hsl(40 70% 23%);
     --info: hsl(311 28% 33%);
@@ -92,14 +94,130 @@ svg.lucide {
     --shadow: none;
     --panel-shadow: none;
     --tab-shadow: none;
+
+    /* 二、基础控件：高度、图标与间距。size variant 只选择角色，不再携带具体值。 */
+    --control-height-xs: 1.5rem;
+    --control-height-sm: 1.75rem;
+    --control-height-md: 2rem;
+    --control-height-lg: 2.25rem;
+    --control-height-xl: 2.5rem;
+    --icon-stroke-width: 1.7;
+    --icon-size-xs: 0.75rem;
+    --icon-size-sm: 0.875rem;
+    --icon-size-md: 1rem;
+    --control-gap-sm: 0.25rem;
+    --control-gap-md: 0.375rem;
+    --control-gap-lg: 0.5rem;
+    --button-padding-xs: 0.5rem;
+    --button-padding-sm: 0.625rem;
+    --button-padding-md: 0.625rem;
+    --button-padding-lg: 0.625rem;
+    --badge-height: 1.25rem;
+
+    /* 控件交互：把深浅差异留在本文件，组件只描述 hover/focus/disabled 状态。 */
+    --focus-ring-width: 3px;
+    --focus-ring-color: color-mix(in srgb, var(--ring) 50%, transparent);
+    --disabled-opacity: 0.5;
+    --control-outline-bg: var(--background);
+    --control-outline-border: var(--border);
+    --control-outline-hover-bg: var(--muted);
+    --control-ghost-hover-bg: var(--muted);
+    --control-primary-hover-bg: color-mix(in srgb, var(--primary) 80%, transparent);
+    --control-secondary-hover-bg: color-mix(in srgb, var(--secondary) 80%, transparent);
+    --control-input-bg: transparent;
+    --control-input-hover-bg: transparent;
+    --control-disabled-bg: color-mix(in srgb, var(--input) 50%, transparent);
+    --control-selected-bg: color-mix(in srgb, var(--primary) 5%, transparent);
+    --control-selected-border: color-mix(in srgb, var(--primary) 30%, transparent);
+    /* Select 的默认外观；输入框内的无边框触发器由 composer 模块改角色值。 */
+    --select-background: var(--control-input-bg);
+    --select-hover-background: var(--control-input-hover-bg);
+    --select-border: var(--input);
+    --select-border-width: 1px;
+    --select-font-size: var(--text-body);
+
+    /* 三、状态反馈：前景复用上方状态色；表面和边框作为独立角色维护。 */
+    --success-subtle: color-mix(in srgb, var(--success) 15%, transparent);
+    --success-border: color-mix(in srgb, var(--success) 30%, transparent);
+    --warning-subtle: color-mix(in srgb, var(--warning) 15%, transparent);
+    --warning-border: color-mix(in srgb, var(--warning) 30%, transparent);
+    --info-subtle: color-mix(in srgb, var(--info) 10%, transparent);
+    --info-border: color-mix(in srgb, var(--info) 30%, transparent);
+    --destructive-subtle: color-mix(in srgb, var(--destructive) 10%, transparent);
+    --destructive-hover: color-mix(in srgb, var(--destructive) 20%, transparent);
+    --destructive-border: color-mix(in srgb, var(--destructive) 30%, transparent);
+    --destructive-ring: color-mix(in srgb, var(--destructive) 20%, transparent);
+    --destructive-solid-hover-bg: color-mix(in srgb, var(--destructive) 90%, transparent);
+
+    /* 四、Dialog / Sheet / Menu / Popover：浮层 chrome 和尺寸，不包含定位状态。 */
+    --overlay-backdrop: rgb(0 0 0 / 10%);
+    --overlay-blur: 4px;
+    --floating-border: color-mix(in srgb, var(--foreground) 10%, transparent);
+    --shadow-floating: 0 4px 6px -1px rgb(0 0 0 / 10%), 0 2px 4px -2px rgb(0 0 0 / 10%);
+    --shadow-floating-lg: 0 10px 15px -3px rgb(0 0 0 / 10%), 0 4px 6px -4px rgb(0 0 0 / 10%);
+    --dialog-padding: 1rem;
+    --dialog-width: 24rem;
+    --dialog-footer-bg: color-mix(in srgb, var(--muted) 50%, transparent);
+    --popover-padding: 0.625rem;
+    --popover-width: 18rem;
+    --quote-preview-width: 20rem;
+    --quote-preview-padding: 0.75rem;
+    --menu-padding: 0.25rem;
+    --menu-min-width: 8rem;
+    --menu-sub-min-width: 6rem;
+    --tooltip-padding-inline: 0.75rem;
+    --tooltip-padding-block: 0.375rem;
+
+    /* 五、Tabs：激活态与普通控件的表面不混用。 */
+    --tab-inactive-foreground: color-mix(in srgb, var(--foreground) 60%, transparent);
+    --tab-active-bg: var(--background);
+    --tab-active-border: transparent;
+
+    /* 六、应用布局：只管理默认几何；拖拽后的宽度仍由交互代码持有。 */
+    --app-toolbar-height: 3rem;
+    --app-nav-rail-width: 4rem;
+    --app-nav-button-size: var(--control-height-md);
+    --app-brand-size: var(--control-height-md);
+    --app-avatar-size: var(--control-height-sm);
+    --chat-sidebar-width: 16rem;
+    --chat-content-max-width: 48rem;
+    --sidebar-width: 16rem;
+    --sidebar-width-mobile: 18rem;
+    --sidebar-width-icon: 3rem;
+
+    /* 七、会话输入：测量 ghost、textarea、补全层与操作行必须消费同一组值。 */
+    --composer-shell-background: var(--muted);
+    --composer-shell-padding: 0.25rem;
+    --composer-line-height: 21px;
+    --composer-min-height: 52px;
+    --composer-padding-inline: 12px;
+    --composer-max-lines: 6;
+
+    /* 工具确认卡：普通与紧凑面板共享规则，各自保留当前密度。 */
+    --tool-preview-max-height: 12.5rem;
+    --tool-confirmation-padding-inline: 1.5rem;
+    --tool-confirmation-padding-block: 1.25rem;
+    --tool-confirmation-compact-padding: 0.75rem;
+    --tool-flip-perspective: 800px;
+
+    /* 八、动效：参数统一，但浮层、hover 和侧栏不强制同速。 */
+    --motion-duration-fast: 100ms;
+    --motion-duration-hover: 150ms;
+    --motion-duration-normal: 200ms;
+    --motion-duration-page: 180ms;
+    --motion-ease-standard: cubic-bezier(0, 0, 0.2, 1);
+    --motion-ease-page: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* 九、引用：聊天高亮随主题，PDF 标注始终以白纸为背景。 */
     --message-quote-accent: hsl(var(--smui-yellow));
     --message-quote-fill: hsl(var(--smui-yellow) / 0.2);
-    /* PDF annotations are painted on white paper in both modes. */
+    /* PDF 原文在两种主题下都保持白纸，不使用聊天高亮底色。 */
     --paper-quote-accent: hsl(40 70% 34%);
     --paper-quote-fill: hsl(40 71% 73% / 0.5);
 }
 
 .dark {
+    /* 深色只覆盖变化的主题值；尺寸、字体和模块结构沿用默认。 */
     color-scheme: dark;
     --background: hsl(213 16% 12%);
     --foreground: hsl(213 27% 88%);
@@ -135,25 +253,55 @@ svg.lucide {
     --smui-surface-2: 216 15% 19%;
     --smui-surface-3: 215 14% 22%;
     --smui-border-hover: 216 12% 37%;
+
+    /* 控件交互与状态表面。 */
+    --control-outline-bg: color-mix(in srgb, var(--input) 30%, transparent);
+    --control-outline-border: var(--input);
+    --control-outline-hover-bg: color-mix(in srgb, var(--input) 50%, transparent);
+    --control-ghost-hover-bg: color-mix(in srgb, var(--muted) 50%, transparent);
+    --control-input-bg: color-mix(in srgb, var(--input) 30%, transparent);
+    --control-input-hover-bg: color-mix(in srgb, var(--input) 50%, transparent);
+    --control-disabled-bg: color-mix(in srgb, var(--input) 80%, transparent);
+    --control-selected-bg: color-mix(in srgb, var(--primary) 10%, transparent);
+    --control-selected-border: color-mix(in srgb, var(--primary) 20%, transparent);
+    --destructive-subtle: color-mix(in srgb, var(--destructive) 20%, transparent);
+    --destructive-hover: color-mix(in srgb, var(--destructive) 30%, transparent);
+    --destructive-ring: color-mix(in srgb, var(--destructive) 40%, transparent);
+
+    /* Tabs 激活态。 */
+    --tab-inactive-foreground: var(--muted-foreground);
+    --tab-active-bg: color-mix(in srgb, var(--input) 30%, transparent);
+    --tab-active-border: var(--input);
 }
 
+/* 字体角色集中定义；不要在业务调用处另外指定字体或像素字号。 */
 @theme {
+    --font-sans:
+        "JetBrains Mono Variable", "PingFang SC", "Microsoft YaHei", monospace;
+    --font-mono:
+        "JetBrains Mono Variable", "PingFang SC", "Microsoft YaHei", monospace;
     --text-label: 11px;
     --text-ui: 13px;
     --text-heading: 22px;
     --text-stat: 26px;
     --text-hero: 42px;
+    --text-body: 14px;
+    --text-meta: 12px;
+    --text-sm: var(--text-body);
+    --text-xs: var(--text-meta);
+    /* 字重仍通过 font-* 语义类选择，具体值在此集中调整。 */
+    --font-weight-normal: 400;
+    --font-weight-medium: 500;
+    --font-weight-semibold: 600;
+    --font-weight-bold: 700;
     --tracking-label: 0.094em;
 }
 
+/* Tailwind 映射：组件保留语义 class，实际取值由上面的模块变量维护。 */
 @theme inline {
-    --font-sans:
-        "JetBrains Mono Variable", "PingFang SC", "Microsoft YaHei", monospace;
-    --font-mono:
-        "JetBrains Mono Variable", "PingFang SC", "Microsoft YaHei", monospace;
     --font-heading: var(--font-sans);
     --color-canvas: var(--bg);
-    /* Menu hit areas must not collapse with a zero-radius theme. */
+    /* 菜单点击区域不随 radius 归零。 */
     --spacing-menu-item: 0.5rem;
     --color-text-secondary: var(--text-secondary);
     --color-text-tertiary: var(--text-tertiary);
@@ -242,13 +390,13 @@ svg.lucide {
 }
 
 @utility card-glow {
-    transition: border-color 150ms;
+    transition: border-color var(--motion-duration-hover) var(--motion-ease-standard);
     &:hover {
         border-color: hsl(var(--smui-border-hover));
     }
 }
 
-/* Shared component slots keep typography and third-party chrome out of pages. */
+/* 共享模块样式：通过明确的 slot 接管视觉，不全局覆盖任意 HTML 标签。 */
 @layer components {
     [data-slot="field-label"],
     [data-slot="field-legend"] {
@@ -260,6 +408,71 @@ svg.lucide {
     [data-sonner-toast] {
         font-family: var(--font-sans);
     }
+
+    /* 引用预览与消息菜单复用浮层 chrome，不在调用处叠背景、ring 和阴影。 */
+    .floating-surface {
+        border-radius: var(--radius);
+        background: var(--popover);
+        color: var(--popover-foreground);
+        box-shadow: 0 0 0 1px var(--floating-border), var(--shadow-floating);
+    }
+
+    /* 会话输入：测量层不加纵向留白，否则单行也会被误判成多行。 */
+    [data-slot="composer"] {
+        --select-background: transparent;
+        --select-hover-background: transparent;
+        --select-border: transparent;
+        --select-border-width: 0px;
+        --select-font-size: var(--text-meta);
+        background: var(--composer-shell-background);
+        border-radius: var(--radius);
+        padding: var(--composer-shell-padding);
+        --composer-padding-block: calc((var(--composer-min-height) - var(--composer-line-height)) / 2);
+        --composer-max-height: calc(var(--composer-line-height) * var(--composer-max-lines) + var(--composer-padding-block) * 2);
+    }
+    [data-slot="composer-measure"],
+    [data-slot="composer-textarea"],
+    [data-slot="composer-suggestion"] {
+        padding-inline: var(--composer-padding-inline);
+        font-size: var(--text-body);
+        line-height: var(--composer-line-height);
+        white-space: pre-wrap;
+        overflow-wrap: break-word;
+    }
+    [data-slot="composer-textarea"],
+    [data-slot="composer-suggestion"] {
+        padding-block: var(--composer-padding-block);
+    }
+    [data-slot="composer-textarea"] {
+        min-height: var(--composer-min-height);
+        max-height: var(--composer-max-height);
+        overflow-y: auto;
+    }
+    [data-slot="composer-actions"] {
+        height: var(--composer-min-height);
+    }
+
+    /* 工具确认：预览滚动上限与面板留白由同一模块维护。 */
+    [data-slot="tool-confirmation"] {
+        padding-inline: var(--tool-confirmation-padding-inline);
+        padding-block: var(--tool-confirmation-padding-block);
+    }
+    [data-slot="tool-confirmation"][data-size="compact"] {
+        padding: var(--tool-confirmation-compact-padding);
+    }
+    [data-slot="tool-preview"] {
+        max-height: var(--tool-preview-max-height);
+    }
+    [data-slot="tool-flip"] {
+        perspective: var(--tool-flip-perspective);
+        perspective-origin: 50% 100%;
+    }
+    [data-slot="tool-flip-content"] {
+        transform-origin: bottom center;
+        transform-style: preserve-3d;
+        will-change: transform, opacity;
+    }
+
     .paper-pdf-location,
     .paper-pdf-quote {
         background: var(--paper-quote-fill);
@@ -269,7 +482,17 @@ svg.lucide {
     }
 }
 
-/* Keep Streamdown tables to one scrollable border in conversation messages. */
+/* Sonner 自带的样式不属于 cascade layer；适配规则保持同层且限定在其根节点，
+   避免库内默认值覆盖主题桥接变量，不使用 !important。 */
+.toaster[data-sonner-toaster][data-sonner-theme] {
+    --normal-bg: var(--popover);
+    --normal-text: var(--popover-foreground);
+    --normal-border: var(--border);
+    --border-radius: var(--radius);
+    font-family: var(--font-sans);
+}
+
+/* Markdown：表格只保留单层可滚动边框。 */
 .cn-markdown [data-streamdown='table-wrapper'] {
 	border: 0;
 	border-radius: 0;
@@ -283,7 +506,7 @@ svg.lucide {
 	vertical-align: top;
 }
 
-/* PDF.js text layer follows its canvas so document text can be selected. */
+/* PDF.js 文本层：定位、缩放与原文对齐，不能套用普通正文的字体规则。 */
 .paper-pdf-text-layer {
 	color-scheme: only light;
 	position: absolute;
@@ -341,14 +564,14 @@ svg.lucide {
 }
 
 .route-page-enter {
-	animation: route-page-enter 180ms cubic-bezier(0.22, 1, 0.36, 1) both;
+	animation: route-page-enter var(--motion-duration-page) var(--motion-ease-page) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.route-page-enter { animation: none; }
 }
 [data-animated-sidebar] {
-  transition: flex-grow 200ms ease-out;
+  transition: flex-grow var(--motion-duration-normal) var(--motion-ease-standard);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -356,4 +579,14 @@ svg.lucide {
   [data-animated-sidebar] {
     transition: none;
   }
+}
+
+/* 减少动态效果：统一节奏变量也覆盖基础组件内部的过渡。 */
+@media (prefers-reduced-motion: reduce) {
+    :root {
+        --motion-duration-fast: 0ms;
+        --motion-duration-hover: 0ms;
+        --motion-duration-normal: 0ms;
+        --motion-duration-page: 0ms;
+    }
 }

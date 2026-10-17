@@ -58,12 +58,12 @@ it.each([
   {
     status: "completed" as const,
     foreground: "text-success",
-    background: "bg-success/10",
+    background: "bg-(--success-subtle)",
   },
   {
     status: "failed" as const,
     foreground: "text-destructive",
-    background: "bg-destructive/10",
+    background: "bg-(--destructive-subtle)",
   },
 ])(
   "Status badge uses semantic colors when execution is $status",
@@ -102,7 +102,7 @@ it("Message error uses the theme surface when the assistant reply fails", () => 
   } as unknown as Msg;
   render(<ASMessageBubble message={message} onUserConfirm={() => {}} />);
   const alert = screen.getByRole("alert");
-  expect(alert.classList.contains("bg-destructive/10")).toBe(true);
-  expect(alert.classList.contains("border-destructive/30")).toBe(true);
+  expect(alert.classList.contains("bg-(--destructive-subtle)")).toBe(true);
+  expect(alert.classList.contains("border-(--destructive-border)")).toBe(true);
   expect(alert.className).not.toMatch(/(?:dark:)?(?:bg|border|text)-red-/);
 });

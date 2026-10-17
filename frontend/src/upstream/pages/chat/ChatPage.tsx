@@ -116,12 +116,12 @@ export function ChatPage() {
 
   return <ChatQuoteContext.Provider value={quoteBridge}><SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full min-h-0 w-full flex-col">
-      <header aria-label="会话工具栏" className="flex h-12 shrink-0 items-center gap-3 border-b bg-[var(--app-rail-background)] px-3 text-foreground">
+      <header data-slot="app-toolbar" aria-label="会话工具栏" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b bg-[var(--app-rail-background)] px-3 text-foreground">
         <Button variant="ghost" size="icon-sm" aria-label={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} title={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} onClick={() => setLeftOpen((open) => !open)}>{leftOpen ? <PanelLeftClose /> : <PanelLeftOpen />}</Button>
         <span className="min-w-0 truncate text-sm font-medium">{title}</span>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div aria-hidden={!leftOpen} inert={!leftOpen} className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-out motion-reduce:transition-none ${leftOpen ? "w-64 opacity-100" : "w-0 opacity-0"}`}>
+        <div aria-hidden={!leftOpen} inert={!leftOpen} className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-(--motion-duration-normal) ease-(--motion-ease-standard) motion-reduce:transition-none ${leftOpen ? "w-(--chat-sidebar-width) opacity-100" : "w-0 opacity-0"}`}>
           <ChatSidebar currentProjectId={projectId} papersOpen={papersOpen} onTogglePapers={() => setPapersOpen((open) => !open)} />
         </div>
         <ResizablePanelGroup orientation="horizontal" className="min-w-0 flex-1">

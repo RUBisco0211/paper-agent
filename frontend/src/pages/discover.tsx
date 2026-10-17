@@ -84,7 +84,7 @@ export function DiscoverPage() {
   }
 
   return <>
-    <header className="flex h-12 shrink-0 items-center border-b px-6"><h1 className="text-lg font-semibold">在线检索文献</h1></header>
+    <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center border-b px-6"><h1 className="text-lg font-semibold">在线检索文献</h1></header>
     <div className="mx-auto w-full max-w-5xl space-y-5 px-6 py-6">
       <form onSubmit={searchPapers} className="flex gap-2">
         <Input type="search" aria-label="搜索文献" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题或关键词" maxLength={300} />

@@ -41,7 +41,7 @@ export function QuoteBadge({ reference, onOpen, onRemove, onEdit }: {
           </HoverCardPrimitive.Trigger>
           <HoverCardPrimitive.Portal>
             <HoverCardPrimitive.Content side="top" align="start" sideOffset={8}
-              className="z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 rounded-lg bg-popover p-3 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0">
+              className="floating-surface z-50 flex w-(--quote-preview-width) max-w-[calc(100vw-2rem)] flex-col gap-2 p-(--quote-preview-padding) text-sm outline-hidden data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0">
               <p className="text-xs font-medium text-muted-foreground">{label}</p>
               <p className="max-h-32 overflow-y-auto whitespace-pre-wrap wrap-break-word">{excerpt}</p>
               {reference.comment && <p className="border-t pt-2 whitespace-pre-wrap wrap-break-word">{reference.comment}</p>}
@@ -51,7 +51,7 @@ export function QuoteBadge({ reference, onOpen, onRemove, onEdit }: {
         {onRemove && <Button type="button" variant="ghost" size="icon-xs" aria-label="移除引用" title="移除引用" onClick={onRemove}><X /></Button>}
       </Badge>
     </PopoverAnchor>
-    {onEdit && <PopoverContent align="start" side="top" className="w-80 max-w-[calc(100vw-2rem)]">
+    {onEdit && <PopoverContent align="start" side="top" className="w-(--quote-preview-width) max-w-[calc(100vw-2rem)]">
       <PopoverHeader>
         <PopoverTitle>编辑引用评论</PopoverTitle>
         <PopoverDescription className="line-clamp-3">{excerpt}</PopoverDescription>

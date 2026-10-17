@@ -42,7 +42,7 @@ export function ModelSettingsPage() {
   return <SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full w-full">
       <Sidebar collapsible="none" className="border-r">
-        <SidebarHeader className="h-12 justify-center px-4 font-semibold">模型设置</SidebarHeader>
+        <SidebarHeader className="h-(--app-toolbar-height) justify-center px-4 font-semibold">模型设置</SidebarHeader>
         <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
           {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
             <SidebarMenuButton isActive={selected === item.id} onClick={() => { setProvider(item.id); setError(""); setSuccess(false) }}><KeyRound />{item.label}</SidebarMenuButton>
@@ -50,7 +50,7 @@ export function ModelSettingsPage() {
         </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
       </Sidebar>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background">
-        <header className="flex h-12 shrink-0 items-center border-b px-6"><h1 className="font-medium">{chosen?.label ?? "模型设置"}</h1></header>
+        <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center border-b px-6"><h1 className="font-medium">{chosen?.label ?? "模型设置"}</h1></header>
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-3xl space-y-8">
           <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>

@@ -44,9 +44,9 @@ it.each([
   expect(label.classList.contains(color)).toBe(true)
 })
 
-it("the draft composer inherits the theme radius when a new conversation is opened", () => {
+it("the draft composer leaves surface styling to the shared input when a new conversation is opened", () => {
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><NewChatPage /></MemoryRouter></QueryClientProvider>)
-  expect(screen.getByTestId("composer").classList.contains("rounded-lg")).toBe(true)
+  expect(screen.getByTestId("composer").className).not.toMatch(/rounded-|bg-|p-1/)
 })
 
 it("the message preview inherits the theme radius when the navigation rail expands", async () => {

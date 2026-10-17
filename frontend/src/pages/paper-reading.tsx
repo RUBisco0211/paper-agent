@@ -204,7 +204,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
   }
 
   return <div className="flex h-full min-h-0 w-full flex-col">
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+    <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" size="icon-sm" aria-label={embedded ? "返回文献列表" : "返回"} onClick={() => onBack ? onBack() : navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-medium">{paper.data?.title || paper.data?.original_filename || "文献"}</h1>
@@ -224,7 +224,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
         <ResizablePanel data-animated-sidebar panelRef={blocksPanelRef} collapsible collapsedSize={0} defaultSize={embedded ? "45%" : "26rem"} minSize={embedded ? "12rem" : "20rem"} maxSize={embedded ? "65%" : "50rem"} className="min-h-0 min-w-0">
           <aside aria-label="文献分块" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
         {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null); setImageViewer(null) }} className="h-full min-h-0 flex-1 gap-0">
-          <div className="flex h-12 shrink-0 items-center overflow-x-auto border-b px-2">
+          <div data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center overflow-x-auto border-b px-2">
             <TabsList variant="line" className="w-max">
               {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
             </TabsList>
@@ -264,7 +264,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
     <Dialog open={Boolean(imageViewer)} onOpenChange={(open) => { if (!open) setImageViewer(null) }}>
       <DialogContent className="flex h-[92vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4 pr-12">
+        <div data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-2 border-b px-4 pr-12">
           <DialogTitle className="min-w-0 flex-1 truncate">{imageViewer?.title}</DialogTitle>
           <DialogDescription className="sr-only">放大或缩小图片以查看细节</DialogDescription>
           <Button variant="ghost" size="icon-sm" aria-label="缩小图片" disabled={imageZoom <= 0.5} onClick={() => setImageZoom((value) => Math.max(0.5, value - 0.25))}><Minus /></Button>

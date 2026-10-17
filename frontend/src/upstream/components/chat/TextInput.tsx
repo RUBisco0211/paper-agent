@@ -99,20 +99,6 @@ export interface TextInputRef {
 	focus: () => void;
 }
 
-/** One line box of textarea text: ``text-sm`` (14px) at a 1.5 line-height. */
-const LINE_HEIGHT_PX = 21;
-/** Height of the input in its collapsed, single-line state. */
-const COLLAPSED_HEIGHT_PX = 52;
-/**
- * Padding rather than height: a textarea top-aligns its text, so forcing the
- * height would leave dead space under the caret instead of centring the line.
- */
-const TEXTAREA_PADDING_Y_PX = (COLLAPSED_HEIGHT_PX - LINE_HEIGHT_PX) / 2;
-/** Growth stops after six lines of text; the textarea scrolls beyond that. */
-const MAX_HEIGHT_PX = LINE_HEIGHT_PX * 6 + TEXTAREA_PADDING_Y_PX * 2;
-/** Horizontal padding of the textarea, mirrored by the overlay and the ghost. */
-const TEXTAREA_PADDING_X_PX = 12;
-
 /**
  * A text input component with file attachment support and autocomplete functionality.
  *
@@ -186,7 +172,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		useLayoutEffect(() => {
 			const ghost = measureRef.current;
 			if (!ghost) return;
-			setIsStacked(ghost.scrollHeight > LINE_HEIGHT_PX);
+			const lineHeight = Number.parseFloat(getComputedStyle(ghost).lineHeight);
+			setIsStacked(ghost.scrollHeight > lineHeight);
 		}, [value]);
 
 		// Calculate autocomplete suggestion using useMemo
@@ -325,10 +312,11 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		};
 
 		return (
-			<div className={cn('flex flex-col', className)}>
+			<div data-slot="composer" className={cn('flex flex-col', className)}>
 				{headerSlot}
 				<div
 					id="tour-chat-input"
+					data-slot="composer-input-shell"
 					className="flex w-full flex-col rounded-lg border bg-background px-2"
 					data-tour="chat-input"
 				>
@@ -401,23 +389,17 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 								    match the textarea; padding-y is left off on purpose. */}
 								<span
 									ref={measureRef}
-									className="block text-sm"
-									style={{
-										paddingLeft: `${TEXTAREA_PADDING_X_PX}px`,
-										paddingRight: `${TEXTAREA_PADDING_X_PX}px`,
-										lineHeight: `${LINE_HEIGHT_PX}px`,
-										whiteSpace: 'pre-wrap',
-										wordWrap: 'break-word',
-									}}
+									data-slot="composer-measure"
+									className="block"
 								>
 									{value}
 								</span>
 							</div>
 							{/* Stands in for the button cluster below — keep the count, the
 							    gap and the ``size-9`` footprint in step with it. */}
-							<div className="flex shrink-0 gap-2">
-								<div className="size-9" />
-								<div className="size-9" />
+							<div className="flex shrink-0 gap-(--control-gap-lg)">
+								<div className="size-(--control-height-lg)" />
+								<div className="size-(--control-height-lg)" />
 							</div>
 						</div>
 
@@ -430,6 +412,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							    leave a descender gap that makes the wrapper taller. */}
 							<textarea
 								ref={textareaRef}
+								data-slot="composer-textarea"
 								value={value}
 								onChange={(e) => setValue(e.target.value)}
 								onKeyDown={handleKeyDown}
@@ -438,15 +421,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 								placeholder={defaultPlaceholder}
 								disabled={disabled}
 								rows={1}
-								className="block w-full resize-none rounded-md border-0 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-								style={{
-									minHeight: `${COLLAPSED_HEIGHT_PX}px`,
-									maxHeight: `${MAX_HEIGHT_PX}px`,
-									lineHeight: `${LINE_HEIGHT_PX}px`,
-									paddingTop: `${TEXTAREA_PADDING_Y_PX}px`,
-									paddingBottom: `${TEXTAREA_PADDING_Y_PX}px`,
-									overflowY: 'auto',
-								}}
+								className="block w-full resize-none rounded-md border-0 bg-transparent outline-none placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-(--disabled-opacity)"
 								autoFocus={true}
 							/>
 
@@ -454,14 +429,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							    textarea's, or the suggestion drifts off the real text. */}
 							{suggestion && isFocused && (
 								<div
-									className="pointer-events-none absolute left-0 top-0 px-3 text-sm"
-									style={{
-										lineHeight: `${LINE_HEIGHT_PX}px`,
-										paddingTop: `${TEXTAREA_PADDING_Y_PX}px`,
-										paddingBottom: `${TEXTAREA_PADDING_Y_PX}px`,
-										whiteSpace: 'pre-wrap',
-										wordWrap: 'break-word',
-									}}
+									data-slot="composer-suggestion"
+									className="pointer-events-none absolute left-0 top-0"
 								>
 									{/* Invisible input text */}
 									<span className="invisible">{value}</span>
@@ -478,8 +447,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 						{/* Collapsed-height box centring the buttons, so a single line still
 						    reads as centred while the row bottom-aligns them. */}
 						<div
-							className="flex shrink-0 items-center gap-2"
-							style={{ height: `${COLLAPSED_HEIGHT_PX}px` }}
+							data-slot="composer-actions"
+							className="flex shrink-0 items-center gap-(--control-gap-lg)"
 						>
 							{/* Attachment button */}
 							<Tooltip>
@@ -492,7 +461,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										disabled={attachDisabled}
 										className="shrink-0 rounded-md"
 									>
-										<Paperclip className="size-4" />
+										<Paperclip />
 									</Button>
 								</TooltipTrigger>
 								<TooltipContent>
