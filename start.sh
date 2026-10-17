@@ -91,6 +91,7 @@ kill_tree() {
 }
 
 cleanup() {
+  local exit_status=$?
   trap - INT TERM EXIT
   echo
   step "正在停止服务…"
@@ -126,15 +127,38 @@ cleanup() {
     done
   } 2>/dev/null || true
   ok "已停止"
-  exit 0
+  exit "$exit_status"
 }
 trap cleanup INT TERM EXIT
 
+check_port_free() {
+  local port="$1" name="$2" listeners
+  listeners="$(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true)"
+  if [[ -n "$listeners" ]]; then
+    die "$name 端口 $port 已被占用（PID：$(echo "$listeners" | tr '\n' ' ')）；请停止原服务或更换端口后重试，不会自动终止已有进程"
+  fi
+}
+
 wait_for_http() {
-  local url="$1" name="$2" tries="${3:-60}"
+  local url="$1" name="$2" tries="${3:-60}" pid="${4:-}" authorization="${5:-}" i
+  local probe_args=(--noproxy '*' -fsS --max-time 2)
+  [[ -n "$authorization" ]] && probe_args+=(-H "Authorization: Bearer $authorization")
+  # 监听所有网卡时，仍通过回环地址探测；本地请求不经过系统代理。
+  url="${url/http:\/\/0.0.0.0:/http:\/\/127.0.0.1:}"
   for ((i = 1; i <= tries; i++)); do
-    if curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
-      return 0
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      fail "$name 进程已退出，停止等待健康检查"
+      return 1
+    fi
+    if (( (i - 1) % 10 == 0 )); then
+      step "等待${name}就绪（检查 ${i}/${tries}）"
+    fi
+    if curl "${probe_args[@]}" "$url" >/dev/null 2>&1; then
+      if [[ -z "$pid" ]] || kill -0 "$pid" 2>/dev/null; then
+        return 0
+      fi
+      fail "$name 进程已退出，停止等待健康检查"
+      return 1
     fi
     sleep 0.5
   done
@@ -150,11 +174,27 @@ mkdir -p "$LOG_DIR"
 # --- 依赖检查 ---------------------------------------------------------------
 step "检查本地依赖"
 require uv "https://docs.astral.sh/uv/"
+require curl
+require lsof
 [[ "$START_FRONTEND" -eq 1 ]] && require pnpm "https://pnpm.io/"
 [[ "$START_DB" -eq 1 ]] && require docker "https://orbstack.dev/"
 ok "uv $(uv --version | awk '{print $2}')"
 [[ "$START_FRONTEND" -eq 1 ]] && ok "pnpm $(pnpm --version)"
 echo
+
+# 在安装依赖、迁移与写入服务日志之前拒绝重复启动，保留旧日志供排查。
+if [[ "$START_BACKEND" -eq 1 ]]; then
+  check_port_free "$BACKEND_PORT" "后端"
+  check_port_free "$AGENT_SERVICE_PORT" "AgentScope 服务"
+  [[ "$BACKEND_PORT" != "$AGENT_SERVICE_PORT" ]] || die "后端与 AgentScope 服务不能使用相同端口"
+fi
+if [[ "$START_FRONTEND" -eq 1 ]]; then
+  check_port_free "$FRONTEND_PORT" "前端"
+  if [[ "$START_BACKEND" -eq 1 ]]; then
+    [[ "$FRONTEND_PORT" != "$BACKEND_PORT" && "$FRONTEND_PORT" != "$AGENT_SERVICE_PORT" ]] \
+      || die "前端与后端服务不能使用相同端口"
+  fi
+fi
 
 # --- 数据库 -----------------------------------------------------------------
 if [[ "$START_DB" -eq 1 ]]; then
@@ -290,7 +330,7 @@ PY
     >"$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
 
-  if wait_for_http "http://$BACKEND_HOST:$BACKEND_PORT/health" "后端"; then
+  if wait_for_http "http://$BACKEND_HOST:$BACKEND_PORT/health" "后端" 60 "$BACKEND_PID"; then
     ok "后端已就绪（API 文档 /docs）"
   else
     fail "后端启动失败，日志末尾："
@@ -320,14 +360,10 @@ PY
   [[ "$AGENT_SERVICE_PROBE_HOST" == "0.0.0.0" ]] && AGENT_SERVICE_PROBE_HOST="127.0.0.1"
   AGENT_HEALTH_TOKEN="$(uv run python -c 'from uuid import UUID; from app.platform.security import create_access_token; print(create_access_token(user_id=UUID(int=0), auth_session_id=UUID(int=0))[0])')"
   ready=0
-  for _ in $(seq 1 60); do
-    if curl -fsS --max-time 2 -H "Authorization: Bearer $AGENT_HEALTH_TOKEN" \
-      "http://$AGENT_SERVICE_PROBE_HOST:$AGENT_SERVICE_PORT/health" >/dev/null 2>&1; then
-      ready=1
-      break
-    fi
-    sleep 0.5
-  done
+  if wait_for_http "http://$AGENT_SERVICE_PROBE_HOST:$AGENT_SERVICE_PORT/health" \
+      "AgentScope 服务" 60 "$AGENT_SERVICE_PID" "$AGENT_HEALTH_TOKEN"; then
+    ready=1
+  fi
   unset AGENT_HEALTH_TOKEN
   if [[ "$ready" -ne 1 ]]; then
     fail "AgentScope 服务启动失败，日志末尾："
@@ -350,11 +386,11 @@ if [[ "$START_FRONTEND" -eq 1 ]]; then
   echo
 
   step "启动前端 http://$FRONTEND_HOST:$FRONTEND_PORT"
-  pnpm dev --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+  pnpm dev --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" --strictPort \
     >"$LOG_DIR/frontend.log" 2>&1 &
   FRONTEND_PID=$!
 
-  if wait_for_http "http://$FRONTEND_HOST:$FRONTEND_PORT/" "前端"; then
+  if wait_for_http "http://$FRONTEND_HOST:$FRONTEND_PORT/" "前端" 60 "$FRONTEND_PID"; then
     ok "前端已就绪"
   else
     fail "前端启动失败，日志末尾："
