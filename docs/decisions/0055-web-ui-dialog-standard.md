@@ -7,7 +7,7 @@
 
 ## DECISION
 
-所有业务创建、编辑、导入和删除弹窗直接使用 `@upstream/components/ui/dialog` 的 `Dialog`、`DialogContent`、`DialogHeader`、`DialogFooter`，弹窗内的操作按钮使用 `@upstream/components/ui/button`。以新建定时任务、对话侧栏删除会话、按 DOI/arXiv 导入的弹窗为视觉锚点：轻遮罩、圆角浮层、右上角关闭按钮、分隔的底部操作区。不可撤销操作在正文说明后果，取消不执行，失败在弹窗内提示。
+所有业务创建、编辑、导入和删除弹窗直接使用 `@upstream/components/ui/dialog` 的 `Dialog`、`DialogContent`、`DialogHeader`、`DialogFooter`，弹窗内的操作按钮使用 `@upstream/components/ui/button`。以新建定时任务、对话侧栏删除会话、按 DOI/arXiv 导入的弹窗为视觉锚点：轻遮罩、主题浮层（0080 起采用方角）、右上角关闭按钮、分隔的底部操作区。不可撤销操作在正文说明后果，取消不执行，失败在弹窗内提示。
 
 ## REJECTED
 

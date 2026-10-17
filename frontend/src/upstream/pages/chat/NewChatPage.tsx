@@ -67,7 +67,7 @@ export function NewChatPage() {
         {models.isSuccess && models.data.length === 0 && <p className="text-center text-sm text-muted-foreground">请先<Link className="ml-1 underline" to="/settings">配置模型</Link></p>}
         {models.isError && <p role="alert" className="text-center text-sm text-destructive">模型列表加载失败，请刷新重试</p>}
         <TextInput
-          className="w-full rounded-[26px] bg-muted p-1"
+          className="w-full rounded-lg bg-muted p-1"
           headerSlot={<div className="flex items-center gap-2 px-2 py-1">
             <Select value={projectId || "global"} onValueChange={(value) => setProjectId(value === "global" ? "" : value)} disabled={busy || Boolean(pendingSession.current)}>
               <SelectTrigger className="h-8 max-w-40 border-0 bg-transparent text-xs" aria-label="所属项目"><SelectValue placeholder="选择项目" /></SelectTrigger>
@@ -89,7 +89,7 @@ export function NewChatPage() {
           fileProcessor={async () => null}
         />
         {error && <div role="alert" className="space-y-2 text-sm text-destructive"><p>发送失败：{error}</p>
-          {pendingMessage.current && <div className="rounded-xl border p-3 text-foreground"><p className="line-clamp-3 whitespace-pre-wrap">{retryText}</p><Button className="mt-2" size="sm" variant="outline" disabled={busy} onClick={() => void sendFirst(pendingMessage.current!.content, true)}>重试发送</Button></div>}
+          {pendingMessage.current && <div className="rounded-lg border p-3 text-foreground"><p className="line-clamp-3 whitespace-pre-wrap">{retryText}</p><Button className="mt-2" size="sm" variant="outline" disabled={busy} onClick={() => void sendFirst(pendingMessage.current!.content, true)}>重试发送</Button></div>}
         </div>}
       </div>
     </div>

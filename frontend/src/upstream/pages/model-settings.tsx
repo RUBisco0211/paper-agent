@@ -56,9 +56,9 @@ export function ModelSettingsPage() {
           <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>
             {credentials.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
             {saved.length === 0 && !credentials.isPending && <p className="text-sm text-muted-foreground">尚未配置</p>}
-            {saved.map((item) => <div key={item.id} className="flex items-center justify-between rounded-2xl border px-4 py-3 text-sm"><span>{String(item.data.name ?? chosen?.label ?? "凭据")}</span><span className="text-muted-foreground">密钥已隐藏</span></div>)}
+            {saved.map((item) => <div key={item.id} className="flex items-center justify-between rounded-lg border px-4 py-3 text-sm"><span>{String(item.data.name ?? chosen?.label ?? "凭据")}</span><span className="text-muted-foreground">密钥已隐藏</span></div>)}
           </section>
-          <section className="rounded-2xl border p-5"><h2 className="mb-4 flex items-center gap-2 font-medium"><Plus className="size-4" />保存凭据</h2>
+          <section className="rounded-lg border p-5"><h2 className="mb-4 flex items-center gap-2 font-medium"><Plus className="size-4" />保存凭据</h2>
             <form onSubmit={(event) => void save(event)} className="space-y-4">
               <label htmlFor="provider-key" className="block text-sm">API Key</label>
               <Input id="provider-key" type="password" autoComplete="off" value={key} onChange={(event) => setKey(event.target.value)} />

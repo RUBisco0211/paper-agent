@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "cn"
+import { cn } from "@upstream/lib/utils"
 
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -29,9 +29,8 @@ function FieldLegend({
       data-slot="field-legend"
       data-variant={variant}
       className={cn(
-        "mb-3 font-medium",
-        "data-[variant=legend]:text-base",
-        "data-[variant=label]:text-sm",
+        "mb-3 text-label font-normal text-muted-foreground uppercase tracking-label",
+        "data-[variant=legend]:text-xs",
         className
       )}
       {...props}
@@ -128,7 +127,7 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="field-label"
       className={cn(
-        "flex w-fit items-center gap-2 text-sm leading-snug font-medium group-data-[disabled=true]/field:opacity-50",
+        "flex w-fit items-center gap-2 text-label leading-snug font-normal text-muted-foreground uppercase tracking-label group-data-[disabled=true]/field:opacity-50",
         className
       )}
       {...props}

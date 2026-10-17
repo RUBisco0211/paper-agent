@@ -587,7 +587,7 @@ export function ASMessageBubble({ message, onQuote, onOpenReference, annotations
 				{isError && (
 					<Alert
 						variant="destructive"
-						className="m-2 w-[calc(100%-1rem)] border-red-200 bg-red-50 text-destructive dark:border-red-900 dark:bg-red-950 dark:text-red-50"
+						className="m-2 w-[calc(100%-1rem)]"
 					>
 						<TriangleAlert />
 						<AlertTitle>{t('messageBubble.error.title')}</AlertTitle>

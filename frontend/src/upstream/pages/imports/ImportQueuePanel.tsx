@@ -13,9 +13,9 @@ const stageLabels: Record<string, string> = {
   failed: "失败", running: "处理中", succeeded: "已完成",
 }
 const stageColors: Record<string, string> = {
-  metadata: "text-sky-600", fulltext: "text-amber-600", chunking: "text-violet-600",
-  embedding: "text-emerald-600", failed: "text-destructive", ready: "text-emerald-600",
-  succeeded: "text-emerald-600",
+  metadata: "text-info", fulltext: "text-info", chunking: "text-info",
+  embedding: "text-info", failed: "text-destructive", ready: "text-success",
+  succeeded: "text-success", pdf_unavailable: "text-warning",
 }
 
 function QueueRow({ item, openPaper }: { item: ImportQueueItem; openPaper: (paperId: string) => void }) {

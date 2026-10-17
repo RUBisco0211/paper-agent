@@ -315,7 +315,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
           <AskUserQuestionnaire key={pendingQuestion.toolCall.id} toolCall={pendingQuestion.toolCall} onAnswer={(answers) => onExternalAnswer(pendingQuestion.toolCall, pendingQuestion.replyId, answers)} />
         </div>}
         {pendingWrite && <div className="mx-auto w-full max-w-3xl px-4 pb-2 text-sm">
-          <div className="space-y-3 rounded-[22px] bg-muted px-6 py-5 ring-1 ring-border">
+          <div className="space-y-3 rounded-lg bg-muted px-6 py-5 ring-1 ring-border">
             <strong>{pendingWrite.toolCall.name === "import_selected_papers" ? "文献入库等待确认" : "定时任务等待确认"}</strong>
             <p className="text-muted-foreground">查看内容后确认，或拒绝本次操作。</p>
             <div className="flex items-center gap-2">
@@ -327,7 +327,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         </div>}
         <div className="mx-auto w-full max-w-3xl p-4">
           <TextInput
-            className="w-full rounded-[26px] bg-muted p-1"
+            className="w-full rounded-lg bg-muted p-1"
             headerSlot={<div className="flex items-center gap-2 px-2 py-1">
               <Select value={selectedModel} onValueChange={(value) => void changeModel(value)} disabled={changingModel || phase !== "idle"}>
                 <SelectTrigger className="h-8 max-w-56 border-0 bg-transparent text-xs"><SelectValue placeholder="选择模型" /></SelectTrigger>

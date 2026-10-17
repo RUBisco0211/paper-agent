@@ -32,7 +32,7 @@ export function StatusBadge({
 			return (
 				<Badge
 					className={cn(
-						'bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300',
+						'bg-success/10 text-success',
 						className,
 					)}
 				>
@@ -44,7 +44,7 @@ export function StatusBadge({
 			return (
 				<Badge
 					className={cn(
-						'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 border-none',
+						'bg-destructive/10 text-destructive border-none',
 					)}
 				>
 					<XCircle className="size-5" />

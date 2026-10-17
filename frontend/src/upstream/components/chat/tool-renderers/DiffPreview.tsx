@@ -82,10 +82,10 @@ function countHiddenLines(allHunks: HunkData[], visibleHunks: HunkData[]): numbe
 
 function getLineClassName({ changes }: { changes: Array<{ type: string }> }): string {
 	if (changes.some((change) => change.type === 'insert')) {
-		return 'bg-emerald-500/10';
+		return 'bg-success/10';
 	}
 	if (changes.some((change) => change.type === 'delete')) {
-		return 'bg-red-500/10';
+		return 'bg-destructive/10';
 	}
 	return 'bg-transparent';
 }
@@ -107,9 +107,9 @@ function renderGutter({ change, side }: GutterOptions) {
 
 	let marker = null;
 	if (change.type === 'insert') {
-		marker = <Plus className="size-2.5 text-emerald-600 dark:text-emerald-400" />;
+		marker = <Plus className="size-2.5 text-success" />;
 	} else if (change.type === 'delete') {
-		marker = <Minus className="size-2.5 text-red-600 dark:text-red-400" />;
+		marker = <Minus className="size-2.5 text-destructive" />;
 	}
 
 	return (

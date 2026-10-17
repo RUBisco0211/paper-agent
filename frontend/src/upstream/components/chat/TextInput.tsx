@@ -89,12 +89,6 @@ interface TextInputProps {
 	 * Content rendered directly above the input pill, inside the outer
 	 * wrapper that {@link className} styles (e.g. the working directory
 	 * and git status).
-	 *
-	 * The pill keeps all four of its corners, so the two only read as one
-	 * surface if the caller gives that wrapper a background and a radius
-	 * concentric with the pill's — outer radius = 28px + the wrapper's
-	 * padding. Anything less and the pill's top corners cut into the
-	 * header's edges.
 	 */
 	headerSlot?: React.ReactNode;
 	quoteSlot?: React.ReactNode;
@@ -335,7 +329,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 				{headerSlot}
 				<div
 					id="tour-chat-input"
-					className="flex w-full flex-col rounded-[22px] border bg-background px-2"
+					className="flex w-full flex-col rounded-lg border bg-background px-2"
 					data-tour="chat-input"
 				>
 					{quoteSlot && <div className="flex flex-wrap gap-1.5 px-2 pt-2">{quoteSlot}</div>}
@@ -496,7 +490,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										size="icon-lg"
 										onClick={() => fileInputRef.current?.click()}
 										disabled={attachDisabled}
-										className="shrink-0 rounded-full"
+										className="shrink-0 rounded-md"
 									>
 										<Paperclip className="size-4" />
 									</Button>
@@ -516,7 +510,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 										onClick={sendButton.onClick}
 										disabled={sendButton.disabled}
 										size="icon-lg"
-										className="shrink-0 rounded-full"
+										className="shrink-0 rounded-md"
 									>
 										<sendButton.icon className="h-4 w-4" />
 									</Button>

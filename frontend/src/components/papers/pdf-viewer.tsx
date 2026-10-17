@@ -308,7 +308,7 @@ function PdfPageCanvas({ document, number, scale, target, rootRef, pageRef }: {
     {visible && <canvas ref={canvasRef} role="img" aria-label="文献原文" className="block bg-white" />}
     {visible && <div ref={textLayerRef} className="paper-pdf-text-layer" />}
     {error && <p role="alert" className="p-4 text-sm text-destructive">第 {number} 页无法显示：{error}</p>}
-    {region && <div data-testid="pdf-region" aria-label="所选片段位置" className="pointer-events-none absolute rounded-sm border-2 border-amber-500 bg-amber-400/20" style={region} />}
-    {quoteRegions.map((rect, index) => <div key={index} aria-label="引用文本位置" className="pointer-events-none absolute rounded-sm bg-amber-400/35" style={{ left: `${rect[0] * 100}%`, top: `${rect[1] * 100}%`, width: `${(rect[2] - rect[0]) * 100}%`, height: `${(rect[3] - rect[1]) * 100}%` }} />)}
+    {region && <div data-testid="pdf-region" aria-label="所选片段位置" className="paper-pdf-location pointer-events-none absolute" style={region} />}
+    {quoteRegions.map((rect, index) => <div key={index} aria-label="引用文本位置" className="paper-pdf-quote pointer-events-none absolute" style={{ left: `${rect[0] * 100}%`, top: `${rect[1] * 100}%`, width: `${(rect[2] - rect[0]) * 100}%`, height: `${(rect[3] - rect[1]) * 100}%` }} />)}
   </div>
 }
