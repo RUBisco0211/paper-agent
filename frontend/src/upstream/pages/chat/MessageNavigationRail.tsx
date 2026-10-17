@@ -41,7 +41,7 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false)
       }}
     >
-      <nav ref={railRef} aria-label="会话消息导航" className="max-h-[min(18rem,calc(100vh-7rem))] overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav ref={railRef} aria-label="会话消息导航" className="max-h-[min(18rem,calc(100vh-7rem))] overflow-y-auto overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden">
         {messages.map((message, index) => {
           const active = message.id === activeId
           const highlighted = message.id === (previewId ?? activeId)

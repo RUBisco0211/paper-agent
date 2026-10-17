@@ -11,7 +11,7 @@ export function defaultGetDisplayName(call: ToolCallBlock): string {
 
 export function defaultRenderConfirmBody(call: ToolCallBlock): ReactNode {
 	return (
-		<div className="w-full max-w-full overflow-hidden break-words">
+		<div className="w-full max-w-full overflow-hidden wrap-break-word">
 			<div className="text-secondary-foreground">{call.input}</div>
 		</div>
 	);
@@ -72,7 +72,7 @@ export function defaultRenderBody(pair: ToolCallWithResult, t: TFunction): React
 	}
 
 	return (
-		<pre className="border rounded-sm bg-background p-2 text-xs overflow-auto max-h-[200px] whitespace-pre-wrap">
+		<pre className="border rounded-sm bg-background p-2 text-xs overflow-auto max-h-50 whitespace-pre-wrap">
 			{text}
 		</pre>
 	);

@@ -132,7 +132,7 @@ export function ConfirmCard({
 						}}
 						disabled={hasConfirmed}
 					>
-						<span className="flex items-start gap-1 w-full break-words whitespace-normal min-w-0">
+						<span className="flex items-start gap-1 w-full wrap-break-word whitespace-normal min-w-0">
 							{hasConfirmed ? (
 								<Spinner
 									className={cn(

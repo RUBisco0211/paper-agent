@@ -30,7 +30,7 @@ export function QuoteBadge({ reference, onOpen, onRemove, onEdit }: {
 
   return <Popover open={editing} onOpenChange={setOpen}>
     <PopoverAnchor asChild>
-      <Badge data-quote-badge variant="outline" className="max-w-64 gap-0 border-[var(--message-quote-accent)] px-1 font-normal">
+      <Badge data-quote-badge variant="outline" className="max-w-64 gap-0 border-(--message-quote-accent) px-1 font-normal">
         <HoverCardPrimitive.Root openDelay={250} closeDelay={120} open={hovered && !editing} onOpenChange={setHovered}>
           <HoverCardPrimitive.Trigger asChild>
             <button type="button" className="max-w-52 truncate px-1 py-0.5 text-left hover:text-primary"

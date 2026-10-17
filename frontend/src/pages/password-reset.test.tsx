@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
-import { PasswordResetPage } from "./password-reset"
+import { PasswordResetPage } from "@/pages/password-reset"
 const { requestCode, verifyCode, resetPassword, register, clearSession, currentUser } = vi.hoisted(() => ({ requestCode: vi.fn(), verifyCode: vi.fn(), resetPassword: vi.fn(), register: vi.fn(), clearSession: vi.fn(), currentUser: { value: null as { email: string } | null } }))
 vi.mock("@/lib/auth/provider", () => ({ useAuth: () => ({ register, clearSession, user: currentUser.value }) }))
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); currentUser.value = null })

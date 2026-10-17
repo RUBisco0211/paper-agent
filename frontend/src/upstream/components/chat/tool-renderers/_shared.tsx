@@ -16,7 +16,7 @@ export function ToolStateIcon({ state }: { state: ToolResultBlock['state'] | und
 		return <X className="size-3 text-destructive shrink-0" />;
 	}
 	if (state === 'interrupted' || state === 'denied') {
-		return <Ban className="size-3 !h-3 min-h-3 shrink-0" />;
+		return <Ban className="size-3 h-3! min-h-3 shrink-0" />;
 	}
 
 	// running

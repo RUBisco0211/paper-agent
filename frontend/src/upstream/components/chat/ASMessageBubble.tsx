@@ -575,14 +575,14 @@ export function ASMessageBubble({ message, onQuote, onOpenReference, annotations
 						<QuoteBadge key={index} reference={reference} onOpen={() => onOpenReference?.(reference)} />
 					)}</div></BubbleContent></Bubble>}
 				{selection && editorHost && createPortal(
-					<div className="mt-1 flex w-full min-w-0 items-center gap-1 border-l-2 border-[var(--message-quote-accent)] bg-[var(--message-quote-fill)] px-2 py-1">
+					<div className="mt-1 flex w-full min-w-0 items-center gap-1 border-l-2 border-(--message-quote-accent) bg-(--message-quote-fill) px-2 py-1">
 						<Input ref={commentInputRef} aria-label="引用评论" autoFocus maxLength={2000} className="h-8 min-w-0 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0" value={quoteComment} onChange={(event) => setQuoteComment(event.target.value)} placeholder="添加评论…" onKeyDown={(event) => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); addQuote() } else if (event.key === 'Escape') cancelQuote() }} />
 						<Button type="button" variant="ghost" size="icon-xs" aria-label="取消引用" title="取消引用" onClick={cancelQuote}><X /></Button>
 						<Button type="button" variant="ghost" size="icon-xs" aria-label="加入提问" title="加入提问" onClick={addQuote}><Check /></Button>
 					</div>, editorHost,
 				)}
 				{annotationHosts.map(({ host, reference }, index) => createPortal(
-					<div className="mt-1 border-l-2 border-[var(--message-quote-accent)] bg-[var(--message-quote-fill)] px-2 py-1 text-sm" aria-label="引用评论">{reference.comment}</div>, host, `${reference.source_message_id}:${reference.block_index}:${reference.start}:${index}`,
+					<div className="mt-1 border-l-2 border-(--message-quote-accent) bg-(--message-quote-fill) px-2 py-1 text-sm" aria-label="引用评论">{reference.comment}</div>, host, `${reference.source_message_id}:${reference.block_index}:${reference.start}:${index}`,
 				))}
 				{isError && (
 					<Alert

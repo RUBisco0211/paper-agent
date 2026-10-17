@@ -1,10 +1,11 @@
 """Agent schedule API inherits model settings from the source session."""
 
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from agentscope.app.deps import get_scheduler_manager, get_storage
-from agentscope.app.storage import ChatModelConfig, SessionSource
+from agentscope.app.storage import ChatModelConfig, SessionSource, StorageBase
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -46,7 +47,7 @@ async def test_agent_schedule_api_creates_disabled_stateless_task_from_owned_ses
             cron_expression="30 9 * * MON",
             timezone="Asia/Shanghai",
         ),
-        storage=Storage(),
+        storage=cast(StorageBase, Storage()),
     )
     assert result.schedule_id == stored[0].id
     assert stored[0].data.enabled is False
@@ -162,6 +163,6 @@ async def test_agent_schedule_api_rejects_creation_during_an_unattended_run():
                 cron_expression="0 9 * * MON",
                 timezone="Asia/Shanghai",
             ),
-            storage=Storage(),
+            storage=cast(StorageBase, Storage()),
         )
     assert error.value.status_code == 409

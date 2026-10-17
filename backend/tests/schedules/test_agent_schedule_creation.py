@@ -1,8 +1,10 @@
 """Agent-created schedules use the bound session scope and a narrow cadence."""
 
+from typing import cast
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.platform.config import settings
@@ -52,6 +54,7 @@ def test_agent_schedule_creation_inherits_its_session_project(
         == 201
     )
     calls = []
+    app = cast(FastAPI, client.app)
 
     class Gateway:
         def create_disabled(self, **kwargs):
@@ -64,7 +67,7 @@ def test_agent_schedule_creation_inherits_its_session_project(
         def delete(self, **kwargs):
             calls.append(("delete", kwargs))
 
-    client.app.dependency_overrides[get_agent_schedule_gateway] = lambda: Gateway()
+    app.dependency_overrides[get_agent_schedule_gateway] = lambda: Gateway()
     monkeypatch.setattr(settings, "agent_internal_key", "test-internal-key")
     try:
         response = client.post(
@@ -81,7 +84,7 @@ def test_agent_schedule_creation_inherits_its_session_project(
             },
         )
     finally:
-        client.app.dependency_overrides.pop(get_agent_schedule_gateway, None)
+        app.dependency_overrides.pop(get_agent_schedule_gateway, None)
     assert response.status_code == 201
     assert response.json() == {
         "notify_email": False,
@@ -115,6 +118,7 @@ def test_agent_schedule_creation_removes_binding_when_activation_fails(
         == 201
     )
     deleted = []
+    app = cast(FastAPI, client.app)
 
     class Gateway:
         def create_disabled(self, **kwargs):
@@ -126,7 +130,7 @@ def test_agent_schedule_creation_removes_binding_when_activation_fails(
         def delete(self, **kwargs):
             deleted.append(kwargs["schedule_id"])
 
-    client.app.dependency_overrides[get_agent_schedule_gateway] = lambda: Gateway()
+    app.dependency_overrides[get_agent_schedule_gateway] = lambda: Gateway()
     monkeypatch.setattr(settings, "agent_internal_key", "test-internal-key")
     try:
         with pytest.raises(RuntimeError, match="scheduler failed"):
@@ -145,6 +149,6 @@ def test_agent_schedule_creation_removes_binding_when_activation_fails(
                 },
             )
     finally:
-        client.app.dependency_overrides.pop(get_agent_schedule_gateway, None)
+        app.dependency_overrides.pop(get_agent_schedule_gateway, None)
     assert deleted == ["schedule-to-rollback"]
     assert ScheduleBindingRepository(db_session).get("schedule-to-rollback") is None

@@ -181,7 +181,7 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="!w-[500px] !max-w-[500px]">
+			<DialogContent className="w-125! max-w-125!">
 				<DialogHeader>
 					<DialogTitle>{t('schedule.createSchedule.title')}</DialogTitle>
 					<DialogDescription>
@@ -206,7 +206,7 @@ export function CreateScheduleDialog({ open, onOpenChange, onCreated }: Props) {
 								value={form.description}
 								onChange={(e) => set('description', e.target.value)}
 								placeholder={t('schedule.createSchedule.descriptionPlaceholder')}
-								className="min-h-[150px]"
+								className="min-h-37.5"
 							/>
 						</Field>
 

@@ -39,7 +39,7 @@ export function ImportQueuePanel() {
     setSelectedPaperId(paperId)
   }
   return <><Sheet open={open} onOpenChange={setOpen}>
-    <SheetContent side="right" className="w-[440px]! max-w-[90vw]! gap-0 p-0">
+    <SheetContent side="right" className="w-110! max-w-[90vw]! gap-0 p-0">
       <SheetHeader className="border-b px-5 py-4"><SheetTitle>入库队列</SheetTitle>
         <SheetDescription>仅显示你的导入与文献处理任务</SheetDescription></SheetHeader>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">

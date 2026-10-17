@@ -136,9 +136,10 @@ class EncryptedCredentialStorage(AsyncSQLAlchemyStorage):
         if provider not in settings.llm_providers:
             raise HTTPException(status_code=422, detail="Provider not allowed")
         field = type(credential).model_fields.get("base_url")
-        if field is not None:
+        base_url = getattr(credential, "base_url", None)
+        if field is not None and base_url is not None:
             expected = settings.credential_base_urls.get(provider, field.default)
-            if credential.base_url not in {field.default, expected}:
+            if base_url not in {field.default, expected}:
                 raise HTTPException(status_code=422, detail="Base URL not allowed")
             credential = credential.model_copy(update={"base_url": expected})
         api_key = getattr(credential, "api_key", None)
@@ -152,10 +153,13 @@ class EncryptedCredentialStorage(AsyncSQLAlchemyStorage):
         credential_data: CredentialBase,
     ) -> str:
         credential_data = self._validate_credential(credential_data)
+        api_key = getattr(credential_data, "api_key", None)
+        if not isinstance(api_key, SecretStr):
+            raise HTTPException(status_code=422, detail="API key required")
         encrypted = self._encrypt(
             user_id,
             credential_data.id,
-            credential_data.api_key.get_secret_value(),
+            api_key.get_secret_value(),
         )
         stored = credential_data.model_copy(
             update={"api_key": SecretStr(encrypted)},

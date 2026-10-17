@@ -116,7 +116,7 @@ export function ChatPage() {
 
   return <ChatQuoteContext.Provider value={quoteBridge}><SidebarProvider className="min-h-0 flex-1">
     <div className="flex h-full min-h-0 w-full flex-col">
-      <header data-slot="app-toolbar" aria-label="会话工具栏" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b bg-[var(--app-rail-background)] px-3 text-foreground">
+      <header data-slot="app-toolbar" aria-label="会话工具栏" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b bg-(--app-rail-background) px-3 text-foreground">
         <Button variant="ghost" size="icon-sm" aria-label={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} title={leftOpen ? "收起会话侧栏" : "展开会话侧栏"} onClick={() => setLeftOpen((open) => !open)}>{leftOpen ? <PanelLeftClose /> : <PanelLeftOpen />}</Button>
         <span className="min-w-0 truncate text-sm font-medium">{title}</span>
       </header>

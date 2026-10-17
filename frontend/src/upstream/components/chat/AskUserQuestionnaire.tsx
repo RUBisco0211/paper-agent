@@ -83,7 +83,7 @@ export function AskUserQuestionnaire({ toolCall, onAnswer }: {
         <Questionnaire.Title className="text-sm font-medium">{question.prompt}</Questionnaire.Title>
         {question.description && <Questionnaire.Description className="text-xs text-muted-foreground">{question.description}</Questionnaire.Description>}
         <Questionnaire.Choices className="flex flex-col gap-2">
-          {question.options.map((option) => <Questionnaire.Choice key={option.value} value={option.value} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm data-[checked]:border-primary">
+          {question.options.map((option) => <Questionnaire.Choice key={option.value} value={option.value} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm data-checked:border-primary">
             <Questionnaire.ChoiceInput className="accent-primary" />
             <Questionnaire.ChoiceLabel>{option.label}</Questionnaire.ChoiceLabel>
           </Questionnaire.Choice>)}

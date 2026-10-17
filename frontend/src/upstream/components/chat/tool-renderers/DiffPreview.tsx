@@ -148,7 +148,7 @@ export function DiffPreview({ unifiedDiff }: DiffPreviewProps) {
 			hunks={visibleHunks}
 			viewType="unified"
 			renderGutter={renderGutter}
-			className="w-full border-collapse font-mono text-xs leading-5 [&>colgroup>col:first-child]:!w-0 [&>colgroup>col:first-child]:[visibility:collapse] [&_td.diff-gutter:first-of-type]:!p-0 [&_td.diff-gutter:first-of-type]:!border-r-0 [&_td.diff-gutter:first-of-type]:!w-0"
+			className="w-full border-collapse font-mono text-xs leading-5 [&>colgroup>col:first-child]:w-0! [&>colgroup>col:first-child]:collapse [&_td.diff-gutter:first-of-type]:p-0! [&_td.diff-gutter:first-of-type]:border-r-0! [&_td.diff-gutter:first-of-type]:w-0!"
 			hunkClassName="align-top"
 			lineClassName="align-top"
 			gutterClassName="select-none border-r border-border px-2 text-right text-muted-foreground"
