@@ -34,7 +34,8 @@ FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 # Compose Redis 的本机映射端口；必须与容器映射一致，本机不得再启动第二个 Redis。
 REDIS_HOST_PORT="${REDIS_HOST_PORT:-}"
 if [[ -z "$REDIS_HOST_PORT" && -f "$ROOT_DIR/.env" ]]; then
-  REDIS_HOST_PORT="$(grep -E '^REDIS_HOST_PORT=' "$ROOT_DIR/.env" | tail -n 1 | cut -d= -f2-)"
+  # awk 在变量缺失时也返回 0，避免 set -e 把“可选配置未设置”当成启动失败。
+  REDIS_HOST_PORT="$(awk -F= '/^REDIS_HOST_PORT=/{value=$2} END{print value}' "$ROOT_DIR/.env")"
 fi
 REDIS_HOST_PORT="${REDIS_HOST_PORT:-6379}"
 
@@ -285,7 +286,7 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
 
   published_port="$(cd "$ROOT_DIR" && docker compose port redis 6379 2>/dev/null | awk -F: '{print $NF}' | tr -d '\r')"
   [[ "$published_port" == "$REDIS_HOST_PORT" ]] \
-    || die "Redis 发布端口异常：期望 $REDIS_HOST_PORT，实际 ${published_port:-未发布}；检查 docker compose ps redis"
+    || die "Redis 发布端口异常：期望 ${REDIS_HOST_PORT}，实际 ${published_port:-未发布}；检查 docker compose ps redis"
 
   # Docker 容器健康不等于宿主机端口一定连到它。若本机有 redis-cli，
   # 用 run_id 证明 127.0.0.1:$REDIS_HOST_PORT 就是 Compose 实例，
@@ -294,9 +295,9 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     container_run_id="$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
     host_run_id="$(redis-cli -h 127.0.0.1 -p "$REDIS_HOST_PORT" INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
     [[ -n "$container_run_id" && "$container_run_id" == "$host_run_id" ]] \
-      || die "127.0.0.1:$REDIS_HOST_PORT 连接到的不是 Compose Redis（run_id 不一致）；请停止占用该端口的其他进程"
+      || die "127.0.0.1:${REDIS_HOST_PORT} 连接到的不是 Compose Redis（run_id 不一致）；请停止占用该端口的其他进程"
   fi
-  ok "Redis 已就绪（Docker Compose，本机 127.0.0.1:$REDIS_HOST_PORT）"
+  ok "Redis 已就绪（Docker Compose，本机 127.0.0.1:${REDIS_HOST_PORT}）"
   echo
 fi
 
@@ -347,8 +348,8 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     configured_redis_url="${configured_redis_url%\"}"
     configured_redis_url="${configured_redis_url#\"}"
     case "$configured_redis_url" in
-      redis://127.0.0.1:$REDIS_HOST_PORT/*|redis://localhost:$REDIS_HOST_PORT/*) ;;
-      *) die "REDIS_URL 必须指向 Compose Redis 的 127.0.0.1:$REDIS_HOST_PORT；当前配置不是该实例" ;;
+      redis://127.0.0.1:${REDIS_HOST_PORT}/*|redis://localhost:${REDIS_HOST_PORT}/*) ;;
+      *) die "REDIS_URL 必须指向 Compose Redis 的 127.0.0.1:${REDIS_HOST_PORT}；当前配置不是该实例" ;;
     esac
   fi
 
