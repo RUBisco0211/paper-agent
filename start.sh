@@ -13,7 +13,6 @@
 #                               backend/.env 里 STORAGE_BACKEND=s3 时会自动启动
 #
 # 环境变量：BACKEND_PORT（默认 8000）、AGENT_SERVICE_PORT（默认 8001）、FRONTEND_PORT（默认 5173）、
-#          REDIS_HOST_PORT（默认 6379，Compose Redis 本机映射端口）、
 #          BACKEND_HOST / AGENT_SERVICE_HOST / FRONTEND_HOST（默认 127.0.0.1）
 #
 # Ctrl-C 会同时停止前后端；日志同时写入 .var/logs/。
@@ -31,13 +30,6 @@ AGENT_SERVICE_HOST="${AGENT_SERVICE_HOST:-127.0.0.1}"
 AGENT_SERVICE_PORT="${AGENT_SERVICE_PORT:-8001}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
-# Compose Redis 的本机映射端口；必须与容器映射一致，本机不得再启动第二个 Redis。
-REDIS_HOST_PORT="${REDIS_HOST_PORT:-}"
-if [[ -z "$REDIS_HOST_PORT" && -f "$ROOT_DIR/.env" ]]; then
-  # awk 在变量缺失时也返回 0，避免 set -e 把“可选配置未设置”当成启动失败。
-  REDIS_HOST_PORT="$(awk -F= '/^REDIS_HOST_PORT=/{value=$2} END{print value}' "$ROOT_DIR/.env")"
-fi
-REDIS_HOST_PORT="${REDIS_HOST_PORT:-6379}"
 
 START_DB=1
 START_BACKEND=1
@@ -176,21 +168,12 @@ wait_for_http() {
   return 1
 }
 
-# AgentScope /health 要求真实登录态；TCP 探针不签发 token、不绕过认证。
 wait_for_tcp() {
-  local host="$1" port="$2" name="$3" pid="$4" i
+  local host="$1" port="$2" pid="$3" i
   [[ "$host" == "0.0.0.0" ]] && host="127.0.0.1"
   for ((i = 1; i <= 60; i++)); do
     kill -0 "$pid" 2>/dev/null || return 1
-    if (( (i - 1) % 10 == 0 )); then
-      step "等待${name} TCP 就绪（检查 ${i}/60）"
-    fi
-    if uv run --no-sync python -c \
-        'import socket, sys; socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=2).close()' \
-        "$host" "$port" >/dev/null 2>&1; then
-      kill -0 "$pid" 2>/dev/null && return 0
-      return 1
-    fi
+    (echo >"/dev/tcp/$host/$port") >/dev/null 2>&1 && return 0
     sleep 0.5
   done
   return 1
@@ -269,35 +252,23 @@ if [[ "$START_DB" -eq 1 ]]; then
   echo
 fi
 
-# --- 邮箱验证临时状态（Redis）-----------------------------------------------
+# --- Redis ------------------------------------------------------------------
 if [[ "$START_BACKEND" -eq 1 ]]; then
-  step "启动 Redis（Docker Compose）"
-  if ! (cd "$ROOT_DIR" && docker compose up -d redis) >/dev/null; then
-    die "Redis 容器启动失败；确认本机端口 $REDIS_HOST_PORT 未被其他进程占用，并查看 docker compose logs redis"
-  fi
+  step "启动 Redis"
+  (cd "$ROOT_DIR" && docker compose up -d redis) >/dev/null
   for _ in $(seq 1 40); do
-    if [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]]; then
-      break
-    fi
+    [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]] && break
     sleep 0.5
   done
   [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]] \
     || die "Redis 未就绪，请查看 docker compose logs redis"
-
-  published_port="$(cd "$ROOT_DIR" && docker compose port redis 6379 2>/dev/null | awk -F: '{print $NF}' | tr -d '\r')"
-  [[ "$published_port" == "$REDIS_HOST_PORT" ]] \
-    || die "Redis 发布端口异常：期望 ${REDIS_HOST_PORT}，实际 ${published_port:-未发布}；检查 docker compose ps redis"
-
-  # Docker 容器健康不等于宿主机端口一定连到它。若本机有 redis-cli，
-  # 用 run_id 证明 127.0.0.1:$REDIS_HOST_PORT 就是 Compose 实例，
-  # 避免再次静默连到宿主机 Redis。
   if command -v redis-cli >/dev/null 2>&1; then
-    container_run_id="$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
-    host_run_id="$(redis-cli -h 127.0.0.1 -p "$REDIS_HOST_PORT" INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
-    [[ -n "$container_run_id" && "$container_run_id" == "$host_run_id" ]] \
-      || die "127.0.0.1:${REDIS_HOST_PORT} 连接到的不是 Compose Redis（run_id 不一致）；请停止占用该端口的其他进程"
+    compose_run_id="$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli INFO server | sed -n 's/^run_id://p' | tr -d '\r')"
+    host_run_id="$(redis-cli -p 6379 INFO server 2>/dev/null | sed -n 's/^run_id://p' | tr -d '\r')"
+    [[ -n "$compose_run_id" && "$compose_run_id" == "$host_run_id" ]] \
+      || die "Redis 不是 Compose 实例，请停止占用 6379 的其他进程"
   fi
-  ok "Redis 已就绪（Docker Compose，本机 127.0.0.1:${REDIS_HOST_PORT}）"
+  ok "Redis 已就绪"
   echo
 fi
 
@@ -341,18 +312,6 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     warn "已从 .env.example 生成 backend/.env，请按需修改数据库连接与 Provider 配置"
   fi
 
-  if grep -q '^REDIS_URL=' .env; then
-    configured_redis_url="$(grep -E '^REDIS_URL=' .env | tail -n 1 | cut -d= -f2-)"
-    configured_redis_url="${configured_redis_url%\'}"
-    configured_redis_url="${configured_redis_url#\'}"
-    configured_redis_url="${configured_redis_url%\"}"
-    configured_redis_url="${configured_redis_url#\"}"
-    case "$configured_redis_url" in
-      redis://127.0.0.1:${REDIS_HOST_PORT}/*|redis://localhost:${REDIS_HOST_PORT}/*) ;;
-      *) die "REDIS_URL 必须指向 Compose Redis 的 127.0.0.1:${REDIS_HOST_PORT}；当前配置不是该实例" ;;
-    esac
-  fi
-
   if ! grep -q '^AGENT_INTERNAL_KEY=.' .env; then
     require openssl
     printf '\nAGENT_INTERNAL_KEY=%s\n' "$(openssl rand -hex 32)" >>.env
@@ -369,31 +328,11 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   ok "Python 依赖已就绪"
 
   if ! grep -q '^CREDENTIAL_MASTER_KEY=.' .env; then
-    if ! uv run python - <<'PY' >/dev/null 2>&1
-import os
-
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
-
-from app.platform.config import settings
-
-url = make_url(os.environ.get("AGENT_SERVICE_DATABASE_URL") or settings.database_url)
-if not os.environ.get("AGENT_SERVICE_DATABASE_URL"):
-    url = url.set(database="paper_agent_as")
-url = url.set(drivername="postgresql+psycopg")
-engine = create_engine(url)
-try:
-    with engine.connect() as connection:
-        exists = connection.execute(text("SELECT to_regclass('public.credentials')")).scalar()
-        count = connection.execute(text("SELECT count(*) FROM credentials")).scalar() if exists else 0
-        if count:
-            raise RuntimeError("Existing credentials require the original master key")
-finally:
-    engine.dispose()
-PY
-    then
-      die "已有凭据或无法检查 agent_service 数据库；请恢复原 CREDENTIAL_MASTER_KEY，不能生成新密钥"
-    fi
+    [[ "$START_DB" -eq 1 ]] || die "使用外部数据库时必须手动配置 CREDENTIAL_MASTER_KEY"
+    credentials="$(cd "$ROOT_DIR" && docker compose exec -T postgres \
+      psql -U paper_agent -d paper_agent_as -tAc "SELECT count(*) FROM credentials" 2>/dev/null || true)"
+    [[ -z "$credentials" || "$credentials" == "0" ]] \
+      || die "已有凭据，请恢复原 CREDENTIAL_MASTER_KEY"
     require openssl
     printf '\nCREDENTIAL_MASTER_KEY=%s\n' "$(openssl rand -hex 32)" >>.env
     chmod 600 .env
@@ -447,7 +386,7 @@ PY
     --host "$AGENT_SERVICE_HOST" --port "$AGENT_SERVICE_PORT" --reload \
     >"$LOG_DIR/agent-service.log" 2>&1 &
   AGENT_SERVICE_PID=$!
-  if ! wait_for_tcp "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT" "AgentScope 服务" "$AGENT_SERVICE_PID"; then
+  if ! wait_for_tcp "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT" "$AGENT_SERVICE_PID"; then
     fail "AgentScope 服务启动失败，日志末尾："
     tail -n 20 "$LOG_DIR/agent-service.log" >&2
     exit 1

@@ -61,7 +61,7 @@
 
 - `backend/app/platform/mail_worker.py` 是批准的独立入口，通过 `python -m app.platform.mail_worker` 运行；`start.sh` 已纳入启动、退出监视、cleanup 与 `.var/logs/mail-worker.log`。业务实现与 AgentScope 通知 hook 由主 agent/其他负责人集成，不以本页声明实现或测试完成。
 - 业务 PostgreSQL 持久 outbox 保存待投递邮件及状态；独立邮件进程领取并经 SMTP 投递，失败保留状态，不引入 Celery。最终回答快照仅供投递，不成为第二份运行会话历史；AgentScope 仍持有 schedules、sessions/messages。
-- Redis 只负责邮箱临时验证、用途绑定的一次性凭证及冷却/限流；不是账号、登录会话、用户配置或邮件队列存储。Compose 使用 `redis:7-alpine`，使用标准 `6379`；本机不得再运行第二个 Redis，应用不得连接宿主机 Redis。启动脚本校验发布端口与容器 `run_id`，不一致即失败。默认不持久化，状态丢失须重新验证。
+- Redis 只负责邮箱临时验证、用途绑定的一次性凭证及冷却/限流；不是账号、登录会话、用户配置或邮件队列存储。Compose 使用 `redis:7-alpine`，使用标准 `6379`；本机不得再运行第二个 Redis，应用不得连接宿主机 Redis。启动脚本校验宿主机连接与容器 `run_id`，不一致即失败。默认不持久化，状态丢失须重新验证。
 - 注册、找回与登录会话撤销仍由 `auth` 编排；任务邮件开关与归属由 `schedules` 负责，默认关闭且只发所属用户的已验证邮箱，Agent 不指定收件地址。通知时机与最终结果通过 AgentScope 边界集成，不 JOIN 其表。
 - SMTP 与 `REDIS_URL`、`PUBLIC_APP_URL` 从后端 settings 配置；QQ SMTP 授权码仅由主 agent 写入不提交的 `backend/.env`。根 `.env` 单独保留 Compose 插值配置，不与后端环境文件合并。
 - 业务 API 使用源码已有的公开 `/health`；当前 AgentScope `/health` 要求认证，启动脚本只检查其进程/TCP，不伪造 JWT、不加生产认证绕过。TCP 就绪不宣称完整健康；新增公共 Agent 健康端点须由主 agent 另行协调。

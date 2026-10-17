@@ -30,9 +30,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
-      # 容器内与宿主机都使用标准 6379；本机不得再运行第二个 Redis。
-      # 服务器上的应用容器直接通过服务名 redis:6379 访问。
-      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
