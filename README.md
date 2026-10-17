@@ -35,8 +35,8 @@ docs/       产品契约、架构基线、决策记录与调研
 
 - 根 `.env` 继续供 Compose 插值（数据库密码、TEI/HF、RustFS 等），不要删除或与 `backend/.env` 合并；数据库密码须与后端连接串一致。
 - `backend/.env` 供业务服务、AgentScope 与 worker 使用。邮件需配置 `REDIS_URL`、`PUBLIC_APP_URL` 和独立 SMTP 参数，详见 [后端部署说明](backend/README.md#邮箱认证与任务通知部署)。QQ SMTP 授权码只由主 agent 写入该未提交文件，不进入文档、日志或示例。
-- Redis 镜像 `redis:7-alpine`，只监听 `127.0.0.1:6379`；默认不持久化，临时状态丢失后须重新验证。邮件 outbox 持久存 PostgreSQL，不使用 Celery。
-- `start.sh` 等待 Redis PING，管理 `python -m app.platform.mail_worker` 的生命周期与 `.var/logs/mail-worker.log`；任一服务进程退出会触发 cleanup。Ctrl-C 停止脚本启动的进程，Compose 容器与数据库保留；`--skip-db` 不跳过 Redis，`--frontend-only` 不启动它。
+- Redis 镜像 `redis:7-alpine` 使用标准 `6379`（容器内与本机映射一致）；本机不得再运行第二个 Redis，应用不得连接宿主机 Redis。默认不持久化，临时状态丢失后须重新验证。邮件 outbox 持久存 PostgreSQL，不使用 Celery。
+- `start.sh` 启动并校验 Compose Redis：发布端口必须等于 `REDIS_HOST_PORT`，且宿主机端口连接的 `run_id` 必须与容器一致；校验失败直接退出，不会回退到宿主机 Redis。脚本同时管理 `python -m app.platform.mail_worker` 的生命周期与 `.var/logs/mail-worker.log`；任一服务进程退出会触发 cleanup。Ctrl-C 停止脚本启动的进程，Compose 容器与数据库保留；`--skip-db` 不跳过 Redis，`--frontend-only` 不启动它。
 - AgentScope `/health` 需要认证，脚本只做进程/TCP 就绪探测，不伪造用户或 token；业务服务仍使用公开 `/health`。TCP 可连接不等于完整业务验收。
 - 已批准邮箱验证、密码找回与默认关闭的任务邮件通知，契约见 [0081](docs/decisions/0081-email-auth-and-schedule-notifications.md)；实现、模板 UI 预览和 QQ SMTP 联调由主 agent 整合，本页不代表邮件功能测试已通过。
 - 旧账号数据仅确认了清理意愿，执行范围尚未确认；不得据此删除数据库、对象存储或 AgentScope 数据。

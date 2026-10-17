@@ -87,6 +87,8 @@ class Settings(BaseSettings):
     refresh_cookie_domain: str | None = None
 
     # Email authentication and independent PostgreSQL outbox delivery.
+    # Local host processes use the Compose Redis. The container-internal
+    # address stays redis:6379 for server deployments.
     redis_url: str = "redis://127.0.0.1:6379/0"
     email_verification_ttl_seconds: int = 600
     email_resend_cooldown_seconds: int = 60

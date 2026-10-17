@@ -48,7 +48,7 @@ SMTP_USE_SSL=
 SMTP_STARTTLS=
 ```
 
-- 本地 Compose 的 Redis 连接目标为回环地址的 6379 端口；仅保存验证码、用途绑定的一次性凭证、冷却与限流。默认关闭 RDB/AOF，没有持久卷；可选持久化不改变“状态丢失重新验证”的要求。不可用时不得绕过邮箱校验。
+- 本地 Compose Redis 使用标准 `6379`（容器内与本机映射一致）；本机不得再运行第二个 Redis。`backend/.env` 的 `REDIS_URL` 指向该端口，应用容器部署时使用服务名 `redis:6379`。仅保存验证码、用途绑定的一次性凭证、冷却与限流。默认关闭 RDB/AOF，没有持久卷；可选持久化不改变“状态丢失重新验证”的要求。不可用时不得绕过邮箱校验。
 - `PUBLIC_APP_URL` 填浏览器可访问的可信站点根地址；生产使用 HTTPS。通知内运行链接仍需登录并校验归属，不能填 Agent 内部服务地址或以链接代替授权。
 - QQ SMTP 的主机为 `smtp.qq.com`；可选择 465 隐式 TLS（开启 `SMTP_USE_SSL`，关闭 `SMTP_STARTTLS`），或服务端支持的 STARTTLS 方案（关闭 SSL、开启 STARTTLS 并使用对应端口），不可同时开启两种模式。`SMTP_USERNAME`/`SMTP_FROM_EMAIL` 使用获授权发信邮箱，`SMTP_PASSWORD` 使用独立 SMTP 授权码而非网页登录密码；`SMTP_FROM_NAME` 为发件人显示名。
 - 真实 SMTP 参数只由主 agent 写入未提交的 `backend/.env`，不在终端打印、提交或放入前端配置；配置示例只留空。不要使用会展开真实配置的 `docker compose config` 输出，静态验证使用 `docker compose config --quiet`。

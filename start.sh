@@ -13,6 +13,7 @@
 #                               backend/.env 里 STORAGE_BACKEND=s3 时会自动启动
 #
 # 环境变量：BACKEND_PORT（默认 8000）、AGENT_SERVICE_PORT（默认 8001）、FRONTEND_PORT（默认 5173）、
+#          REDIS_HOST_PORT（默认 6379，Compose Redis 本机映射端口）、
 #          BACKEND_HOST / AGENT_SERVICE_HOST / FRONTEND_HOST（默认 127.0.0.1）
 #
 # Ctrl-C 会同时停止前后端；日志同时写入 .var/logs/。
@@ -30,6 +31,12 @@ AGENT_SERVICE_HOST="${AGENT_SERVICE_HOST:-127.0.0.1}"
 AGENT_SERVICE_PORT="${AGENT_SERVICE_PORT:-8001}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+# Compose Redis 的本机映射端口；必须与容器映射一致，本机不得再启动第二个 Redis。
+REDIS_HOST_PORT="${REDIS_HOST_PORT:-}"
+if [[ -z "$REDIS_HOST_PORT" && -f "$ROOT_DIR/.env" ]]; then
+  REDIS_HOST_PORT="$(grep -E '^REDIS_HOST_PORT=' "$ROOT_DIR/.env" | tail -n 1 | cut -d= -f2-)"
+fi
+REDIS_HOST_PORT="${REDIS_HOST_PORT:-6379}"
 
 START_DB=1
 START_BACKEND=1
@@ -263,8 +270,10 @@ fi
 
 # --- 邮箱验证临时状态（Redis）-----------------------------------------------
 if [[ "$START_BACKEND" -eq 1 ]]; then
-  step "启动 Redis"
-  (cd "$ROOT_DIR" && docker compose up -d redis) >/dev/null
+  step "启动 Redis（Docker Compose）"
+  if ! (cd "$ROOT_DIR" && docker compose up -d redis) >/dev/null; then
+    die "Redis 容器启动失败；确认本机端口 $REDIS_HOST_PORT 未被其他进程占用，并查看 docker compose logs redis"
+  fi
   for _ in $(seq 1 40); do
     if [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]]; then
       break
@@ -273,7 +282,21 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   done
   [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]] \
     || die "Redis 未就绪，请查看 docker compose logs redis"
-  ok "Redis 已就绪（127.0.0.1:6379）"
+
+  published_port="$(cd "$ROOT_DIR" && docker compose port redis 6379 2>/dev/null | awk -F: '{print $NF}' | tr -d '\r')"
+  [[ "$published_port" == "$REDIS_HOST_PORT" ]] \
+    || die "Redis 发布端口异常：期望 $REDIS_HOST_PORT，实际 ${published_port:-未发布}；检查 docker compose ps redis"
+
+  # Docker 容器健康不等于宿主机端口一定连到它。若本机有 redis-cli，
+  # 用 run_id 证明 127.0.0.1:$REDIS_HOST_PORT 就是 Compose 实例，
+  # 避免再次静默连到宿主机 Redis。
+  if command -v redis-cli >/dev/null 2>&1; then
+    container_run_id="$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
+    host_run_id="$(redis-cli -h 127.0.0.1 -p "$REDIS_HOST_PORT" INFO server 2>/dev/null | awk -F: '/^run_id:/{gsub(/\r/,""); print $2}')"
+    [[ -n "$container_run_id" && "$container_run_id" == "$host_run_id" ]] \
+      || die "127.0.0.1:$REDIS_HOST_PORT 连接到的不是 Compose Redis（run_id 不一致）；请停止占用该端口的其他进程"
+  fi
+  ok "Redis 已就绪（Docker Compose，本机 127.0.0.1:$REDIS_HOST_PORT）"
   echo
 fi
 
@@ -315,6 +338,18 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   if [[ ! -f .env ]]; then
     cp .env.example .env
     warn "已从 .env.example 生成 backend/.env，请按需修改数据库连接与 Provider 配置"
+  fi
+
+  if grep -q '^REDIS_URL=' .env; then
+    configured_redis_url="$(grep -E '^REDIS_URL=' .env | tail -n 1 | cut -d= -f2-)"
+    configured_redis_url="${configured_redis_url%\'}"
+    configured_redis_url="${configured_redis_url#\'}"
+    configured_redis_url="${configured_redis_url%\"}"
+    configured_redis_url="${configured_redis_url#\"}"
+    case "$configured_redis_url" in
+      redis://127.0.0.1:$REDIS_HOST_PORT/*|redis://localhost:$REDIS_HOST_PORT/*) ;;
+      *) die "REDIS_URL 必须指向 Compose Redis 的 127.0.0.1:$REDIS_HOST_PORT；当前配置不是该实例" ;;
+    esac
   fi
 
   if ! grep -q '^AGENT_INTERNAL_KEY=.' .env; then

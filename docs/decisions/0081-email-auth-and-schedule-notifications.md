@@ -16,7 +16,7 @@
 - 邮件公式保留 LaTeX；图片使用说明与站内链接，不依赖邮件客户端执行公式脚本或加载私有资源。超出邮件大小限制时明确提示仅展示部分，并链接完整站内结果，不静默截断。
 - `PUBLIC_APP_URL` 是浏览器可访问的可信站点根地址，邮件运行链接沿用 `/scheduled/:scheduleId/runs/:sessionId`；点击后仍须登录并校验任务和运行归属。
 - SMTP 配置为 `SMTP_HOST/PORT/USERNAME/PASSWORD/FROM_EMAIL/FROM_NAME/SMTP_USE_SSL/SMTP_STARTTLS`；另配 `REDIS_URL`、`PUBLIC_APP_URL`。QQ SMTP 使用独立授权码；真实凭据仅由主 agent 写入不提交的 `backend/.env`，配置示例值全部留空。
-- Compose Redis 为 `redis:7-alpine`，仅绑定 `127.0.0.1:6379`；默认不持久化，可按部署需要启用持久化，但正确性不依赖保留临时状态。根 `.env` 保留用于 Compose 插值，与 `backend/.env` 分工，不合并秘密配置。
+- Compose Redis 为 `redis:7-alpine`，使用标准 `6379`；本机不得再运行第二个 Redis。应用容器部署使用 `redis:6379` 服务名。启动脚本校验发布端口及宿主机连接 `run_id` 必须与 Compose 容器一致，禁止静默回退到宿主机 Redis。默认不持久化，可按部署需要启用持久化，但正确性不依赖保留临时状态。根 `.env` 保留用于 Compose 插值，与 `backend/.env` 分工，不合并秘密配置。
 - 启动探针不伪造用户/JWT，不添加生产认证绕过：业务 API 使用公开 `/health`；当前 AgentScope `/health` 需认证，启动脚本仅检查进程与 TCP 就绪，不声称完整业务健康。
 
 ## REJECTED
