@@ -1,13 +1,13 @@
 # Paper Agent Backend
 
-Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理任务和混合检索；AgentScope 会话服务与文献解析 worker 分别运行在独立进程。
+Paper Agent 的 FastAPI 业务服务负责账号与登录态、个人文献库、项目范围、文献处理任务和混合检索；AgentScope 会话服务与文献解析 worker 分别运行在独立进程；0081 批准独立邮件投递 worker，部署入口已接入启动脚本，功能验收另记。
 
 功能契约见 [../docs/DECISIONS.md](../docs/DECISIONS.md)，包与依赖边界见 [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)，技术选型见 [../docs/research/platform/technical-stack.md](../docs/research/platform/technical-stack.md)。协作约束见仓库根 [AGENTS.md](../AGENTS.md)。
 
 ## 本地依赖
 
 - Python 3.13（由 `.python-version` 固定，`uv` 会自动安装）
-- PostgreSQL 16 + pgvector（`docker compose up -d postgres`，见仓库根目录 `docker-compose.yml`）
+- PostgreSQL 16 + pgvector、Redis 7（`docker compose up -d postgres redis`，在仓库根目录执行，见 `docker-compose.yml`）
 
 ## 启动
 
@@ -17,9 +17,10 @@ cp .env.example .env
 uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 uv run python -m app.literature_support.processing.worker  # 另一个终端
+uv run python -m app.platform.mail_worker  # 独立邮件终端
 ```
 
-完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、解析 worker、AgentScope 会话服务、PostgreSQL 和前端。
+完整本地服务从仓库根目录运行 `./start.sh`，同时启动业务服务、解析/邮件 worker、AgentScope 会话服务、PostgreSQL、Redis 和前端。脚本等待 Redis PING，任一服务进程退出会停止其他子进程；Ctrl-C 不删除 Compose 容器或数据。
 
 服务启动后可访问：
 
@@ -27,6 +28,35 @@ uv run python -m app.literature_support.processing.worker  # 另一个终端
 - 健康检查：<http://127.0.0.1:8000/health>
 
 AgentScope Credential 使用独立的 `CREDENTIAL_MASTER_KEY`（32 随机字节的 hex），按用户派生对称密钥加密 API Key。`./start.sh` 仅在 agent_service 数据库尚无凭据时自动生成并写入 `backend/.env`；首次生成后请安全备份。主密钥丢失时已有凭据无法解密，服务会拒绝启动。`CREDENTIAL_BASE_URLS` 可由服务端设置 Provider endpoint 白名单，浏览器提交其他 URL 会被拒绝（见决策 0015）。
+
+## 邮箱认证与任务通知部署
+
+批准契约见 [0081](../docs/decisions/0081-email-auth-and-schedule-notifications.md)。邮件模板可用 `uv run python -m app.platform.mail_preview` 生成到根目录 `.var/mail-previews/index.html`，只使用合成示例且不发送邮件。浏览器闭环验收与实际收件确认单独进行。
+
+配置写入 `backend/.env`，由业务服务、AgentScope 与独立 worker 的 settings 加载；根 `.env` 仅用于 Compose 插值，仍有有效配置，必须保留。下列示例全部留空，不可直接当作可运行配置：
+
+```dotenv
+REDIS_URL=
+PUBLIC_APP_URL=
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM_EMAIL=
+SMTP_FROM_NAME=
+SMTP_USE_SSL=
+SMTP_STARTTLS=
+```
+
+- 本地 Compose 的 Redis 连接目标为回环地址的 6379 端口；仅保存验证码、用途绑定的一次性凭证、冷却与限流。默认关闭 RDB/AOF，没有持久卷；可选持久化不改变“状态丢失重新验证”的要求。不可用时不得绕过邮箱校验。
+- `PUBLIC_APP_URL` 填浏览器可访问的可信站点根地址；生产使用 HTTPS。通知内运行链接仍需登录并校验归属，不能填 Agent 内部服务地址或以链接代替授权。
+- QQ SMTP 的主机为 `smtp.qq.com`；可选择 465 隐式 TLS（开启 `SMTP_USE_SSL`，关闭 `SMTP_STARTTLS`），或服务端支持的 STARTTLS 方案（关闭 SSL、开启 STARTTLS 并使用对应端口），不可同时开启两种模式。`SMTP_USERNAME`/`SMTP_FROM_EMAIL` 使用获授权发信邮箱，`SMTP_PASSWORD` 使用独立 SMTP 授权码而非网页登录密码；`SMTP_FROM_NAME` 为发件人显示名。
+- 真实 SMTP 参数只由主 agent 写入未提交的 `backend/.env`，不在终端打印、提交或放入前端配置；配置示例只留空。不要使用会展开真实配置的 `docker compose config` 输出，静态验证使用 `docker compose config --quiet`。
+- 邮件由 PostgreSQL 加密 outbox 与 `uv run python -m app.platform.mail_worker` 投递；无需 Celery。正文使用由 `CREDENTIAL_MASTER_KEY` 派生的密钥加密，开发环境未配主密钥时回退到 JWT 密钥；轮换前须先处理待发邮件，不能丢失原密钥。SMTP 暂时错误退避重试，最多 5 次；永久拒绝立即失败，过期验证码不发。`accepted` 只表示 SMTP 接受，不保证进入收件箱；接受后进程中断的极端情况可能重复投递。日志在根 `.var/logs/mail-worker.log`，不得记录验证码、凭据或完整正文。
+- 注册与找回各走独立三步：邮箱发送验证码 → 校验取得一次性凭证 → 设置并确认密码。验证码 10 分钟有效、60 秒重发冷却、错误 5 次失效；每邮箱每小时最多发送 5 次、每 IP 每小时 20 次；密码为 8–128 字符并二次确认。重置成功撤销全部登录会话并发送安全邮件；Agent 每个认证请求通过 HTTP 回查业务登录态，旧 token 不再有效。
+- 任务通知默认关闭，只发任务所属用户的已验证邮箱；Agent 只传通知布尔值，不传收件地址，也不新增 always-allow。成功发送最终完整 Markdown 回答的安全 HTML/纯文本版及运行链接；失败只发送可行动错误与链接，不发送 partial。公式保留 LaTeX、图片给说明及站内链接；邮件超限须明确提示部分展示，并指向完整站内结果。
+- 当前 AgentScope 源码的 `/health` 依赖认证，启动脚本使用进程存活与 TCP 检查；业务服务公开 `/health` 继续用于 HTTP 检查。探针不签发虚假用户 JWT、不绕过生产认证，TCP 就绪不等于业务认证或完整组件健康。
+- 旧账号清理尚无执行范围授权，不运行清库、删除对象或 `docker compose down -v`；数据库迁移和部署不构成数据删除授权。
 
 ## 测试
 
@@ -64,19 +94,19 @@ tests/            # 按职责分包的测试与架构约束
 
 ## 接口一览
 
-| 领域 | 接口 |
-|---|---|
-| 认证 | `POST /v1/auth/register\|login\|refresh\|logout`、`GET /v1/auth/me` |
-| 论文库 | `POST/GET /v1/papers`、`GET /v1/papers/{paper_id}`、`GET /v1/papers/{paper_id}/pdf` |
-| 补全文 | `POST /v1/papers/{paper_id}/pdf`、`POST /v1/papers/{paper_id}/fetch-pdf` |
-| 元数据 | `PATCH /v1/papers/{paper_id}/metadata`、`POST /v1/papers/{paper_id}/resolve-metadata` |
-| 处理任务 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry` |
-| 项目 | `/v1/projects`、`/v1/projects/{project_id}`、`GET/POST /v1/projects/{project_id}/papers` |
-| 会话绑定 | `POST/GET /v1/session-bindings`、`DELETE /v1/session-bindings/{session_id}` |
-| 引用 | `GET /v1/session-bindings/{session_id}/citations/{citation_id}` |
-| 模型目录 | `GET /v1/llm-catalog` |
-| 检索 | `POST /v1/search`（library / project / paper 三种授权范围） |
-| 导入 | `POST /v1/imports`、`GET /v1/imports/{import_id}` |
+| 领域     | 接口                                                                                     |
+| -------- | ---------------------------------------------------------------------------------------- |
+| 认证     | `POST /v1/auth/register\|login\|refresh\|logout`、`GET /v1/auth/me`                      |
+| 论文库   | `POST/GET /v1/papers`、`GET /v1/papers/{paper_id}`、`GET /v1/papers/{paper_id}/pdf`      |
+| 补全文   | `POST /v1/papers/{paper_id}/pdf`、`POST /v1/papers/{paper_id}/fetch-pdf`                 |
+| 元数据   | `PATCH /v1/papers/{paper_id}/metadata`、`POST /v1/papers/{paper_id}/resolve-metadata`    |
+| 处理任务 | `GET /v1/ingestion-jobs/{job_id}`、`POST /v1/ingestion-jobs/{job_id}/retry`              |
+| 项目     | `/v1/projects`、`/v1/projects/{project_id}`、`GET/POST /v1/projects/{project_id}/papers` |
+| 会话绑定 | `POST/GET /v1/session-bindings`、`DELETE /v1/session-bindings/{session_id}`              |
+| 引用     | `GET /v1/session-bindings/{session_id}/citations/{citation_id}`                          |
+| 模型目录 | `GET /v1/llm-catalog`                                                                    |
+| 检索     | `POST /v1/search`（library / project / paper 三种授权范围）                              |
+| 导入     | `POST /v1/imports`、`GET /v1/imports/{import_id}`                                        |
 
 所有错误统一为 `{"code", "message", "request_id"}`；`code` 是稳定的 snake_case 字符串。上传、消息与重试类操作
 都会校验归属，越权访问统一按“不存在”处理。
@@ -156,17 +186,17 @@ TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
    该脚本只取 dense 推理需要的文件（不含 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`，
    省掉约 2GB），`./models` 以只读方式挂到容器 `/models`。
 
-  实测结论（脚本已按此实现）：
+实测结论（脚本已按此实现）：
 
-   - **ModelScope 支持 Range 分片**：10 连接并行约 4~5MB/s，是受限网络下的首选源
-     （`SOURCE=modelscope`，默认）。国内直连可达，无需代理。
-   - **hf-mirror 的大文件走 Xet 重建、不支持 Range**，单连接速率在 0.1~1.3MB/s 之间波动，
-     只能用单连接兜底（`SOURCE=hf-mirror`）。
-   - 宿主机若配置了 HTTP 代理，`curl`/`hf` 默认走代理，而代理在 GB 级传输上会中途卡死
-     （下载停在某个字节不再增长）。脚本对下载源设了 `--noproxy '*'`。
-   - `hf download` 的 `--include` 只接受单个模式，多写会被当成显式文件名
-     （给出 "Ignoring `--include`" 警告），所以脚本用 curl + 文件列表。
-   - 大文件按分片下载后逐片校验大小再拼接，避免服务端忽略 Range 造成错位。
+- **ModelScope 支持 Range 分片**：10 连接并行约 4~5MB/s，是受限网络下的首选源
+  （`SOURCE=modelscope`，默认）。国内直连可达，无需代理。
+- **hf-mirror 的大文件走 Xet 重建、不支持 Range**，单连接速率在 0.1~1.3MB/s 之间波动，
+  只能用单连接兜底（`SOURCE=hf-mirror`）。
+- 宿主机若配置了 HTTP 代理，`curl`/`hf` 默认走代理，而代理在 GB 级传输上会中途卡死
+  （下载停在某个字节不再增长）。脚本对下载源设了 `--noproxy '*'`。
+- `hf download` 的 `--include` 只接受单个模式，多写会被当成显式文件名
+  （给出 "Ignoring `--include`" 警告），所以脚本用 curl + 文件列表。
+- 大文件按分片下载后逐片校验大小再拼接，避免服务端忽略 Range 造成错位。
 
 服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
 模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。
@@ -256,12 +286,11 @@ with httpx.Client(base_url="http://127.0.0.1:8000", timeout=120) as c:
 SCRIPT
 ```
 
-
 ## 当前未接入的能力
 
 - AgentScope 执行器：会话、pending 队列、SSE 与引用都已实现，但执行器仍返回 `agent_unavailable`，不会伪造回答；
 - MinerU / Embedding：未配置时对应阶段失败并记录 `provider_not_configured`，已完成的阶段能力继续可用；
-- Redis / Celery：后台任务在进程内执行，适合单机单进程。
+- 邮件功能按 0081 已批准，业务实现与真实 SMTP 验收另记；Redis 仅承载临时验证状态，邮件 outbox 存 PostgreSQL，解析与邮件各用独立 worker，不引入 Celery。
 - MinIO：社区版已停止维护；对象存储改用 RustFS（本地开发/试用）或云对象存储，接口层不变。
 
 ## 日志
@@ -272,7 +301,7 @@ SCRIPT
 
 - **不入库的凭据**：仓库根 `.env`（compose 用：`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY/SECRET_KEY`）
   与 `backend/.env`（后端用：`DATABASE_URL`、`JWT_SECRET_KEY`、`MINERU_API_KEY`、`EMBEDDING_API_KEY`、
-  `S3_ACCESS_KEY/SECRET_KEY`）都在 `.gitignore` 里；提交进仓库的只有占位符。
+  `S3_ACCESS_KEY/SECRET_KEY`、Redis/邮件配置与 SMTP 授权码）都在 `.gitignore` 里；邮件配置示例只保留空值，不提交真实秘密。
 - **两处密码必须一致**：compose 的 `POSTGRES_PASSWORD` 与 `backend/.env` 里 `DATABASE_URL` 的密码。
   改密码时注意 `POSTGRES_PASSWORD` **只在数据卷首次初始化时生效**，已有数据卷上要用
   `docker exec -it paper-agent-postgres psql -U paper_agent -d postgres -c "ALTER USER paper_agent WITH PASSWORD '新密码';"`
@@ -280,17 +309,17 @@ SCRIPT
 - **`JWT_SECRET_KEY` 必须是随机值**：`openssl rand -hex 32`，只写进 `backend/.env`。
   占位符、短于 32 字符或低熵的密钥会在启动时报 `configuration.weak_jwt_secret`，
   且 `ENVIRONMENT` 非 `development` 时直接拒绝启动。
-- **端口只绑本机**：Postgres 5432、TEI 8080、RustFS 9000/9001 都是 `127.0.0.1:`；对外只暴露后端与前端。
+- **端口只绑本机**：Postgres 5432、Redis 6379、TEI 8080、RustFS 9000/9001 都是 `127.0.0.1:`；对外只暴露后端与前端。
 
 ## 对象存储
 
 PDF、MinerU 产物与会话 Entry 日志都通过 `app/platform/storage.py` 的 `ObjectStorage`
 接口读写，两种实现按 `STORAGE_BACKEND` 选择：
 
-| 后端 | 适用 | 配置 |
-|---|---|---|
-| `local`（开发默认） | 仅开发与测试；`local_path` 零拷贝 | `STORAGE_ROOT`（默认 `.var/storage`） |
-| `s3`（生产必选） | 自建或云对象存储，启动时检查可用性 | `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` |
+| 后端                | 适用                               | 配置                                                                |
+| ------------------- | ---------------------------------- | ------------------------------------------------------------------- |
+| `local`（开发默认） | 仅开发与测试；`local_path` 零拷贝  | `STORAGE_ROOT`（默认 `.var/storage`）                               |
+| `s3`（生产必选）    | 自建或云对象存储，启动时检查可用性 | `S3_ENDPOINT_URL` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_BUCKET` |
 
 - 自建对象存储用 **RustFS**（Apache-2.0，S3 兼容）：`docker compose --profile storage up -d storage`，
   控制台在 `http://127.0.0.1:9001`。RustFS 官方标注处于快速开发阶段，**不要用于生产**；
@@ -306,12 +335,12 @@ Agent 回合由独立的 `agent_service` 使用 AgentScope 执行。业务服务
 从 AgentScope Model Card 返回可选 Provider 与 active 模型；会话配置引用用户的 Credential，
 不携带明文 API Key。`PaperAgent` 固定装配以下工具组，运行中不切换工具列表：
 
-| 工具组 | 工具 | 作用 |
-|---|---|---|
-| 文献阅读 | `list_papers`、`search_papers`、`get_paper_excerpt` | 列出授权文献、检索并登记证据、按已登记引用读取原文 |
-| 库外发现与入库 | `discover_papers`、`import_selected_papers` | 查找库外候选；经用户授权后入库 |
-| 用户交互 | `ask_user` | 暂停回复并收集用户答案 |
-| 系统功能 | `create_scheduled_task` | 经用户授权后创建定时任务 |
+| 工具组         | 工具                                                | 作用                                               |
+| -------------- | --------------------------------------------------- | -------------------------------------------------- |
+| 文献阅读       | `list_papers`、`search_papers`、`get_paper_excerpt` | 列出授权文献、检索并登记证据、按已登记引用读取原文 |
+| 库外发现与入库 | `discover_papers`、`import_selected_papers`         | 查找库外候选；经用户授权后入库                     |
+| 用户交互       | `ask_user`                                          | 暂停回复并收集用户答案                             |
+| 系统功能       | `create_scheduled_task`                             | 经用户授权后创建定时任务                           |
 
 - 文献与项目范围由服务端按会话绑定注入，**不由模型参数决定**；只有已登记的证据才能引用。
 - 入库与创建定时任务默认逐次请求用户授权，明确配置为总是允许时才跳过审查。
@@ -324,6 +353,7 @@ Agent 回合由独立的 `agent_service` 使用 AgentScope 执行。业务服务
 
 - PDF 发往 MinerU 解析正文；
 - Chunk 文本发往 Embedding 服务生成向量；
-- 用户问题与检索到的论文证据发往用户选择的 LLM Provider。
+- 用户问题与检索到的论文证据发往用户选择的 LLM Provider；
+- 按 0081，验证码和安全通知通过部署者的 SMTP 服务发送；用户显式开启任务通知后，最终回答或可行动失败信息也会经 SMTP 发往本人已验证邮箱。
 
 LLM API Key 由 AgentScope Credential 存储适配层加密后保存在会话服务数据库中；浏览器只在创建或更新凭据时提交 Key，列表与更新响应不回传明文。Key 不进入日志、对象存储或任务队列。MinerU 与 Embedding 仍由部署者通过环境变量固定。

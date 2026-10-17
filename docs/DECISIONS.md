@@ -30,7 +30,7 @@
 | 0019 | ingest | 摄取四阶段 + 阶段级重试，能力与状态分离 | 当前 | [0019-ingestion-stages.md](decisions/0019-ingestion-stages.md) |
 | 0020 | ingest | Chunk 保留页码与版面定位（自研 KB 的核心理由） | 当前 | [0020-chunk-page-locator.md](decisions/0020-chunk-page-locator.md) |
 | 0021 | product | 文献条目可以没有 PDF；对外用稳定条目 ID | 当前 | [0021-paper-entry-without-pdf.md](decisions/0021-paper-entry-without-pdf.md) |
-| 0022 | security | 账号与登录态：JWT 15 分钟 + Refresh 轮换 + family 撤销 | 当前 | [0022-account-and-auth-session.md](decisions/0022-account-and-auth-session.md) |
+| 0022 | security | 账号与登录态：JWT 15 分钟 + Refresh 轮换 + family 撤销；邮箱认证与 Redis 否决片段由 0081 取代 | 当前 | [0022-account-and-auth-session.md](decisions/0022-account-and-auth-session.md) |
 | 0023 | product | 上传与个人文献库：先返回条目，再后台处理；不提供移除入口 | 当前 | [0023-upload-and-library.md](decisions/0023-upload-and-library.md) |
 | 0024 | ingest | 元数据链路：前 5 页布局 → 识别 → 标识符在线补全 | 当前 | [0024-metadata-pipeline.md](decisions/0024-metadata-pipeline.md) |
 | 0025 | product | 会话范围只有全局与项目两种；文献列表不注入提示词 | 当前 | [0025-session-scope-two-kinds.md](decisions/0025-session-scope-two-kinds.md) |
@@ -43,14 +43,14 @@
 | 0032 | frontend | 界面文案只说状态 / 动作 / 后果；用语表与禁用项 | 当前 | [0032-ui-copy-rules.md](decisions/0032-ui-copy-rules.md) |
 | 0033 | frontend | 前端以 web_ui 样式为底座做扩展：上游已有的直接沿用，特有部分在其体系内叠加 | 当前 | [0033-frontend-extend-web-ui.md](decisions/0033-frontend-extend-web-ui.md) |
 | 0034 | product | 领域术语与禁用同义词 | 当前 | [0034-domain-glossary.md](decisions/0034-domain-glossary.md) |
-| 0035 | security, agent | AgentScope 只验 access token，登出后最长 15 分钟失效 | 当前 | [0035-agent-service-access-token-revocation.md](decisions/0035-agent-service-access-token-revocation.md) |
+| 0035 | security, agent | 原只验签/延迟撤销及否决回查片段由 0081 取代；其余边界保留 | 当前 | [0035-agent-service-access-token-revocation.md](decisions/0035-agent-service-access-token-revocation.md) |
 | 0036 | arch, agent | 检索注入与会话范围合并为一个验收里程碑 | 当前 | [0036-merge-retrieval-and-session-scope.md](decisions/0036-merge-retrieval-and-session-scope.md) |
 | 0037 | security, api | AgentScope 内部检索请求用独立密钥认证，再查会话绑定授权 | 当前 | [0037-internal-retrieval-authentication.md](decisions/0037-internal-retrieval-authentication.md) |
 | 0040 | api, security, frontend | 用户读取会话绑定与已登记引用，前端按 session_id 拼接 | 当前 | [0040-bound-session-read-apis.md](decisions/0040-bound-session-read-apis.md) |
 | 0042 | agent, product, ingest | 入读流程完成后增加基于 MinerU Markdown 的有界原文读取工具 | 当前 | [0042-bounded-paper-original-read.md](decisions/0042-bounded-paper-original-read.md) |
 | 0043 | api, security, frontend | 会话与项目删除先清理 AgentScope，再清理业务绑定与引用 | 当前 | [0043-bound-session-deletion.md](decisions/0043-bound-session-deletion.md) |
 | 0045 | frontend, product | 全局导航保活、单会话工作区、项目文献侧栏、会话草稿与右侧消息快捷栏 | 当前 | [0045-conversation-layout-on-web-ui.md](decisions/0045-conversation-layout-on-web-ui.md) |
-| 0049 | product, agent, data, frontend | 定时任务范围、频率、独立运行会话、Agent 创建工具及月视图交互 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
+| 0049 | product, agent, data, frontend | 定时任务范围、频率、独立运行会话、Agent 创建工具及月视图交互；通知与结果快照片段由 0081 局部取代 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
 | 0053 | frontend, product | 授权 PDF 用 PDF.js 在页面内渲染并支持引用页定位、翻页与缩放 | 当前 | [0053-embedded-pdf-rendering.md](decisions/0053-embedded-pdf-rendering.md) |
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |
 | 0056 | ingest, storage, citation | 独立 worker 有界并发、启动恢复；生产 S3 与 MinerU 版本化产物 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
@@ -69,6 +69,7 @@
 | 0078 | data, security, agent | 用户偏好与浏览器时区按用户单行存业务库 JSONB；原子局部更新，无对象存储或 Redis | 当前 | [0078-user-settings-jsonb.md](decisions/0078-user-settings-jsonb.md) |
 | 0079 | agent, frontend, data, security | 输入框 `@` 资源、`$` Skill、`/` 流程；选中评论统一外层与带类型定位 | 当前 | [0079-composer-references-and-invocations.md](decisions/0079-composer-references-and-invocations.md) |
 | 0080 | frontend | SMUI 深浅主题、等宽字体与方角；视觉集中在 token、基础组件与共享 variants | 当前 | [0080-smui-theme.md](decisions/0080-smui-theme.md) |
+| 0081 | security, product, agent, data, arch | 邮箱验证与密码找回、Agent 逐请求回查、Redis 临时状态、PG outbox 与可选任务邮件通知；已批准，非验收结论 | 当前 | [0081-email-auth-and-schedule-notifications.md](decisions/0081-email-auth-and-schedule-notifications.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`
@@ -96,6 +97,7 @@
 | 改动 Agent 后端、会话、检索或凭据接入 | 0006、0007–0016 中相关项、0015、0026、0035–0037、0049、0070、0072、0075、0078 |
 | 改动产品功能范围、文献 / 摄取 / 引用行为 | 0018–0034 中相关项、0049、0056–0063、0070、0072 |
 | 改前端文案或界面 | 0014、0032、0033、0045、0049、0055、0080；文献阅读见 0057–0066 |
+| 改邮箱认证、密码重置、登录态回查或任务邮件通知 | 0081（0022、0035、0049 仅相关片段被取代） |
 | 涉及领域术语与命名 | 0034 |
 | 改包结构、入口或依赖方向 | [ARCHITECTURE.md](ARCHITECTURE.md) 与 0003、0006 |
 

@@ -2,11 +2,11 @@
 #
 # Paper Agent 本地启动脚本
 #
-#   ./start.sh                  启动 PostgreSQL、后端、解析 worker 与前端（首次安装并迁移）
-#   ./start.sh --backend-only   只启动 PostgreSQL、后端与解析 worker
+#   ./start.sh                  启动 PostgreSQL、Redis、后端、解析/邮件 worker 与前端（首次安装并迁移）
+#   ./start.sh --backend-only   启动后端服务及 PostgreSQL、Redis、解析/邮件 worker，不启动前端
 #   ./start.sh --frontend-only  只启动前端（需后端已在别处运行）
 #   ./start.sh --no-install     跳过 uv sync / pnpm install
-#   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库）
+#   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库；后端仍启动本机 Redis）
 #   ./start.sh --with-embeddings 同时启动自建 Embedding 服务（TEI + bge-m3）
 #                               注意：bge-m3 常驻约 2.5~3GB 内存，内存吃紧时改用云 Embedding
 #   ./start.sh --with-storage   同时启动对象存储（RustFS，S3 兼容）
@@ -40,6 +40,7 @@ DO_INSTALL=1
 
 BACKEND_PID=""
 WORKER_PID=""
+MAIL_WORKER_PID=""
 AGENT_SERVICE_PID=""
 FRONTEND_PID=""
 TAIL_PIDS=()
@@ -104,6 +105,7 @@ cleanup() {
     kill_tree "$FRONTEND_PID" TERM
     kill_tree "$BACKEND_PID" TERM
     kill_tree "$WORKER_PID" TERM
+    kill_tree "$MAIL_WORKER_PID" TERM
     kill_tree "$AGENT_SERVICE_PID" TERM
   } 2>/dev/null
   # 等待子进程真正退出，避免端口被占用
@@ -112,6 +114,7 @@ cleanup() {
     [[ -n "$FRONTEND_PID" ]] && kill -0 "$FRONTEND_PID" 2>/dev/null && alive=1
     [[ -n "$BACKEND_PID" ]] && kill -0 "$BACKEND_PID" 2>/dev/null && alive=1
     [[ -n "$WORKER_PID" ]] && kill -0 "$WORKER_PID" 2>/dev/null && alive=1
+    [[ -n "$MAIL_WORKER_PID" ]] && kill -0 "$MAIL_WORKER_PID" 2>/dev/null && alive=1
     [[ -n "$AGENT_SERVICE_PID" ]] && kill -0 "$AGENT_SERVICE_PID" 2>/dev/null && alive=1
     [[ "$alive" -eq 1 ]] || break
     sleep 0.25
@@ -120,9 +123,10 @@ cleanup() {
     kill_tree "$FRONTEND_PID" KILL
     kill_tree "$BACKEND_PID" KILL
     kill_tree "$WORKER_PID" KILL
+    kill_tree "$MAIL_WORKER_PID" KILL
     kill_tree "$AGENT_SERVICE_PID" KILL
     # 回收子进程，让 bash 的作业表清理干净
-    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID" "$WORKER_PID" "$AGENT_SERVICE_PID"; do
+    for pid in "${TAIL_PIDS[@]:-}" "$FRONTEND_PID" "$BACKEND_PID" "$WORKER_PID" "$MAIL_WORKER_PID" "$AGENT_SERVICE_PID"; do
       [[ -n "$pid" ]] && wait "$pid"
     done
   } 2>/dev/null || true
@@ -140,9 +144,8 @@ check_port_free() {
 }
 
 wait_for_http() {
-  local url="$1" name="$2" tries="${3:-60}" pid="${4:-}" authorization="${5:-}" i
+  local url="$1" name="$2" tries="${3:-60}" pid="${4:-}" i
   local probe_args=(--noproxy '*' -fsS --max-time 2)
-  [[ -n "$authorization" ]] && probe_args+=(-H "Authorization: Bearer $authorization")
   # 监听所有网卡时，仍通过回环地址探测；本地请求不经过系统代理。
   url="${url/http:\/\/0.0.0.0:/http:\/\/127.0.0.1:}"
   for ((i = 1; i <= tries; i++)); do
@@ -165,6 +168,26 @@ wait_for_http() {
   return 1
 }
 
+# AgentScope /health 要求真实登录态；TCP 探针不签发 token、不绕过认证。
+wait_for_tcp() {
+  local host="$1" port="$2" name="$3" pid="$4" i
+  [[ "$host" == "0.0.0.0" ]] && host="127.0.0.1"
+  for ((i = 1; i <= 60; i++)); do
+    kill -0 "$pid" 2>/dev/null || return 1
+    if (( (i - 1) % 10 == 0 )); then
+      step "等待${name} TCP 就绪（检查 ${i}/60）"
+    fi
+    if uv run --no-sync python -c \
+        'import socket, sys; socket.create_connection((sys.argv[1], int(sys.argv[2])), timeout=2).close()' \
+        "$host" "$port" >/dev/null 2>&1; then
+      kill -0 "$pid" 2>/dev/null && return 0
+      return 1
+    fi
+    sleep 0.5
+  done
+  return 1
+}
+
 require() {
   command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1${2:+（$2）}"
 }
@@ -177,7 +200,7 @@ require uv "https://docs.astral.sh/uv/"
 require curl
 require lsof
 [[ "$START_FRONTEND" -eq 1 ]] && require pnpm "https://pnpm.io/"
-[[ "$START_DB" -eq 1 ]] && require docker "https://orbstack.dev/"
+[[ "$START_DB" -eq 1 || "$START_BACKEND" -eq 1 ]] && require docker "https://orbstack.dev/"
 ok "uv $(uv --version | awk '{print $2}')"
 [[ "$START_FRONTEND" -eq 1 ]] && ok "pnpm $(pnpm --version)"
 echo
@@ -196,9 +219,9 @@ if [[ "$START_FRONTEND" -eq 1 ]]; then
   fi
 fi
 
-# --- 数据库 -----------------------------------------------------------------
-if [[ "$START_DB" -eq 1 ]]; then
-  step "启动 PostgreSQL（Docker / OrbStack）"
+# --- Docker 依赖 ------------------------------------------------------------
+if [[ "$START_DB" -eq 1 || "$START_BACKEND" -eq 1 ]]; then
+  step "检查 Docker / OrbStack"
   if ! docker info >/dev/null 2>&1; then
     if command -v orb >/dev/null 2>&1; then
       warn "Docker 守护进程未运行，尝试 orb start"
@@ -211,6 +234,11 @@ if [[ "$START_DB" -eq 1 ]]; then
     docker info >/dev/null 2>&1 || die "Docker 守护进程不可用，请先启动 OrbStack"
   fi
 
+fi
+
+# --- 数据库 -----------------------------------------------------------------
+if [[ "$START_DB" -eq 1 ]]; then
+  step "启动 PostgreSQL"
   (cd "$ROOT_DIR" && docker compose up -d postgres) >/dev/null
   for _ in $(seq 1 40); do
     if (cd "$ROOT_DIR" && docker compose exec -T postgres \
@@ -230,6 +258,22 @@ if [[ "$START_DB" -eq 1 ]]; then
         psql -U paper_agent -d postgres -c 'CREATE DATABASE paper_agent_as') >/dev/null
   fi
   ok "PostgreSQL 已就绪（localhost:5432）"
+  echo
+fi
+
+# --- 邮箱验证临时状态（Redis）-----------------------------------------------
+if [[ "$START_BACKEND" -eq 1 ]]; then
+  step "启动 Redis"
+  (cd "$ROOT_DIR" && docker compose up -d redis) >/dev/null
+  for _ in $(seq 1 40); do
+    if [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]]; then
+      break
+    fi
+    sleep 0.5
+  done
+  [[ "$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli ping 2>/dev/null)" == "PONG" ]] \
+    || die "Redis 未就绪，请查看 docker compose logs redis"
+  ok "Redis 已就绪（127.0.0.1:6379）"
   echo
 fi
 
@@ -351,26 +395,28 @@ PY
   ok "解析 worker 已启动"
   echo
 
+  step "启动邮件投递 worker"
+  uv run python -m app.platform.mail_worker >"$LOG_DIR/mail-worker.log" 2>&1 &
+  MAIL_WORKER_PID=$!
+  sleep 0.5
+  if ! kill -0 "$MAIL_WORKER_PID" 2>/dev/null; then
+    fail "邮件 worker 启动失败，请查看 .var/logs/mail-worker.log"
+    exit 1
+  fi
+  ok "邮件 worker 已启动"
+  echo
+
   step "启动 AgentScope 服务 http://$AGENT_SERVICE_HOST:$AGENT_SERVICE_PORT"
   uv run uvicorn agent_service.main:app \
     --host "$AGENT_SERVICE_HOST" --port "$AGENT_SERVICE_PORT" --reload \
     >"$LOG_DIR/agent-service.log" 2>&1 &
   AGENT_SERVICE_PID=$!
-  AGENT_SERVICE_PROBE_HOST="$AGENT_SERVICE_HOST"
-  [[ "$AGENT_SERVICE_PROBE_HOST" == "0.0.0.0" ]] && AGENT_SERVICE_PROBE_HOST="127.0.0.1"
-  AGENT_HEALTH_TOKEN="$(uv run python -c 'from uuid import UUID; from app.platform.security import create_access_token; print(create_access_token(user_id=UUID(int=0), auth_session_id=UUID(int=0))[0])')"
-  ready=0
-  if wait_for_http "http://$AGENT_SERVICE_PROBE_HOST:$AGENT_SERVICE_PORT/health" \
-      "AgentScope 服务" 60 "$AGENT_SERVICE_PID" "$AGENT_HEALTH_TOKEN"; then
-    ready=1
-  fi
-  unset AGENT_HEALTH_TOKEN
-  if [[ "$ready" -ne 1 ]]; then
+  if ! wait_for_tcp "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT" "AgentScope 服务" "$AGENT_SERVICE_PID"; then
     fail "AgentScope 服务启动失败，日志末尾："
     tail -n 20 "$LOG_DIR/agent-service.log" >&2
     exit 1
   fi
-  ok "AgentScope 服务已就绪（API 文档 /docs）"
+  ok "AgentScope 服务 TCP 已就绪（不代表已验证登录态或完整业务健康）"
   echo
 fi
 
@@ -407,7 +453,7 @@ printf '%s%s 服务已启动%s\n' "$BOLD" "$GREEN" "$RESET"
 [[ "$START_BACKEND" -eq 1 ]] && printf '  %sAgentScope%s http://%s:%s\n' "$BOLD" "$RESET" "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT"
 [[ "$START_BACKEND" -eq 1 ]] && printf '  %s后端%s   http://%s:%s  %s(文档 /docs)%s\n' \
   "$BOLD" "$RESET" "$BACKEND_HOST" "$BACKEND_PORT" "$DIM" "$RESET"
-[[ "$START_BACKEND" -eq 1 ]] && printf '  %s解析 worker%s   独立进程\n' "$BOLD" "$RESET"
+[[ "$START_BACKEND" -eq 1 ]] && printf '  %s解析 / 邮件 worker%s   独立进程\n' "$BOLD" "$RESET"
 printf '  %s日志%s   %s\n' "$BOLD" "$RESET" "$LOG_DIR"
 printf '%s按 Ctrl-C 停止全部服务%s\n\n' "$DIM" "$RESET"
 
@@ -419,6 +465,8 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   TAIL_PIDS+=($!)
   tail -n 0 -f "$LOG_DIR/worker.log" > >(while IFS= read -r line; do printf '[worker] %s\n' "$line"; done) &
   TAIL_PIDS+=($!)
+  tail -n 0 -f "$LOG_DIR/mail-worker.log" > >(while IFS= read -r line; do printf '[mail-worker] %s\n' "$line"; done) &
+  TAIL_PIDS+=($!)
   tail -n 0 -f "$LOG_DIR/agent-service.log" > >(while IFS= read -r line; do printf '[agent-service] %s\n' "$line"; done) &
   TAIL_PIDS+=($!)
 fi
@@ -427,6 +475,12 @@ if [[ "$START_FRONTEND" -eq 1 ]]; then
   TAIL_PIDS+=($!)
 fi
 
-# 前台驻留：任一子进程结束时返回；Ctrl-C 时进入 cleanup。
-# 注意：不要用 disown，否则脚本收不到中断信号（实测会变成孤儿进程）。
-wait 2>/dev/null || true
+# Bash 3.2 没有 wait -n；轮询服务进程，任一退出都触发统一 cleanup。
+while true; do
+  for pid in "$BACKEND_PID" "$WORKER_PID" "$MAIL_WORKER_PID" "$AGENT_SERVICE_PID" "$FRONTEND_PID"; do
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      die "服务进程已退出（PID：$pid），请查看 $LOG_DIR 中对应日志"
+    fi
+  done
+  sleep 1
+done

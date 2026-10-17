@@ -86,6 +86,25 @@ class Settings(BaseSettings):
     refresh_cookie_secure: bool = False
     refresh_cookie_domain: str | None = None
 
+    # Email authentication and independent PostgreSQL outbox delivery.
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    email_verification_ttl_seconds: int = 600
+    email_resend_cooldown_seconds: int = 60
+    email_verification_max_attempts: int = 5
+    public_app_url: str = "http://localhost:5173"
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_username: str = ""
+    smtp_password: SecretStr = SecretStr("")
+    smtp_from_email: str = ""
+    smtp_from_name: str = "Paper Agent"
+    smtp_use_ssl: bool = True
+    smtp_starttls: bool = False
+    smtp_timeout_seconds: float = 20.0
+    mail_poll_seconds: float = 1.0
+    mail_max_attempts: int = 5
+    mail_body_max_bytes: int = 80_000
+
     # Instance-level providers
     mineru_api_url: str | None = None
     mineru_api_key: str | None = None

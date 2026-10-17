@@ -5,11 +5,13 @@ import type { ChatModelConfig, ScheduleRecord } from "@upstream/api/types"
 export interface ProjectSchedule {
   schedule: ScheduleRecord
   projectId: string | null
+  notify_email: boolean
 }
 
-interface ScheduleBinding {
+export interface ScheduleBinding {
   schedule_id: string
   project_id: string | null
+  notify_email: boolean
 }
 
 const BINDINGS = "/v1/schedule-bindings"
@@ -19,10 +21,10 @@ export async function listProjectSchedules(api: Api): Promise<ProjectSchedule[]>
     api.client.request<ScheduleBinding[]>(BINDINGS),
     scheduleApi.list(),
   ])
-  const byId = new Map(bindings.map((binding) => [binding.schedule_id, binding.project_id]))
+  const byId = new Map(bindings.map((binding) => [binding.schedule_id, binding]))
   return scheduleResult.schedules.flatMap((schedule) => {
-    const projectId = byId.get(schedule.id)
-    return byId.has(schedule.id) ? [{ schedule, projectId: projectId ?? null }] : []
+    const binding = byId.get(schedule.id)
+    return binding ? [{ schedule, projectId: binding.project_id, notify_email: binding.notify_email ?? false }] : []
   })
 }
 
@@ -36,6 +38,7 @@ export async function createProjectSchedule(
     timezone: string
     agentId: string
     model: ChatModelConfig
+    notify_email?: boolean
   },
 ): Promise<string> {
   const { schedule_id: scheduleId } = await scheduleApi.create({
@@ -53,7 +56,7 @@ export async function createProjectSchedule(
   try {
     await api.client.request(BINDINGS, {
       method: "POST",
-      json: { schedule_id: scheduleId, project_id: input.projectId },
+      json: { schedule_id: scheduleId, project_id: input.projectId, notify_email: input.notify_email ?? false },
     })
     bound = true
     await scheduleApi.update(scheduleId, { enabled: true })

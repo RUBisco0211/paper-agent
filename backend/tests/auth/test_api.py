@@ -11,17 +11,12 @@ from tests.conftest import auth_headers
 PASSWORD = "correct-horse-battery"
 
 
-def test_register_login_refresh_and_logout(client: TestClient, api_prefix: str) -> None:
-    register = client.post(
-        f"{api_prefix}/auth/register",
-        json={
-            "email": "Reader@Example.com",
-            "password": PASSWORD,
-            "display_name": "  Reader  ",
-        },
+def test_register_login_refresh_and_logout(
+    client: TestClient, api_prefix: str, register_user
+) -> None:
+    body = register_user(
+        email="Reader@Example.com", password=PASSWORD, display_name="  Reader  "
     )
-    assert register.status_code == 201, register.text
-    body = register.json()
     assert body["user"]["email"] == "reader@example.com"
     assert body["user"]["display_name"] == "Reader"
     assert body["token_type"] == "bearer"
@@ -74,12 +69,39 @@ def test_login_rejects_wrong_credentials_and_unknown_email(
     assert unknown_email.json()["code"] == "invalid_credentials"
 
 
-def test_duplicate_email_is_rejected(client: TestClient, api_prefix: str) -> None:
-    payload = {"email": "reader@example.com", "password": PASSWORD}
-    first = client.post(f"{api_prefix}/auth/register", json=payload)
-    second = client.post(f"{api_prefix}/auth/register", json=payload)
-
-    assert first.status_code == 201
+def test_duplicate_email_is_rejected(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    email_verification_store,
+    auth_emails,
+) -> None:
+    register_user()
+    store = email_verification_store
+    for key in store.redis.scan_iter(match=store.namespace + ":cooldown:*"):
+        store.redis.delete(key)
+    requested = client.post(
+        f"{api_prefix}/auth/email-codes",
+        json={"email": "READER@example.com", "purpose": "register"},
+    )
+    assert requested.status_code == 200
+    verified = client.post(
+        f"{api_prefix}/auth/email-codes/verify",
+        json={
+            "challenge_id": requested.json()["challenge_id"],
+            "code": auth_emails[-1]["code"],
+            "purpose": "register",
+        },
+    )
+    assert verified.status_code == 200
+    second = client.post(
+        f"{api_prefix}/auth/register",
+        json={
+            "verification_token": verified.json()["verification_token"],
+            "password": PASSWORD,
+            "password_confirmation": PASSWORD,
+        },
+    )
     assert second.status_code == 409
     assert second.json()["code"] == "email_already_registered"
 
@@ -88,12 +110,10 @@ def test_replayed_refresh_token_revokes_the_family(
     client: TestClient,
     api_prefix: str,
     db_session: Session,
+    register_user,
 ) -> None:
-    register = client.post(
-        f"{api_prefix}/auth/register",
-        json={"email": "reader@example.com", "password": PASSWORD},
-    )
-    first_token = register.cookies["paper_agent_refresh"]
+    register_user()
+    first_token = client.cookies["paper_agent_refresh"]
 
     rotated = client.post(f"{api_prefix}/auth/refresh")
     assert rotated.status_code == 200
@@ -120,11 +140,9 @@ def test_replayed_refresh_token_revokes_the_family(
 def test_refresh_requires_cookie_and_rejects_foreign_origin(
     client: TestClient,
     api_prefix: str,
+    register_user,
 ) -> None:
-    client.post(
-        f"{api_prefix}/auth/register",
-        json={"email": "reader@example.com", "password": PASSWORD},
-    )
+    register_user()
     client.cookies.clear()
 
     missing = client.post(f"{api_prefix}/auth/refresh")
@@ -147,11 +165,9 @@ def test_expired_refresh_token_is_rejected(
     client: TestClient,
     api_prefix: str,
     db_session: Session,
+    register_user,
 ) -> None:
-    client.post(
-        f"{api_prefix}/auth/register",
-        json={"email": "reader@example.com", "password": PASSWORD},
-    )
+    register_user()
     past = datetime.now(UTC) - timedelta(minutes=1)
     for session in db_session.scalars(select(AuthSessionRecord)).all():
         session.expires_at = past
@@ -185,12 +201,16 @@ def test_registration_validates_email_and_password_policy(
     api_prefix: str,
 ) -> None:
     invalid_email = client.post(
-        f"{api_prefix}/auth/register",
-        json={"email": "not-an-email", "password": PASSWORD},
+        f"{api_prefix}/auth/email-codes",
+        json={"email": "not-an-email", "purpose": "register"},
     )
     short_password = client.post(
         f"{api_prefix}/auth/register",
-        json={"email": "reader@example.com", "password": "short"},
+        json={
+            "verification_token": "unused",
+            "password": "short",
+            "password_confirmation": "short",
+        },
     )
 
     assert invalid_email.status_code == 422

@@ -7,6 +7,7 @@ import { DiscoverPage } from "@/pages/discover"
 import { PaperReadingPage } from "@/pages/paper-reading"
 import { LoginPage } from "@/pages/login"
 import { RegisterPage } from "@/pages/register"
+import { PasswordResetPage } from "@/pages/password-reset"
 import { AppLayout } from "@upstream/components/layout/AppLayout"
 import { ModelSettingsPage } from "@upstream/pages/model-settings"
 import { PaperChatPage } from "@upstream/pages/chat/PaperChatPage"
@@ -17,6 +18,7 @@ import { PaperCalendarPage } from "@upstream/pages/schedule/PaperCalendarPage"
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   { path: "/register", element: <RegisterPage /> },
+  { path: "/password-reset", element: <PasswordResetPage /> },
   {
     element: <RequireAuth><AgentUiProvider><AppLayout /></AgentUiProvider></RequireAuth>,
     children: [

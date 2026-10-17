@@ -1,5 +1,5 @@
 import { ApiError } from "./errors"
-import type { AccessToken, AuthSession, ApiErrorBody } from "./types"
+import type { AccessToken, AuthSession, ApiErrorBody, EmailCodePurpose, EmailCodeChallenge, EmailVerification, PasswordVerificationInput, RegisterInput } from "./types"
 
 export type AccessTokenSink = (session: AccessToken | null) => void
 
@@ -194,7 +194,19 @@ function safeJson(text: string): unknown {
 /** The auth endpoints are thin wrappers around the generic client. */
 export function authEndpoints(client: ApiClient) {
   return {
-    register: (input: { email: string; password: string; display_name?: string }) =>
+    requestCode: (input: { email: string; purpose: EmailCodePurpose }) =>
+      client.request<EmailCodeChallenge>("/v1/auth/email-codes", {
+        method: "POST", json: input, skipRefresh: true,
+      }),
+    verifyCode: (input: { challenge_id: string; code: string; purpose: EmailCodePurpose }) =>
+      client.request<EmailVerification>("/v1/auth/email-codes/verify", {
+        method: "POST", json: input, skipRefresh: true,
+      }),
+    resetPassword: (input: PasswordVerificationInput) =>
+      client.request<void>("/v1/auth/password-reset", {
+        method: "POST", json: input, skipRefresh: true,
+      }),
+    register: (input: RegisterInput) =>
       client.request<AuthSession>("/v1/auth/register", {
         method: "POST",
         json: input,

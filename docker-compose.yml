@@ -1,5 +1,5 @@
 # Paper Agent 单机开发/部署依赖。
-# 使用 `docker compose up -d postgres` 启动数据库；pgvector 扩展由 Alembic 迁移创建。
+# 使用 `docker compose up -d postgres redis` 启动数据库与邮件验证临时状态；pgvector 扩展由 Alembic 迁移创建。
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -20,6 +20,21 @@ services:
       test: ["CMD-SHELL", "pg_isready -U paper_agent -d paper_agent"]
       interval: 5s
       timeout: 5s
+      retries: 10
+
+  # 仅保存验证码、一次性凭证与冷却/限流；持久邮件 outbox 在 PostgreSQL。
+  # 不持久化：状态丢失后须重新验证；不作为 Celery 或邮件任务队列。
+  redis:
+    image: redis:7-alpine
+    container_name: paper-agent-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 10
 
   # Embedding 服务（text-embeddings-inference + BAAI/bge-m3，1024 维）

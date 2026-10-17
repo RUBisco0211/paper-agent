@@ -15,11 +15,13 @@ import { ProjectsPage } from "@/pages/projects"
 import { SessionWorkspacePage } from "@/pages/session-workspace"
 import { SettingsPage } from "@/pages/settings"
 import { RegisterPage } from "@/pages/register"
+import { PasswordResetPage } from "@/pages/password-reset"
 
 export function createAppRoutes(): RouteObject[] {
   return [
     { path: "/login", element: <LoginPage /> },
     { path: "/register", element: <RegisterPage /> },
+    { path: "/password-reset", element: <PasswordResetPage /> },
     {
       element: (
         <RequireAuth>

@@ -1,3 +1,4 @@
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -5,6 +6,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
+from sqlalchemy.exc import IntegrityError
 
 from ..platform.config import settings
 from ..platform.errors import (
@@ -22,6 +24,7 @@ from ..platform.security import (
 )
 from .domain import REVIEWABLE_AGENT_TOOLS, User, normalize_email, validate_password
 from .ports import AuthStore
+from .repo import EmailVerificationStore
 
 logger = structlog.get_logger(__name__)
 
@@ -55,9 +58,11 @@ class AuthService:
         repository: AuthStore,
         *,
         now: Callable[[], datetime] = _utcnow,
+        verification_store: EmailVerificationStore | None = None,
     ) -> None:
         self._repository = repository
         self._now = now
+        self._verification_store = verification_store
 
     # Use cases -------------------------------------------------------------
     def set_timezone(self, *, user_id: UUID, timezone: str) -> str:
@@ -84,15 +89,90 @@ class AuthService:
         self._repository.commit()
         return always_allow
 
+    def _verification(self) -> EmailVerificationStore:
+        if self._verification_store is None:
+            raise RuntimeError("Email verification store is not configured")
+        return self._verification_store
+
+    def request_email_code(self, *, email: str, purpose: str, ip: str) -> str:
+        email = normalize_email(email)
+        credential = self._repository.get_credential_by_email(email)
+        eligible = purpose == "register" or credential is not None
+        version = (
+            hashlib.sha256(credential.password_hash.encode()).hexdigest()
+            if credential is not None and purpose == "password_reset"
+            else None
+        )
+        challenge_id, code = self._verification().issue(
+            email=email,
+            purpose=purpose,
+            ip=ip,
+            eligible=eligible,
+            credential_version=version,
+        )
+        if eligible:
+            self._repository.enqueue_verification_email(
+                recipient=email,
+                code=code,
+                purpose=purpose,
+                dedupe_key="auth-code:" + challenge_id,
+                expires_at=self._now() + timedelta(seconds=self._verification().ttl),
+            )
+            self._repository.commit()
+        self._verification().activate(challenge_id)
+        return challenge_id
+
+    def verify_email_code(self, *, challenge_id: str, code: str, purpose: str) -> str:
+        return self._verification().verify(
+            challenge_id=challenge_id, code=code, purpose=purpose
+        )
+
+    def reset_password(
+        self, *, verification_token: str, password: str, password_confirmation: str
+    ) -> None:
+        self._validate_password_confirmation(password, password_confirmation)
+        # Redis is deliberately consumed before the database transaction: a crash
+        # may require re-verification, but can never resurrect a reset grant.
+        grant = self._verification().consume(
+            verification_token, purpose="password_reset"
+        )
+        credential = self._repository.get_credential_by_email(grant["email"])
+        if (
+            credential is None
+            or hashlib.sha256(credential.password_hash.encode()).hexdigest()
+            != grant["credential_version"]
+        ):
+            raise ValidationError("验证已失效，请重新获取验证码")
+        self._repository.update_password_hash(
+            credential.user.id, hash_password(password)
+        )
+        self._repository.revoke_user_sessions(
+            credential.user.id, revoked_at=self._now()
+        )
+        self._repository.enqueue_password_reset_email(
+            recipient=credential.user.email,
+            dedupe_key="auth-reset:"
+            + hashlib.sha256(verification_token.encode()).hexdigest(),
+        )
+        self._repository.commit()
+
+    @staticmethod
+    def _validate_password_confirmation(password: str, confirmation: str) -> None:
+        validate_password(password)
+        if password != confirmation:
+            raise ValidationError("两次输入的密码不一致")
+
     def register(
         self,
         *,
-        email: str,
+        verification_token: str,
         password: str,
+        password_confirmation: str,
         display_name: str = "",
     ) -> IssuedSession:
-        normalized_email = normalize_email(email)
-        validate_password(password)
+        self._validate_password_confirmation(password, password_confirmation)
+        grant = self._verification().consume(verification_token, purpose="register")
+        normalized_email = grant["email"]
 
         if self._repository.get_user_by_email(normalized_email) is not None:
             raise ConflictError(
@@ -100,13 +180,22 @@ class AuthService:
                 code=ErrorCode.EMAIL_ALREADY_REGISTERED,
             )
 
-        user = self._repository.add_user(
-            email=normalized_email,
-            password_hash=hash_password(password),
-            display_name=display_name.strip() or normalized_email.split("@")[0],
-        )
-        issued = self._issue_session(user)
-        self._repository.commit()
+        try:
+            user = self._repository.add_user(
+                email=normalized_email,
+                password_hash=hash_password(password),
+                display_name=display_name.strip() or normalized_email.split("@")[0],
+                email_verified_at=self._now(),
+            )
+            issued = self._issue_session(user)
+            self._repository.commit()
+        except IntegrityError as exc:
+            self._repository.rollback()
+            if self._repository.get_user_by_email(normalized_email) is None:
+                raise
+            raise ConflictError(
+                "该邮箱已注册", code=ErrorCode.EMAIL_ALREADY_REGISTERED
+            ) from exc
         logger.info("service.auth.registered", user_id=str(user.id))
         return issued
 
@@ -162,8 +251,9 @@ class AuthService:
                 code=ErrorCode.REFRESH_TOKEN_REUSED,
             )
 
-        user = self._repository.get_user(auth_session.user_id)
-        if user is None:
+        user = self._repository.get_user_for_update(auth_session.user_id)
+        auth_session = self._repository.get_auth_session(stored.auth_session_id)
+        if user is None or auth_session is None or not auth_session.is_active:
             raise UnauthorizedError("登录态已失效，请重新登录")
 
         self._repository.consume_refresh_token(stored.id, consumed_at=now)

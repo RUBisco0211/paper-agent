@@ -3,7 +3,10 @@ import { Pause, Play, RefreshCw, Trash2, X } from "lucide-react"
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import type { ProjectSchedule } from "@/lib/project-schedules"
+import { useApi } from "@/lib/api/provider"
+import { Checkbox } from "@upstream/components/ui/checkbox"
+import { Field, FieldDescription, FieldLabel } from "@upstream/components/ui/field"
+import type { ProjectSchedule, ScheduleBinding } from "@/lib/project-schedules"
 import { scheduleApi } from "@upstream/api/schedule"
 import { Button } from "@upstream/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@upstream/components/ui/dialog"
@@ -33,6 +36,7 @@ export function ProjectScheduleDetail({
   onClose: () => void
   onDelete: (scheduleId: string) => Promise<void>
 }) {
+  const { api } = useApi()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -55,6 +59,23 @@ export function ProjectScheduleDetail({
     setError("")
     try {
       await scheduleApi.update(task.schedule.id, { enabled: !task.schedule.data.enabled })
+      await queryClient.invalidateQueries({ queryKey: ["project-schedules"] })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "更新失败，请重试")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function changeNotification(notify_email: boolean) {
+    if (!task || busy) return
+    setBusy(true)
+    setError("")
+    try {
+      const binding = await api.client.request<ScheduleBinding>(`/v1/schedules/${task.schedule.id}`, {
+        method: "PATCH", json: { notify_email },
+      })
+      queryClient.setQueryData<ProjectSchedule[]>(["project-schedules"], (tasks) => tasks?.map((item) => item.schedule.id === task.schedule.id ? { ...item, notify_email: binding.notify_email } : item))
       await queryClient.invalidateQueries({ queryKey: ["project-schedules"] })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "更新失败，请重试")
@@ -96,6 +117,10 @@ export function ProjectScheduleDetail({
           </TooltipProvider>
         </SheetHeader>
         {error && <p role="alert" className="px-4 text-sm text-destructive">{error}</p>}
+        <Field orientation="horizontal" className="px-4" data-disabled={busy}>
+          <Checkbox id="task-notify-email" checked={task.notify_email ?? false} onCheckedChange={(checked) => void changeNotification(checked === true)} disabled={busy} />
+          <div className="flex flex-col gap-1"><FieldLabel htmlFor="task-notify-email">邮件通知</FieldLabel><FieldDescription>发送到当前账号邮箱</FieldDescription></div>
+        </Field>
         <p className="mx-4 whitespace-pre-wrap border-l-2 pl-3 text-sm">{task.schedule.data.description}</p>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
           <h3 className="mb-2 text-sm font-medium">运行记录</h3>

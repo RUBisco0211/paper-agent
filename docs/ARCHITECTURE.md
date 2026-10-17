@@ -7,7 +7,7 @@
 | 入口 | 职责 |
 |---|---|
 | `backend/app/main.py` → `app/api.py` | 业务 FastAPI，组合各业务包路由；持有业务 PostgreSQL、对象存储及摄取任务。 |
-| `backend/agent_service/main.py` | 单独的 AgentScope HTTP 服务，使用自己的数据库；注入 JWT 用户身份、加密凭据和受会话范围约束的工具。 |
+| `backend/agent_service/main.py` | 单独的 AgentScope HTTP 服务，使用自己的数据库；注入用户身份、加密凭据和受会话范围约束的工具；0081 要求认证逐请求经 HTTP 回查业务登录态，不直接访问业务用户表。 |
 | `backend/app/literature_support/processing/worker.py` | 独立摄取 worker，从业务数据库领取任务，按阶段处理文献。 |
 | `frontend/src/upstream/main.tsx` → `upstream/App.tsx` | React 入口与当前路由表；业务 API 和 AgentScope API 分别调用。 |
 
@@ -56,6 +56,15 @@
 | `agent_service/auth.py`、`credential_storage.py` | 用户认证与加密凭据存储适配。 |
 
 `app/conversation/` 目前没有实现文件，不作为新代码锚点。
+
+## 邮件部署边界（0081 已批准，功能验收另记）
+
+- `backend/app/platform/mail_worker.py` 是批准的独立入口，通过 `python -m app.platform.mail_worker` 运行；`start.sh` 已纳入启动、退出监视、cleanup 与 `.var/logs/mail-worker.log`。业务实现与 AgentScope 通知 hook 由主 agent/其他负责人集成，不以本页声明实现或测试完成。
+- 业务 PostgreSQL 持久 outbox 保存待投递邮件及状态；独立邮件进程领取并经 SMTP 投递，失败保留状态，不引入 Celery。最终回答快照仅供投递，不成为第二份运行会话历史；AgentScope 仍持有 schedules、sessions/messages。
+- Redis 只负责邮箱临时验证、用途绑定的一次性凭证及冷却/限流；不是账号、登录会话、用户配置或邮件队列存储。Compose 使用 `redis:7-alpine`、绑定 `127.0.0.1:6379`，默认不持久化，状态丢失须重新验证。
+- 注册、找回与登录会话撤销仍由 `auth` 编排；任务邮件开关与归属由 `schedules` 负责，默认关闭且只发所属用户的已验证邮箱，Agent 不指定收件地址。通知时机与最终结果通过 AgentScope 边界集成，不 JOIN 其表。
+- SMTP 与 `REDIS_URL`、`PUBLIC_APP_URL` 从后端 settings 配置；QQ SMTP 授权码仅由主 agent 写入不提交的 `backend/.env`。根 `.env` 单独保留 Compose 插值配置，不与后端环境文件合并。
+- 业务 API 使用源码已有的公开 `/health`；当前 AgentScope `/health` 要求认证，启动脚本只检查其进程/TCP，不伪造 JWT、不加生产认证绕过。TCP 就绪不宣称完整健康；新增公共 Agent 健康端点须由主 agent 另行协调。
 
 ## 前端
 

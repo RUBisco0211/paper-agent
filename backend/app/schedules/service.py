@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from ..auth.repo import AuthRepository
@@ -29,6 +30,7 @@ class ScheduleBindingService:
         schedule_id: str,
         user_id: UUID,
         project_id: UUID | None,
+        notify_email: bool = False,
     ) -> ScheduleBindingRecord:
         if project_id is not None:
             project = self._projects.get_project(project_id)
@@ -36,17 +38,85 @@ class ScheduleBindingService:
                 raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
         if self._schedules.get(schedule_id) is not None:
             raise ConflictError("定时任务已绑定", code=ErrorCode.CONFLICT)
-        record = self._schedules.add(schedule_id, user_id, project_id)
+        record = self._schedules.add(schedule_id, user_id, project_id, notify_email)
         self._schedules.commit()
         return record
 
     def list_for_user(self, *, user_id: UUID) -> list[ScheduleBindingRecord]:
         return self._schedules.list_for_user(user_id)
 
-    def delete(self, *, schedule_id: str, user_id: UUID) -> None:
-        record = self._schedules.get(schedule_id)
+    def update_notification(
+        self,
+        *,
+        schedule_id: str,
+        user_id: UUID,
+        notify_email: bool,
+    ) -> ScheduleBindingRecord:
+        record = self._schedules.get_for_update(schedule_id)
         if record is None or record.user_id != user_id:
             raise NotFoundError("定时任务不存在", code=ErrorCode.NOT_FOUND)
+        record.notify_email = notify_email
+        if not notify_email:
+            self._schedules.cancel_notifications(schedule_id)
+        self._schedules.commit()
+        return record
+
+    def notify_result(
+        self,
+        *,
+        schedule_id: str,
+        session_id: UUID,
+        user_id: UUID,
+        name: str,
+        status: Literal["success", "failed"],
+        markdown: str,
+        error: str | None,
+    ) -> bool:
+        self.ensure_run_scope(
+            schedule_id=schedule_id,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        # Serialize enqueue against disable/delete so cancellation cannot race
+        # with a late result event that has already read an enabled binding.
+        task = self._schedules.get_for_update(schedule_id)
+        if task is None or task.user_id != user_id:
+            raise NotFoundError("定时任务不存在", code=ErrorCode.NOT_FOUND)
+        if not task.notify_email:
+            return False
+        owner = self._users.get_user(user_id)
+        if owner is None or owner.email_verified_at is None:
+            return False
+        from ..platform.mail_templates import schedule_result_email
+
+        run_url = (
+            f"{settings.public_app_url.rstrip('/')}/scheduled/"
+            f"{schedule_id}/runs/{session_id.hex}"
+        )
+        subject, html, text = schedule_result_email(
+            name=name,
+            markdown=markdown if status == "success" else "",
+            status=status,
+            run_url=run_url,
+            error=(error or "任务运行失败，请检查模型配置后重新运行。")
+            if status == "failed"
+            else None,
+        )
+        self._schedules.enqueue_result(
+            recipient=owner.email,
+            subject=subject,
+            html_body=html,
+            text_body=text,
+            dedupe_key=f"schedule-result:{schedule_id}:{session_id.hex}",
+        )
+        self._schedules.commit()
+        return True
+
+    def delete(self, *, schedule_id: str, user_id: UUID) -> None:
+        record = self._schedules.get_for_update(schedule_id)
+        if record is None or record.user_id != user_id:
+            raise NotFoundError("定时任务不存在", code=ErrorCode.NOT_FOUND)
+        self._schedules.cancel_notifications(schedule_id)
         self._schedules.delete(record)
         self._schedules.commit()
 
@@ -90,6 +160,7 @@ class ScheduleBindingService:
         prompt: str,
         time: str,
         weekdays: list[str],
+        notify_email: bool = False,
     ) -> tuple[ScheduleBindingRecord, str, str]:
         scope = self._sessions.get(session_id)
         if scope is None or scope.user_id != user_id:
@@ -121,6 +192,7 @@ class ScheduleBindingService:
                 schedule_id=schedule_id,
                 user_id=user_id,
                 project_id=scope.project_id,
+                notify_email=notify_email,
             )
             bound = True
             gateway.enable(user_id=str(user_id), schedule_id=schedule_id)

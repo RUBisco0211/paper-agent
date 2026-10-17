@@ -45,28 +45,27 @@ def test_agent_service_rejects_untrusted_identity_when_token_is_missing_or_expir
     with TestClient(app) as client:
         assert client.get("/agent/").status_code == 401
         assert client.get("/agent/", headers={"X-User-ID": "forged"}).status_code == 401
-        assert client.get(
-            "/agent/", headers={"Authorization": f"Bearer {expired}"},
-        ).status_code == 401
+        assert (
+            client.get(
+                "/agent/",
+                headers={"Authorization": f"Bearer {expired}"},
+            ).status_code
+            == 401
+        )
 
 
 def test_agent_service_uses_bearer_identity_and_allows_browser_origin(
     tmp_path: Path,
     client: TestClient,
     api_prefix: str,
+    register_user,
+    agent_business_http,
 ) -> None:
     app = create_agent_service_app(_scope_database_url(), tmp_path)
-    registered = client.post(
-        f"{api_prefix}/auth/register",
-        json={
-            "email": "agent-service-user@example.com",
-            "password": "correct-horse-battery",
-        },
-    )
-    assert registered.status_code == 201
-    first = registered.json()["access_token"]
-    business_user_id = registered.json()["user"]["id"]
-    second, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    registered = register_user(email="agent-service-user@example.com")
+    first = registered["access_token"]
+    business_user_id = registered["user"]["id"]
+    second = register_user(email="other-agent-user@example.com")["access_token"]
     origin = settings.cors_origins[0]
     with TestClient(app) as client:
         preflight = client.options(
@@ -88,13 +87,28 @@ def test_agent_service_uses_bearer_identity_and_allows_browser_origin(
         assert created.status_code == 201
         assert created.headers["access-control-allow-origin"] == origin
         first_agents = client.get(
-            "/agent/", headers={"Authorization": f"Bearer {first}"},
+            "/agent/",
+            headers={"Authorization": f"Bearer {first}"},
         ).json()["agents"]
         second_agents = client.get(
-            "/agent/", headers={"Authorization": f"Bearer {second}"},
+            "/agent/",
+            headers={"Authorization": f"Bearer {second}"},
         ).json()["agents"]
-        assert any(
-            view["id"] == created.json()["agent_id"] for view in first_agents
-        )
+        assert any(view["id"] == created.json()["agent_id"] for view in first_agents)
         assert first_agents[0]["user_id"] == business_user_id
         assert second_agents == []
+
+
+def test_agent_service_rejects_existing_bearer_when_business_session_is_revoked(
+    tmp_path,
+    client,
+    register_user,
+    agent_business_http,
+):
+    owner = register_user()
+    app = create_agent_service_app(_scope_database_url(), tmp_path)
+    headers = {"Authorization": f"Bearer {owner['access_token']}"}
+    with TestClient(app) as agent_client:
+        assert agent_client.get("/agent/", headers=headers).status_code == 200
+        assert client.post("/v1/auth/logout").status_code == 204
+        assert agent_client.get("/agent/", headers=headers).status_code == 401

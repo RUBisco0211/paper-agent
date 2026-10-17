@@ -84,6 +84,7 @@ def test_agent_schedule_creation_inherits_its_session_project(
         client.app.dependency_overrides.pop(get_agent_schedule_gateway, None)
     assert response.status_code == 201
     assert response.json() == {
+        "notify_email": False,
         "schedule_id": "schedule-agent-test",
         "project_id": project["id"],
         "cron_expression": "30 9 * * MON,FRI",

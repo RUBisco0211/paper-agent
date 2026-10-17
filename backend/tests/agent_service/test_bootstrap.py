@@ -1,7 +1,6 @@
 """AgentScope service integration tests against PostgreSQL."""
 
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -9,11 +8,11 @@ from sqlalchemy.engine import make_url
 
 from agent_service.main import create_agent_service_app
 from app.platform.config import settings
-from app.platform.security import create_access_token
 
 
 def test_new_sessions_have_distinct_internal_workspaces_when_they_share_an_agent(
     tmp_path: Path,
+    agent_access_token,
 ) -> None:
     database_url = make_url(settings.resolved_test_database_url).set(
         database="paper_agent_scope_test",
@@ -33,35 +32,43 @@ def test_new_sessions_have_distinct_internal_workspaces_when_they_share_an_agent
         admin_engine.dispose()
 
     app = create_agent_service_app(
-        database_url.render_as_string(hide_password=False), tmp_path,
+        database_url.render_as_string(hide_password=False),
+        tmp_path,
     )
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {agent_access_token}"}
     with TestClient(app) as client:
         agent = client.post("/agent/", json={"name": "Reader"}, headers=headers)
         assert agent.status_code == 201
         agent_id = agent.json()["agent_id"]
         first = client.post(
-            "/sessions/", json={"agent_id": agent_id}, headers=headers,
+            "/sessions/",
+            json={"agent_id": agent_id},
+            headers=headers,
         )
         second = client.post(
-            "/sessions/", json={"agent_id": agent_id}, headers=headers,
+            "/sessions/",
+            json={"agent_id": agent_id},
+            headers=headers,
         )
         assert first.status_code == second.status_code == 201
         sessions = client.get(
-            "/sessions/", params={"agent_id": agent_id}, headers=headers,
+            "/sessions/",
+            params={"agent_id": agent_id},
+            headers=headers,
         ).json()["sessions"]
         workspaces = {
             view["session"]["id"]: view["session"]["config"]["workspace_id"]
             for view in sessions
         }
-        assert workspaces[first.json()["session_id"]] != workspaces[
-            second.json()["session_id"]
-        ]
+        assert (
+            workspaces[first.json()["session_id"]]
+            != workspaces[second.json()["session_id"]]
+        )
 
 
 def test_agent_service_preserves_sessions_when_the_process_restarts(
     tmp_path: Path,
+    agent_access_token,
 ) -> None:
     database_url = make_url(settings.resolved_test_database_url).set(
         database="paper_agent_scope_test",
@@ -82,8 +89,7 @@ def test_agent_service_preserves_sessions_when_the_process_restarts(
 
     service_url = database_url.render_as_string(hide_password=False)
     app = create_agent_service_app(service_url, tmp_path)
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {agent_access_token}"}
     with TestClient(app) as client:
         assert client.get("/health", headers=headers).json()["status"] == "ok"
         agent = client.post("/agent/", json={"name": "Reader"}, headers=headers)

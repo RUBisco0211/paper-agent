@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import type { ChatModelConfig } from "@upstream/api/types"
 import { Button } from "@upstream/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@upstream/components/ui/dialog"
 import { Input } from "@upstream/components/ui/input"
+import { Checkbox } from "@upstream/components/ui/checkbox"
+import { Field, FieldDescription, FieldLabel } from "@upstream/components/ui/field"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@upstream/components/ui/select"
 import { Textarea } from "@upstream/components/ui/textarea"
 import { cronForFrequency, type ScheduleFrequency } from "./schedule-frequency"
@@ -14,6 +16,7 @@ export interface ScheduleDraft {
   cronExpression: string
   timezone: string
   model: ChatModelConfig
+  notify_email: boolean
 }
 
 export interface ReviewedSchedule {
@@ -21,6 +24,7 @@ export interface ReviewedSchedule {
   prompt: string
   time: string
   weekdays: string[]
+  notify_email: boolean
 }
 
 const dayCodes = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
@@ -62,12 +66,15 @@ export function ProjectScheduleDialog({
   const [time, setTime] = useState("09:00")
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")
   const [modelIndex, setModelIndex] = useState(0)
+  const [notifyEmail, setNotifyEmail] = useState(false)
   const [busy, setBusy] = useState(false)
+  const submitting = useRef(false)
   const [error, setError] = useState("")
 
   useEffect(() => {
     if (!open) return
     setError("")
+    setNotifyEmail(review?.notify_email ?? false)
     if (!review) return
     const days = review.weekdays.map((day) => dayCodes.indexOf(day)).filter((day) => day >= 0)
     setName(review.name)
@@ -79,8 +86,10 @@ export function ProjectScheduleDialog({
   }, [open, review])
 
   async function submit() {
+    if (submitting.current) return
     const model = models[modelIndex]
     if (!name.trim() || !prompt.trim() || (!review && !model)) return
+    submitting.current = true
     setBusy(true)
     setError("")
     try {
@@ -94,10 +103,11 @@ export function ProjectScheduleDialog({
         await onReview({
           name: name.trim(), prompt: prompt.trim(), time,
           weekdays: selectedDays.map((day) => dayCodes[day]),
+          notify_email: notifyEmail,
         })
       } else {
         if (!model || !onCreate) return
-        await onCreate({ name: name.trim(), prompt: prompt.trim(), cronExpression, timezone, model })
+        await onCreate({ name: name.trim(), prompt: prompt.trim(), cronExpression, timezone, model, notify_email: notifyEmail })
       }
       onOpenChange(false)
       setName("")
@@ -105,6 +115,7 @@ export function ProjectScheduleDialog({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "创建失败，请重试")
     } finally {
+      submitting.current = false
       setBusy(false)
     }
   }
@@ -126,6 +137,10 @@ export function ProjectScheduleDialog({
         {!review && <label className="grid gap-1 text-sm">时区<Input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>}
         {!review && <label className="grid gap-1 text-sm">模型<Select value={String(modelIndex)} onValueChange={(value) => setModelIndex(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{models.map((model, index) => <SelectItem key={`${model.credential_id}:${model.model}`} value={String(index)}>{model.model}</SelectItem>)}</SelectContent></Select></label>}
         {!review && models.length === 0 && <p className="text-sm text-muted-foreground">请先在模型设置中保存凭据</p>}
+        <Field orientation="horizontal" data-disabled={busy}>
+          <Checkbox id="schedule-notify-email" checked={notifyEmail} onCheckedChange={(checked) => setNotifyEmail(checked === true)} disabled={busy} />
+          <div className="flex flex-col gap-1"><FieldLabel htmlFor="schedule-notify-email">邮件通知</FieldLabel><FieldDescription>发送到当前账号邮箱</FieldDescription></div>
+        </Field>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>
       <DialogFooter><Button disabled={busy || (frequency === "custom" && customDays.length === 0) || !name.trim() || !prompt.trim() || (!review && (!models.length || !timezone.trim()))} onClick={() => void submit()}>{review ? "确认创建" : "创建任务"}</Button></DialogFooter>

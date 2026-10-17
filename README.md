@@ -19,7 +19,7 @@ docs/       产品契约、架构基线、决策记录与调研
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 前后端运行入口、包结构和依赖边界 |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | 决策索引（正文一条一文件） |
 | [docs/research/README.md](docs/research/README.md) | 分类调研索引：AgentScope、SMUI、平台技术、LLM、文献工作流与 AI 开发 |
-| [.env.example](.env.example) | compose 变量（HF 端点、TEI 镜像、向量模型） |
+| [backend/.env.example](backend/.env.example) | 后端环境变量示例；根 `.env` 单独保留 Compose 有效配置，不提交真实凭据 |
 
 按场景找决策：`docs/DECISIONS.md` 底部有「按触发场景找」的对照表。
 
@@ -28,8 +28,18 @@ docs/       产品契约、架构基线、决策记录与调研
 需要 Python 3.13、[uv](https://docs.astral.sh/uv/)、Node.js 22+、pnpm 与 Docker。
 
 ```bash
-./start.sh  # PostgreSQL、业务服务 :8000、解析 worker、AgentScope :8001、前端 :5173
+./start.sh  # PostgreSQL、Redis、业务服务 :8000、解析/邮件 worker、AgentScope :8001、前端 :5173
 ```
+
+## 邮件部署与配置边界
+
+- 根 `.env` 继续供 Compose 插值（数据库密码、TEI/HF、RustFS 等），不要删除或与 `backend/.env` 合并；数据库密码须与后端连接串一致。
+- `backend/.env` 供业务服务、AgentScope 与 worker 使用。邮件需配置 `REDIS_URL`、`PUBLIC_APP_URL` 和独立 SMTP 参数，详见 [后端部署说明](backend/README.md#邮箱认证与任务通知部署)。QQ SMTP 授权码只由主 agent 写入该未提交文件，不进入文档、日志或示例。
+- Redis 镜像 `redis:7-alpine`，只监听 `127.0.0.1:6379`；默认不持久化，临时状态丢失后须重新验证。邮件 outbox 持久存 PostgreSQL，不使用 Celery。
+- `start.sh` 等待 Redis PING，管理 `python -m app.platform.mail_worker` 的生命周期与 `.var/logs/mail-worker.log`；任一服务进程退出会触发 cleanup。Ctrl-C 停止脚本启动的进程，Compose 容器与数据库保留；`--skip-db` 不跳过 Redis，`--frontend-only` 不启动它。
+- AgentScope `/health` 需要认证，脚本只做进程/TCP 就绪探测，不伪造用户或 token；业务服务仍使用公开 `/health`。TCP 可连接不等于完整业务验收。
+- 已批准邮箱验证、密码找回与默认关闭的任务邮件通知，契约见 [0081](docs/decisions/0081-email-auth-and-schedule-notifications.md)；实现、模板 UI 预览和 QQ SMTP 联调由主 agent 整合，本页不代表邮件功能测试已通过。
+- 旧账号数据仅确认了清理意愿，执行范围尚未确认；不得据此删除数据库、对象存储或 AgentScope 数据。
 
 ## 验证
 
@@ -49,4 +59,4 @@ AgentScope 服务、会话绑定、库内文献工具、库外文献发现和引
 
 ## 数据流向
 
-为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的文献证据发往用户选择的 LLM Provider。LLM API Key 由 AgentScope Credential 服务加密保存，不写入日志、对象存储或任务队列。
+为了让回答可用，系统会把数据发给外部服务：PDF 发往 MinerU 解析正文；Chunk 文本发往 Embedding 服务生成向量；用户问题与检索到的文献证据发往用户选择的 LLM Provider。邮箱认证会经部署者配置的 SMTP 服务发送验证码和安全邮件；显式开启任务通知后，任务最终回答或失败信息也会经该服务发往用户已验证邮箱（0081）。LLM API Key 由 AgentScope Credential 服务加密保存，不写入日志、对象存储或任务队列。

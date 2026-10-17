@@ -11,16 +11,15 @@ from sqlalchemy import create_engine, text
 from agent_service.credential_storage import EncryptedCredentialStorage
 from agent_service.main import create_agent_service_app
 from app.platform.config import settings
-from app.platform.security import create_access_token
 from tests.agent_service.test_auth import _scope_database_url
 
 
 def test_credential_key_is_encrypted_in_sql_and_absent_from_list_response(
-    tmp_path: Path, monkeypatch, caplog
+    tmp_path: Path, monkeypatch, agent_access_token, caplog
 ) -> None:
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
     app = create_agent_service_app(_scope_database_url(), tmp_path)
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    token = agent_access_token
     headers = {"Authorization": f"Bearer {token}"}
     fake_key = "sk-test-credential-secret"
     with TestClient(app) as client:
@@ -56,11 +55,11 @@ def test_credential_key_is_encrypted_in_sql_and_absent_from_list_response(
 
 
 def test_credential_cannot_target_a_browser_supplied_base_url(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, agent_access_token
 ) -> None:
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
     app = create_agent_service_app(_scope_database_url(), tmp_path)
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    token = agent_access_token
     with TestClient(app) as client:
         response = client.post(
             "/credential/",
@@ -78,15 +77,15 @@ def test_credential_cannot_target_a_browser_supplied_base_url(
 
 
 def test_credential_uses_the_registered_base_url_when_browser_omits_it(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, agent_access_token
 ) -> None:
     registered_url = "https://llm.example.test/v1"
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
-    monkeypatch.setattr(
-        settings, "credential_base_urls", {"openai": registered_url}
-    )
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
-    with TestClient(create_agent_service_app(_scope_database_url(), tmp_path)) as client:
+    monkeypatch.setattr(settings, "credential_base_urls", {"openai": registered_url})
+    token = agent_access_token
+    with TestClient(
+        create_agent_service_app(_scope_database_url(), tmp_path)
+    ) as client:
         response = client.post(
             "/credential/",
             headers={"Authorization": f"Bearer {token}"},
@@ -101,11 +100,11 @@ def test_credential_uses_the_registered_base_url_when_browser_omits_it(
 
 
 def test_credential_update_response_never_returns_the_key(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, agent_access_token
 ) -> None:
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
     app = create_agent_service_app(_scope_database_url(), tmp_path)
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    token = agent_access_token
     headers = {"Authorization": f"Bearer {token}"}
     with TestClient(app) as client:
         created = client.post(
@@ -135,11 +134,11 @@ def test_credential_update_response_never_returns_the_key(
 
 
 def test_credential_storage_refuses_a_different_master_key_after_restart(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, agent_access_token
 ) -> None:
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
     database_url = _scope_database_url()
-    token, _ = create_access_token(user_id=uuid4(), auth_session_id=uuid4())
+    token = agent_access_token
     with TestClient(create_agent_service_app(database_url, tmp_path)) as client:
         created = client.post(
             "/credential/",
