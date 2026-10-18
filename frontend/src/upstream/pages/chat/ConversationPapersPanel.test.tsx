@@ -7,7 +7,7 @@ import { expect, it, vi } from "vitest";
 import { createQueryClient } from "@/app/query";
 import { ChatQuoteContext } from "./ChatQuoteContext";
 import type { PaperQuote } from "@upstream/components/chat/quote-references";
-import { ProjectPapersPanel } from "./ProjectPapersPanel";
+import { ConversationPapersPanel } from "./ConversationPapersPanel";
 
 vi.mock("@/lib/api/provider", () => ({
   useApi: () => ({
@@ -53,7 +53,7 @@ vi.mock("@/pages/paper-reading", () => ({
 it("shows library papers when the conversation scope is global", async () => {
   render(
     <QueryClientProvider client={createQueryClient()}>
-      <ProjectPapersPanel projectId={null} sessionId="session-1" />
+      <ConversationPapersPanel projectId={null} sessionId="session-1" />
     </QueryClientProvider>,
   );
   expect(
@@ -75,7 +75,7 @@ it("opens a paper inside the conversation sidebar and returns to its list", asyn
           openPaper: () => true,
         }}
       >
-        <ProjectPapersPanel projectId="project-1" sessionId="session-1" />
+        <ConversationPapersPanel projectId="project-1" sessionId="session-1" />
       </ChatQuoteContext.Provider>
     </QueryClientProvider>,
   );
@@ -119,7 +119,7 @@ it("opens a quoted paper in the sidebar with its saved block locator", async () 
           openPaper: () => true,
         }}
       >
-        <ProjectPapersPanel projectId="project-1" sessionId="session-1" />
+        <ConversationPapersPanel projectId="project-1" sessionId="session-1" />
       </ChatQuoteContext.Provider>
     </QueryClientProvider>,
   );

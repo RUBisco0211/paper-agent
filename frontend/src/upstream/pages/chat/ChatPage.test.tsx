@@ -46,8 +46,8 @@ vi.mock("@upstream/components/ui/resizable", () => ({
 vi.mock("./ChatSidebar", () => ({
   ChatSidebar: () => <aside>会话侧栏</aside>,
 }));
-vi.mock("./ProjectPapersPanel", () => ({
-  ProjectPapersPanel: () => <aside>项目文献</aside>,
+vi.mock("./ConversationPapersPanel", () => ({
+  ConversationPapersPanel: () => <aside>项目文献</aside>,
 }));
 
 function Path() {

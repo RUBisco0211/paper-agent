@@ -13,7 +13,7 @@ import type {
 } from "@upstream/components/chat/quote-references";
 import { ChatQuoteContext } from "./ChatQuoteContext";
 
-export function ProjectPapersPanel({
+export function ConversationPapersPanel({
   projectId,
   sessionId,
   onReadingChange,

@@ -25,14 +25,37 @@ import {
   type PaperQuoteOpener,
 } from "./ChatQuoteContext";
 import type { QuoteReference } from "@upstream/components/chat/quote-references";
-import { ProjectPapersPanel } from "./ProjectPapersPanel";
+import { ConversationPapersPanel } from "./ConversationPapersPanel";
 import { chatPath } from "./chat-view";
+
+export interface ChatWorkspaceContext {
+  draftQuoteKey: string;
+  draftProjectId: string;
+  setDraftProjectId: (projectId: string) => void;
+}
 
 export function ChatPage() {
   const { api } = useApi();
   const navigate = useNavigate();
   const location = useLocation();
-  const outlet = useOutlet();
+  const initialDraftProjectId =
+    (location.state as { initialProjectId?: string | null } | null)
+      ?.initialProjectId ?? "";
+  const [draftScope, setDraftScope] = useState({
+    key: location.key,
+    projectId: initialDraftProjectId,
+  });
+  const draftProjectId =
+    draftScope.key === location.key
+      ? draftScope.projectId
+      : initialDraftProjectId;
+  const draftQuoteKey = `draft:${location.key}:${draftProjectId || "global"}`;
+  const outlet = useOutlet({
+    draftQuoteKey,
+    draftProjectId,
+    setDraftProjectId: (projectId: string) =>
+      setDraftScope({ key: location.key, projectId }),
+  } satisfies ChatWorkspaceContext);
   const mainRef = useRef<HTMLDivElement>(null);
   const previousPath = useRef<string | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
@@ -95,8 +118,12 @@ export function ChatPage() {
   const activeSession = sessions.data?.find(
     (item) => chatPath(item) === location.pathname,
   );
-  const projectId = projectRouteId ?? activeSession?.binding.project_id ?? null;
-  const papersScope = projectId ?? (activeSession ? "global" : null);
+  const isNewChat = location.pathname === "/chat/new";
+  const projectId = isNewChat
+    ? draftProjectId || null
+    : (projectRouteId ?? activeSession?.binding.project_id ?? null);
+  const papersScope =
+    projectId ?? (activeSession || isNewChat ? "global" : null);
 
   useEffect(() => {
     if (projectRouteId) setPapersOpen(true);
@@ -231,10 +258,14 @@ export function ChatPage() {
                     minSize="18rem"
                     maxSize="75%"
                   >
-                    <ProjectPapersPanel
+                    <ConversationPapersPanel
                       key={papersScope}
                       projectId={projectId}
-                      sessionId={activeSession?.session.session.id ?? null}
+                      sessionId={
+                        isNewChat
+                          ? draftQuoteKey
+                          : (activeSession?.session.session.id ?? null)
+                      }
                       onReadingChange={setReadingPaper}
                     />
                   </ResizablePanel>
