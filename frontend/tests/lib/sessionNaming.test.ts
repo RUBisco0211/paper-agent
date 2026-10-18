@@ -2,7 +2,7 @@ import { UserMsg } from "@agentscope-ai/agentscope/message";
 import { expect, it } from "vitest";
 
 import { createQueryClient } from "@/app/query";
-import { applySessionName, sessionNameInput } from "@/lib/sessionNaming";
+import { applySessionName, sessionNameInput } from "../../src/lib/sessionNaming";
 
 it("builds naming input from the first prompt and its quote references", () => {
   const message = UserMsg({ name: "user", content: "比较这两篇文献" });

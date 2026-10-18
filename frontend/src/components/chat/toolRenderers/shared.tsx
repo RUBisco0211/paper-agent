@@ -37,6 +37,22 @@ export function getResultText(result?: ToolResultBlock): string {
 }
 
 /**
+ * Pretty-print a JSON object/array result so tool output keeps its line breaks
+ * and indentation. Plain text, malformed JSON and scalar JSON pass through.
+ */
+export function formatResultText(text: string): string {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return text;
+	try {
+		const parsed: unknown = JSON.parse(trimmed);
+		if (parsed === null || typeof parsed !== 'object') return text;
+		return JSON.stringify(parsed, null, 2);
+	} catch {
+		return text;
+	}
+}
+
+/**
  * Shared class for the *leading label* of a tool-call trigger line — the verb
  * or tool name such as "Read", "Bash", "Grep pattern", or the generic
  * "Call tool". Deliberately not bold (no `<strong>`): every tool's label looks

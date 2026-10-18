@@ -84,7 +84,7 @@ def test_pdf_quote_preserves_many_rectangles_only_in_metadata():
     quote = PaperQuote(kind="pdf_selection", user_paper_id="paper", version="v1",
                        page=2, rects=rects, selected_text="selected", comment="")
     body = QuotedChatRequest(agent_id="agent", session_id="session", references=[quote])
-    assert body.references[0].rects == rects
+    assert quote.rects == rects
     content = render_quoted_content("review", body.references)
     assert "selected" in content
     assert "rects" not in content
@@ -92,8 +92,15 @@ def test_pdf_quote_preserves_many_rectangles_only_in_metadata():
 
 
 def test_pdf_quote_shows_only_paper_and_page_as_source():
-    quote = PaperQuote(kind="pdf_selection", user_paper_id="paper", version="v1",
-                       page=2, selected_text="Abstract", comment="", source_title="Example")
+    quote = PaperQuote(
+        kind="pdf_selection",
+        user_paper_id="paper",
+        version="v1",
+        page=2,
+        selected_text="Abstract",
+        comment="",
+        source_title="Example",
+    )
     content = render_quoted_content("翻译", [quote])
     assert "来源：文献《Example》第 2 页" in content
     assert "PDF 选区" not in content

@@ -2,7 +2,12 @@ import type { ToolCallBlock } from '@agentscope-ai/agentscope/message';
 import * as mime from 'mime-types';
 import type { ReactNode } from 'react';
 
-import { getResultText, toolArgClass, toolLabelClass } from '@/components/chat/toolRenderers/shared';
+import {
+	formatResultText,
+	getResultText,
+	toolArgClass,
+	toolLabelClass,
+} from '@/components/chat/toolRenderers/shared';
 import type { TFunction, ToolCallWithResult } from './types';
 
 export function defaultGetDisplayName(call: ToolCallBlock): string {
@@ -73,7 +78,7 @@ export function defaultRenderBody(pair: ToolCallWithResult, t: TFunction): React
 
 	return (
 		<pre className="border rounded-sm bg-background p-2 text-xs overflow-auto max-h-50 whitespace-pre-wrap">
-			{text}
+			{formatResultText(text)}
 		</pre>
 	);
 }
