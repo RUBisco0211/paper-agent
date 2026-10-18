@@ -166,10 +166,13 @@ class ProjectService:
         project_id: UUID,
         limit: int,
         offset: int,
+        query: str | None = None,
     ) -> tuple[list[LibraryEntry], int]:
         self.get(user_id=user_id, project_id=project_id)
         links, total = self._repository.papers_of(
             project_id=project_id,
+            user_id=user_id,
+            query=query,
             limit=limit,
             offset=offset,
         )

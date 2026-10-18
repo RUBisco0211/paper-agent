@@ -1,13 +1,13 @@
-import type { ApiClient } from "../client"
+import type { ApiClient } from "../client";
 import type {
   AddProjectPapersResponse,
   Page,
   Project,
   UserPaperSummary,
   Uuid,
-} from "../types"
+} from "../types";
 
-const PROJECTS = "/v1/projects"
+const PROJECTS = "/v1/projects";
 
 export function projectEndpoints(client: ApiClient) {
   return {
@@ -17,7 +17,8 @@ export function projectEndpoints(client: ApiClient) {
     list: (params: { limit?: number; offset?: number } = {}) =>
       client.request<Page<Project>>(PROJECTS, { query: { ...params } }),
 
-    detail: (projectId: Uuid) => client.request<Project>(`${PROJECTS}/${projectId}`),
+    detail: (projectId: Uuid) =>
+      client.request<Project>(`${PROJECTS}/${projectId}`),
 
     rename: (
       projectId: Uuid,
@@ -32,15 +33,21 @@ export function projectEndpoints(client: ApiClient) {
     remove: (projectId: Uuid) =>
       client.request<void>(`${PROJECTS}/${projectId}`, { method: "DELETE" }),
 
-    papers: (projectId: Uuid, params: { limit?: number; offset?: number } = {}) =>
-      client.request<Page<UserPaperSummary>>(`${PROJECTS}/${projectId}/papers`, {
-        query: { ...params },
-      }),
+    papers: (
+      projectId: Uuid,
+      params: { limit?: number; offset?: number; q?: string } = {},
+    ) =>
+      client.request<Page<UserPaperSummary>>(
+        `${PROJECTS}/${projectId}/papers`,
+        {
+          query: { ...params },
+        },
+      ),
 
     addPapers: (projectId: Uuid, paperIds: Uuid[]) =>
       client.request<AddProjectPapersResponse>(
         `${PROJECTS}/${projectId}/papers`,
         { method: "POST", json: { paper_ids: paperIds } },
       ),
-  }
+  };
 }

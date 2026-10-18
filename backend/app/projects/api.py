@@ -141,10 +141,12 @@ def list_project_papers(
     user: CurrentUser,
     params: PageParamsDep,
     service: ProjectServiceDep,
+    q: str | None = None,
 ) -> Page[UserPaperSummary]:
     entries, total = service.list_papers(
         user_id=user.id,
         project_id=project_id,
+        query=q,
         limit=params.limit,
         offset=params.offset,
     )

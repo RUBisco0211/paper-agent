@@ -14,6 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from ..library.repo import UserPaperRecord
 from ..platform.database import (
     Base,
     CreatedAtMixin,
@@ -183,9 +184,19 @@ class ProjectRepository:
         project_id: UUID,
         limit: int,
         offset: int,
+        user_id: UUID,
+        query: str | None = None,
     ) -> tuple[list[ProjectPaper], int]:
+        visible_papers = select(UserPaperRecord.id).where(
+            UserPaperRecord.user_id == user_id,
+        )
+        if query:
+            visible_papers = visible_papers.where(
+                UserPaperRecord.title.ilike(f"%{query.strip()}%"),
+            )
         statement = select(ProjectPaperRecord).where(
             ProjectPaperRecord.project_id == project_id,
+            ProjectPaperRecord.user_paper_id.in_(visible_papers),
         )
         count_statement = statement.with_only_columns(func.count(ProjectPaperRecord.id))
         records = self._session.scalars(
