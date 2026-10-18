@@ -18,6 +18,7 @@ from .paper_agent import PaperAgent
 from .quoted_chat import router as quoted_chat_router
 from .schedule_api import router as tool_schedule_router
 from .schedule_notifications import ScheduleNotificationStorage
+from .session_name import router as session_name_router
 from .tools import build_agent_tools
 from .tools.request import business_request
 
@@ -60,6 +61,7 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
     app.dependency_overrides[get_current_user_id] = get_agent_service_user_id
     app.include_router(tool_schedule_router)
     app.include_router(quoted_chat_router)
+    app.include_router(session_name_router)
     if settings.cors_origins:
         app.add_middleware(
             CORSMiddleware,

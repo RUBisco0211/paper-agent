@@ -166,6 +166,18 @@ export interface CreateSessionResponse {
 	session_id: string;
 }
 
+export interface GenerateSessionNameRequest {
+	agent_id: string;
+	text: string;
+	excerpts?: string[];
+	project_name?: string;
+	project_description?: string;
+}
+
+export interface GenerateSessionNameResponse {
+	name: string;
+}
+
 export interface InterruptSessionResponse {
 	session_id: string;
 }

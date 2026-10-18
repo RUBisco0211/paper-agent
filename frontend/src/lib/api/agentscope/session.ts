@@ -3,6 +3,8 @@ import type {
 	AgentEvent,
 	CreateSessionRequest,
 	CreateSessionResponse,
+	GenerateSessionNameRequest,
+	GenerateSessionNameResponse,
 	InterruptSessionResponse,
 	SessionListResponse,
 	SessionRecord,
@@ -48,6 +50,14 @@ export const sessionApi = {
 		freshlyCreated.add(res.session_id);
 		return res;
 	},
+
+	generateName: (sessionId: string, body: GenerateSessionNameRequest) =>
+		client.post<GenerateSessionNameResponse>(
+			`/sessions/${sessionId}/name`,
+			body,
+			undefined,
+			{ silent: true },
+		),
 
 	/**
 	 * Update a session's configuration.

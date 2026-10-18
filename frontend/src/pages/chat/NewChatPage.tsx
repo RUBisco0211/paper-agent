@@ -7,6 +7,11 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 
 import { useApi } from "@/components/providers/ApiProvider";
 import { availableChatModels, createBoundSession } from "@/lib/agentSessions";
+import {
+  applySessionName,
+  generateSessionName,
+  sessionNameInput,
+} from "@/lib/sessionNaming";
 import { describeError } from "@/lib/errors";
 import { chatApi } from "@/lib/api/agentscope/chat";
 import { TextInput } from "@/components/chat/TextInput";
@@ -22,7 +27,10 @@ import { reasoningEffortsForModel } from "@/components/chat/chatView";
 import type { ChatWorkspaceContext } from "./ChatPage";
 import { ChatQuoteContext } from "@/components/chat/chatQuoteContext";
 import { QuoteBadge } from "@/components/chat/QuoteBadge";
-import { normalizePdfQuoteRects, readQuoteReferences } from "@/components/chat/quoteReferences";
+import {
+  normalizePdfQuoteRects,
+  readQuoteReferences,
+} from "@/components/chat/quoteReferences";
 import type { QuoteReference } from "@/types/chat";
 
 export function NewChatPage() {
@@ -47,6 +55,7 @@ export function NewChatPage() {
     null,
   );
   const pendingMessage = useRef<Msg | null>(null);
+  const namingStarted = useRef(false);
   const [pendingQuotes, setPendingQuotes] = useState<QuoteReference[]>([]);
   const pendingQuotesRef = useRef(pendingQuotes);
   pendingQuotesRef.current = pendingQuotes;
@@ -98,6 +107,9 @@ export function NewChatPage() {
         selected.model,
       )
     : [];
+  const namingProject = projectId
+    ? projects.data?.items.find((project) => project.id === projectId)
+    : undefined;
 
   async function sendFirst(blocks: ContentBlock[], retry = false) {
     if (!selected || busy) return;
@@ -136,6 +148,32 @@ export function NewChatPage() {
           modelConfig: { ...selected, parameters },
         }));
       pendingSession.current = session;
+      if (!namingStarted.current) {
+        namingStarted.current = true;
+        try {
+          const namingInput = sessionNameInput(message);
+          if (namingInput.text || namingInput.excerpts.length) {
+            void generateSessionName(session.agentId, session.sessionId, {
+              ...namingInput,
+              projectName: namingProject?.name,
+              projectDescription: namingProject?.description ?? undefined,
+            })
+              .then((name) =>
+                applySessionName(
+                  queryClient,
+                  session.agentId,
+                  session.sessionId,
+                  name,
+                ),
+              )
+              .catch((cause) => {
+                console.warn("会话命名失败", cause);
+              });
+          }
+        } catch (cause) {
+          console.warn("会话命名失败", cause);
+        }
+      }
       const references = readQuoteReferences(message.metadata);
       if (references.length) {
         await chatApi.triggerQuoted({

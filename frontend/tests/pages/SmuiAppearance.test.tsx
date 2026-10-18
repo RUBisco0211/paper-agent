@@ -3,7 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { AssistantMsg, UserMsg } from "@agentscope-ai/agentscope/message"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
+import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom"
 import { expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
@@ -24,7 +24,7 @@ vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: {
   projects: { list: async () => ({ items: [] }) },
   sessions: { llmCatalog: async () => ({ providers: [] }) },
 } }) }))
-vi.mock("@/lib/agentSessions", () => ({ availableChatModels: async () => [], createBoundSession: vi.fn() }))
+vi.mock("@/lib/agentSessions", () => ({ availableChatModels: async () => [], createBoundSession: vi.fn(), sameSessionId: (left: string, right: string) => left === right }))
 vi.mock("@/lib/api/agentscope/credential", () => ({ credentialApi: { list: async () => ({ credentials: [] }) } }))
 vi.mock("@/components/chat/TextInput", () => ({ TextInput: ({ className }: { className: string }) => <div data-testid="composer" className={className} /> }))
 vi.mock("@/components/ui/MessageScroller", () => ({
@@ -45,7 +45,7 @@ it.each([
 })
 
 it("the draft composer leaves surface styling to the shared input when a new conversation is opened", () => {
-  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><NewChatPage /></MemoryRouter></QueryClientProvider>)
+  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={["/chat/new"]}><Routes><Route element={<Outlet context={{ draftQuoteKey: "draft", draftProjectId: "", setDraftProjectId: () => {} }} />}><Route path="/chat/new" element={<NewChatPage />} /></Route></Routes></MemoryRouter></QueryClientProvider>)
   expect(screen.getByTestId("composer").className).not.toMatch(/rounded-|bg-|p-1/)
 })
 
