@@ -1,4 +1,4 @@
-import type { ApiErrorBody } from "./types"
+import type { ApiErrorBody } from "@/types/business"
 
 /** Every non-2xx response is surfaced as one typed error. */
 export class ApiError extends Error {

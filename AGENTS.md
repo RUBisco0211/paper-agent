@@ -39,9 +39,10 @@ api.py → service.py → domain.py / repo.py / ports.py → platform/
 - 新增后端支持包 → 照 `backend/app/literature_support/processing/`（纯函数 + 有状态类，不凑统一外观）
 - 新增 Agent 工具 → 照 `backend/agent_service/tools/`，按功能分组并由 `paper_agent.py` 白名单装配
 - 新增后端测试 → 照 `backend/tests/library/test_upload.py`
-- 新增业务前端页面 → 照 `frontend/src/pages/discover.tsx`；扩展 web_ui 会话页 → 照 `frontend/src/upstream/pages/chat/NewChatPage.tsx`
-- 新增前端组件 → 照 `frontend/src/components/chat/message-thread.tsx`
-- 新增前端测试 → 照 `frontend/src/components/chat/message-thread.test.tsx`
+- 新增业务前端页面 → 照 `frontend/src/pages/DiscoverPage.tsx`；扩展 web_ui 会话页 → 照 `frontend/src/pages/chat/NewChatPage.tsx`
+- 新增前端组件 → 照 `frontend/src/components/papers/PaperDetailSheet.tsx`
+- 新增组件测试 → 与组件同名并使用 PascalCase `.test` 后缀，照 `frontend/src/components/papers/PaperDetailSheet.test.tsx`
+- 前端组件源码文件用 PascalCase；hooks、工具、类型、API 等非组件源码文件用 camelCase；组件测试与组件同名（PascalCase），hook/工具测试用 camelCase。基础原语放 `frontend/src/components/ui/`，业务组件按模块放 `frontend/src/components/<module>/`，应用级 Provider 放 `frontend/src/components/providers/`，路由页面放 `frontend/src/pages/`
 
 ## 4. 外部依赖
 

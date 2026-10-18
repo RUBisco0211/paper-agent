@@ -1,0 +1,41 @@
+import { createContext, useContext, useMemo, type ReactNode } from "react"
+
+import { AccessTokenStore } from "@/lib/auth/tokenStore"
+import { createApi, type Api, type ApiClientOptions } from "@/lib/api"
+import { configureAgentClient } from "@/lib/api/agentscope/client"
+
+interface ApiContextValue {
+  api: Api
+  tokens: AccessTokenStore
+}
+
+const ApiContext = createContext<ApiContextValue | null>(null)
+
+export function ApiProvider({
+  children,
+  options,
+}: {
+  children: ReactNode
+  options?: Omit<ApiClientOptions, "getAccessToken" | "onAccessToken">
+}) {
+  const value = useMemo<ApiContextValue>(() => {
+    const tokens = new AccessTokenStore()
+    const api = createApi({ ...options, ...tokens.clientOptions })
+    configureAgentClient({
+      baseUrl: api.agentService.base,
+      getAccessToken: () => tokens.current?.access_token ?? null,
+      refreshAccessToken: async () => (await api.auth.refresh()).access_token,
+    })
+    return { api, tokens }
+  }, [options])
+
+  return <ApiContext.Provider value={value}>{children}</ApiContext.Provider>
+}
+
+export function useApi(): ApiContextValue {
+  const value = useContext(ApiContext)
+  if (!value) {
+    throw new Error("useApi 必须在 ApiProvider 内使用")
+  }
+  return value
+}

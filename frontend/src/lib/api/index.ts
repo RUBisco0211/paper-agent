@@ -6,8 +6,7 @@ import { importEndpoints, retrievalEndpoints } from "./endpoints/imports"
 
 export * from "./client"
 export * from "./errors"
-export * from "./sse"
-export type * from "./types"
+export type * from "@/types/business"
 
 /**
  * One object per backend domain, sharing a single client so token refresh stays

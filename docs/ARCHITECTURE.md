@@ -9,7 +9,7 @@
 | `backend/app/main.py` → `app/api.py` | 业务 FastAPI，组合各业务包路由；持有业务 PostgreSQL、对象存储及摄取任务。 |
 | `backend/agent_service/main.py` | 单独的 AgentScope HTTP 服务，使用自己的数据库；注入用户身份、加密凭据和受会话范围约束的工具；0081 要求认证逐请求经 HTTP 回查业务登录态，不直接访问业务用户表。 |
 | `backend/app/literature_support/processing/worker.py` | 独立摄取 worker，从业务数据库领取任务，按阶段处理文献。 |
-| `frontend/src/upstream/main.tsx` → `upstream/App.tsx` | React 入口与当前路由表；业务 API 和 AgentScope API 分别调用。 |
+| `frontend/src/main.tsx` → `src/app/App.tsx` | React 入口与当前路由表；业务 API 和 AgentScope API 分别调用。 |
 
 业务库与 AgentScope 库通过 `session_id` 和业务绑定关联；业务代码不直接 JOIN AgentScope 表。PDF 和 MinerU 产物存对象存储，业务库保存条目、处理状态、检索块及产物指针。
 
@@ -70,15 +70,20 @@
 
 | 目录 | 作用 |
 |---|---|
-| `src/upstream/App.tsx` | 当前路由表和受保护的应用布局。 |
-| `src/upstream/components/layout/` | 全局图标栏、页面容器和入口间保活。 |
-| `src/upstream/pages/chat/`、`schedule/`、`imports/` | 基于 AgentScope web_ui 扩展的对话、定时任务与入库队列。 |
-| `src/upstream/components/chat/`、`ui/`、`src/upstream/api/` | web_ui 消息与表单组件、基础 UI、AgentScope API 客户端。 |
-| `src/pages/` | 业务路由页面：文献库、阅读、在线检索、项目、设置与登录。 |
-| `src/components/{chat,papers,projects}/` | 业务复合组件；部分弹窗、详情和 PDF 组件目前直接使用 `useApi`/`useQuery`，弹窗视觉使用 upstream 的 Dialog/Button。 |
-| `src/components/ui/` | 项目扩展的展示原语；与 upstream 的组件职责区分。 |
-| `src/lib/api/` | 业务服务 HTTP/SSE 客户端、端点和类型；不承载组件。 |
-| `src/lib/auth/`、`src/lib/settings/`、`src/lib/theme/` | 登录态、设置和主题状态。 |
+| `src/app/App.tsx` | 当前路由表和受保护的应用布局。 |
+| `src/pages/` | 业务路由页面：文献库、阅读、在线检索、登录、对话与定时任务入口。 |
+| `src/pages/chat/`、`schedule/` | 基于 web_ui 扩展的对话与定时任务页面。 |
+| `src/components/ui/` | 全部基础展示原语（web_ui 基座，加上卡片与滚动区的项目扩展）。 |
+| `src/components/chat/` | 消息渲染、输入、工具调用渲染、引用与对话侧栏。 |
+| `src/components/layout/`、`markdown/` | 布局骨架、入口间保活与共享 Markdown 渲染器。 |
+| `src/components/schedule/`、`imports/` | 定时任务对话框/详情、日历网格与入库队列面板。 |
+| `src/components/providers/` | 应用级 React Provider（API、认证、主题、Agent UI、入库队列、音频）。 |
+| `src/components/{papers,projects}/` | 业务复合组件；部分弹窗、详情和 PDF 组件直接使用 `useApi`/`useQuery`。 |
+| `src/lib/api/` | 业务服务 HTTP 客户端、端点与请求封装。 |
+| `src/lib/api/agentscope/` | AgentScope HTTP/SSE 客户端与端点。 |
+| `src/types/` | 前端通用类型：业务、AgentScope、调度、会话与聊天引用。 |
+| `src/hooks/`、`src/i18n/`、`src/assets/` | 跨页面 hooks、文案资源与静态资源。 |
+| `src/lib/{auth,settings,hooks,papers}/` | 登录态令牌、设置、通用 hooks 与论文词表。 |
 | `src/test/` | 前端测试公共设施，测试文件紧贴被测页面或组件。 |
 
-新业务页面放 `src/pages/`，需要沿用 web_ui 会话/任务布局时放对应 `src/upstream/pages/`。`AGENTS.md` 目前要求页面负责取数、组件只负责展示；现有业务复合组件中的直接取数是待确认的规范与代码差异，不应当在新代码中照搬。路由以 `src/upstream/App.tsx` 为准，不把遗留入口文件当作当前路由表。
+新业务页面放 `src/pages/`，需要沿用 web_ui 会话/任务布局时放 `src/pages/chat/` 或 `src/pages/schedule/`。基础原语放 `src/components/ui/`，业务组件按模块放 `src/components/<module>/`；组件源码文件用 PascalCase，其余源码文件用 camelCase；组件测试与组件同名（PascalCase），hook/工具测试用 camelCase。`AGENTS.md` 目前要求页面负责取数、组件只负责展示；现有业务复合组件中的直接取数是待确认的规范与代码差异，不应当在新代码中照搬。路由以 `src/app/App.tsx` 为准。web_ui 已拆入上述目录，来源与许可见 `frontend/UPSTREAM_LICENSE`。

@@ -30,6 +30,31 @@ from .schemas import (
 router = APIRouter(tags=["retrieval"])
 
 
+def _channel_reads(channels) -> dict[str, ChannelRead]:
+    return {
+        name: ChannelRead(
+            status=report.status,
+            result_count=report.result_count,
+            detail=report.detail,
+        )
+        for name, report in channels.items()
+    }
+
+
+def _evidence_fields(item) -> dict:
+    return {
+        "paper_id": item.paper_id,
+        "chunk_ids": item.chunk_ids,
+        "title_path": item.title_path,
+        "snippet": item.snippet,
+        "page_start": item.page_start,
+        "page_end": item.page_end,
+        "score": item.score,
+        "keyword_rank": item.keyword_rank,
+        "vector_rank": item.vector_rank,
+    }
+
+
 @router.post("/internal/quote-reference/resolve", response_model=QuoteReferenceResolved)
 def resolve_quote_reference(
     payload: QuoteReferenceResolveRequest,
@@ -110,25 +135,10 @@ def search_bound_session(
     return BoundSearchResponse(
         scope=scope,
         status=outcome.status,
-        channels={
-            name: ChannelRead(
-                status=report.status,
-                result_count=report.result_count,
-                detail=report.detail,
-            )
-            for name, report in outcome.channels.items()
-        },
+        channels=_channel_reads(outcome.channels),
         evidence=[
             BoundEvidenceRead(
-                paper_id=item.paper_id,
-                chunk_ids=item.chunk_ids,
-                title_path=item.title_path,
-                snippet=item.snippet,
-                page_start=item.page_start,
-                page_end=item.page_end,
-                score=item.score,
-                keyword_rank=item.keyword_rank,
-                vector_rank=item.vector_rank,
+                **_evidence_fields(item),
                 citation_id=build_citation_id(item.chunk_ids),
             )
             for item in outcome.evidence
@@ -141,28 +151,8 @@ def _to_response(outcome: SearchOutcome, request: SearchRequest) -> SearchRespon
         query=request.query,
         scope=request.scope,
         status=outcome.status,
-        channels={
-            name: ChannelRead(
-                status=report.status,
-                result_count=report.result_count,
-                detail=report.detail,
-            )
-            for name, report in outcome.channels.items()
-        },
-        evidence=[
-            EvidenceRead(
-                paper_id=item.paper_id,
-                chunk_ids=item.chunk_ids,
-                title_path=item.title_path,
-                snippet=item.snippet,
-                page_start=item.page_start,
-                page_end=item.page_end,
-                score=item.score,
-                keyword_rank=item.keyword_rank,
-                vector_rank=item.vector_rank,
-            )
-            for item in outcome.evidence
-        ],
+        channels=_channel_reads(outcome.channels),
+        evidence=[EvidenceRead(**_evidence_fields(item)) for item in outcome.evidence],
     )
 
 

@@ -4,10 +4,11 @@ import re
 
 import httpx
 
+from app.schedules.domain import WEEKDAYS
+
 from .base import ScheduleCreateTool
 from .request import business_request
 
-_DAILY = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 _LOCAL_TIME = re.compile(
     r"^(?:(上午|早上|中午|下午|晚上)\s*)?"
     r"(\d{1,2})(?::(\d{1,2})|[点时](半|\d{1,2}分?)?)?$"
@@ -68,7 +69,7 @@ def build_schedule_tool(
                     "name": name,
                     "prompt": prompt,
                     "time": normalize_schedule_time(time),
-                    "weekdays": weekdays or _DAILY,
+                    "weekdays": weekdays or list(WEEKDAYS),
                     "notify_email": notify_email,
                 },
             )

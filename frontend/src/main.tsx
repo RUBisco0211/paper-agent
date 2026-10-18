@@ -2,17 +2,17 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
-import { ApiProvider } from "@/lib/api/provider"
-import { AuthProvider } from "@/lib/auth/provider"
-import { Toaster } from "@upstream/components/ui/sonner"
-import { TooltipProvider } from "@upstream/components/ui/tooltip"
-import App from "@upstream/App"
+import { ApiProvider } from "@/components/providers/ApiProvider"
+import { AuthProvider } from "@/components/providers/AuthProvider"
+import { Toaster } from "@/components/ui/Sonner"
+import { TooltipProvider } from "@/components/ui/Tooltip"
+import App from "@/app/App"
 import { createQueryClient } from "@/app/query"
-import { ThemeProvider } from "@/lib/theme/theme-provider"
-import { clearLlmConfig } from "@/lib/settings/llm-config"
+import { ThemeProvider } from "@/components/providers/ThemeProvider"
+import { clearLlmConfig } from "@/lib/settings/llmConfig"
 
-import "./upstream/index.css"
-import "./upstream/i18n"
+import "./index.css"
+import "@/i18n"
 
 const container = document.getElementById("root")
 

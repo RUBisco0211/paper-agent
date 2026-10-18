@@ -36,9 +36,18 @@ class PaperReadTool(FunctionTool):
         )
 
 
-class ApprovedImportTool(FunctionTool):
-    def __init__(self, *args, always_allow: bool = False, **kwargs) -> None:
+class UserReviewedWriteTool(FunctionTool):
+    """Write tool that asks for approval unless the user opted out."""
+
+    def __init__(
+        self,
+        *args,
+        message: str,
+        always_allow: bool = False,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
+        self.message = message
         self.always_allow = always_allow
 
     async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
@@ -46,23 +55,26 @@ class ApprovedImportTool(FunctionTool):
             behavior=PermissionBehavior.ALLOW
             if self.always_allow
             else PermissionBehavior.ASK,
-            message="User review required before importing selected papers.",
+            message=self.message,
             bypass_immune=not self.always_allow,
         )
 
 
-class ScheduleCreateTool(FunctionTool):
-    def __init__(self, *args, always_allow: bool = False, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.always_allow = always_allow
+class ApprovedImportTool(UserReviewedWriteTool):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(
+            *args,
+            message="User review required before importing selected papers.",
+            **kwargs,
+        )
 
-    async def check_permissions(self, *_args, **_kwargs) -> PermissionDecision:
-        return PermissionDecision(
-            behavior=PermissionBehavior.ALLOW
-            if self.always_allow
-            else PermissionBehavior.ASK,
+
+class ScheduleCreateTool(UserReviewedWriteTool):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(
+            *args,
             message="User review required before creating a scheduled task.",
-            bypass_immune=not self.always_allow,
+            **kwargs,
         )
 
 

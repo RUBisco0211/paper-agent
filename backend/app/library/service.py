@@ -722,46 +722,42 @@ class PaperLibraryService:
             for user_paper in user_papers
         ]
 
-    def _store_stream(self, stream: BinaryIO) -> StoredPdf:
-        with tempfile.TemporaryDirectory(prefix="paper-agent-upload-") as directory:
-            temporary_path = Path(directory) / "upload.pdf"
-            byte_size = 0
-            hasher = hashlib.sha256()
-            magic = b""
-            with temporary_path.open("wb") as handle:
-                while chunk := stream.read(CHUNK_SIZE):
-                    if not magic:
-                        magic = chunk[: len(b"%PDF-")]
-                    byte_size += len(chunk)
-                    if byte_size > self._max_pdf_bytes:
-                        raise AppError(
-                            "PDF 超过大小上限",
-                            code=ErrorCode.PDF_TOO_LARGE,
-                            status_code=413,
-                        )
-                    hasher.update(chunk)
-                    handle.write(chunk)
-            ensure_pdf_magic(magic)
-            return self._finalize(temporary_path, hasher.hexdigest(), byte_size)
-
-    def _store_path(self, path: Path) -> StoredPdf:
+    def _digest(
+        self,
+        source: BinaryIO,
+        sink: BinaryIO | None = None,
+    ) -> tuple[str, int]:
+        """Hash and size-check a PDF, optionally copying it to ``sink``."""
         hasher = hashlib.sha256()
         byte_size = 0
         magic = b""
-        with path.open("rb") as handle:
-            while chunk := handle.read(CHUNK_SIZE):
-                if not magic:
-                    magic = chunk[: len(b"%PDF-")]
-                byte_size += len(chunk)
-                if byte_size > self._max_pdf_bytes:
-                    raise AppError(
-                        "PDF 超过大小上限",
-                        code=ErrorCode.PDF_TOO_LARGE,
-                        status_code=413,
-                    )
-                hasher.update(chunk)
+        while chunk := source.read(CHUNK_SIZE):
+            if not magic:
+                magic = chunk[: len(b"%PDF-")]
+            byte_size += len(chunk)
+            if byte_size > self._max_pdf_bytes:
+                raise AppError(
+                    "PDF 超过大小上限",
+                    code=ErrorCode.PDF_TOO_LARGE,
+                    status_code=413,
+                )
+            hasher.update(chunk)
+            if sink is not None:
+                sink.write(chunk)
         ensure_pdf_magic(magic)
-        return self._finalize(path, hasher.hexdigest(), byte_size)
+        return hasher.hexdigest(), byte_size
+
+    def _store_stream(self, stream: BinaryIO) -> StoredPdf:
+        with tempfile.TemporaryDirectory(prefix="paper-agent-upload-") as directory:
+            temporary_path = Path(directory) / "upload.pdf"
+            with temporary_path.open("wb") as handle:
+                file_hash, byte_size = self._digest(stream, handle)
+            return self._finalize(temporary_path, file_hash, byte_size)
+
+    def _store_path(self, path: Path) -> StoredPdf:
+        with path.open("rb") as handle:
+            file_hash, byte_size = self._digest(handle)
+        return self._finalize(path, file_hash, byte_size)
 
     def _finalize(
         self,

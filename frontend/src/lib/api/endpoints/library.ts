@@ -13,7 +13,7 @@ import type {
   UserPaperDetail,
   UserPaperSummary,
   Uuid,
-} from "../types"
+} from "@/types/business"
 
 const PAPERS = "/v1/papers"
 

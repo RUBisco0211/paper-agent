@@ -1,5 +1,5 @@
 import { ApiError } from "./errors"
-import type { AccessToken, AuthSession, ApiErrorBody, EmailCodePurpose, EmailCodeChallenge, EmailVerification, PasswordVerificationInput, RegisterInput } from "./types"
+import type { AccessToken, AuthSession, ApiErrorBody, EmailCodePurpose, EmailCodeChallenge, EmailVerification, PasswordVerificationInput, RegisterInput } from "@/types/business"
 
 export type AccessTokenSink = (session: AccessToken | null) => void
 
@@ -221,7 +221,7 @@ export function authEndpoints(client: ApiClient) {
     refresh: () => client.refresh(),
     logout: () =>
       client.request<void>("/v1/auth/logout", { method: "POST", skipRefresh: true }),
-    me: () => client.request<import("./types").User>("/v1/auth/me"),
+    me: () => client.request<import("@/types/business").User>("/v1/auth/me"),
     setTimezone: (timezone: string) =>
       client.request<{ timezone: string }>("/v1/auth/timezone", {
         method: "PATCH",

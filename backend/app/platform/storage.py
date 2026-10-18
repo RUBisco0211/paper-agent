@@ -88,7 +88,9 @@ class LocalObjectStorage:
             raise AppError("非法对象存储 Key", code=ErrorCode.VALIDATION_ERROR)
         return candidate
 
-    def put_bytes(self, key: str, data: bytes) -> None:
+    @contextmanager
+    def _atomic_file(self, key: str) -> Iterator[BinaryIO]:
+        """Write to a sibling temp file, then replace the target atomically."""
         path = self._resolve(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
@@ -96,11 +98,15 @@ class LocalObjectStorage:
         ) as handle:
             temporary = Path(handle.name)
             try:
-                handle.write(data)
+                yield handle
                 handle.flush()
                 os.replace(temporary, path)
             finally:
                 temporary.unlink(missing_ok=True)
+
+    def put_bytes(self, key: str, data: bytes) -> None:
+        with self._atomic_file(key) as handle:
+            handle.write(data)
 
     def read_bytes(self, key: str) -> bytes:
         return self._resolve(key).read_bytes()
@@ -155,21 +161,11 @@ class LocalObjectStorage:
 
     def write_chunks(self, key: str, chunks: Iterable[bytes]) -> int:
         """Stream an iterable into a new object and return the byte count."""
-        path = self._resolve(key)
-        path.parent.mkdir(parents=True, exist_ok=True)
         size = 0
-        with tempfile.NamedTemporaryFile(
-            dir=path.parent, prefix=f".{path.name}.", delete=False
-        ) as handle:
-            temporary = Path(handle.name)
-            try:
-                for chunk in chunks:
-                    handle.write(chunk)
-                    size += len(chunk)
-                handle.flush()
-                os.replace(temporary, path)
-            finally:
-                temporary.unlink(missing_ok=True)
+        with self._atomic_file(key) as handle:
+            for chunk in chunks:
+                handle.write(chunk)
+                size += len(chunk)
         return size
 
 

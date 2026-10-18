@@ -9,7 +9,7 @@
 
 采用 [SMUI skill](https://smui.statico.io/skill.md) 的 Nord 深浅配色、JetBrains Mono、方角控件、扩展色板和字号体系，保留 web_ui / Radix 基座、页面布局与业务交互。主题仍跟随系统，由既有 `.dark` 机制驱动，不新增手动切换或 accent picker。
 
-- 唯一运行时主题入口是 `frontend/src/upstream/index.css`：`:root` 为 Snow Storm，`.dark` 为 Polar Night；标准 shadcn token 使用完整颜色值，扩展 `--smui-*` 使用裸 HSL，并经 Tailwind 4 映射。
+- 唯一运行时主题入口是 `frontend/src/index.css`：`:root` 为 Snow Storm，`.dark` 为 Polar Night；标准 shadcn token 使用完整颜色值，扩展 `--smui-*` 使用裸 HSL，并经 Tailwind 4 映射。
 - 全局 CSS 按基础主题、控件、状态、浮层、Tabs、应用布局、输入与工具、动效、引用分组，必要处写中文注释；字体族、字号、字重、圆角、控件密度与交互表面均从这里取值。
 - 视觉统一在主题 token、基础组件和共享 variants；业务调用处只编排布局与状态，不追加硬编码颜色、字号、字体、圆角或独立 `dark:` 配色。动态定位和渲染尺寸不属于主题样式。
 - 以仓库 `src/globals.css` 为配色基准，不直接采用线上 light/dark 相同的 registry。accent 前景采用 frost-4，状态语义色独立调整明度，确保正文/操作及状态文字在受测背景与 10–20% 叠色表面达到 4.5:1；这不等同于全站 WCAG 认证。

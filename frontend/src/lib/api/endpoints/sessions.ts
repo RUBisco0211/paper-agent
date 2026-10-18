@@ -10,19 +10,12 @@ import type {
   Session,
   SessionDetail,
   SessionEntry,
-  SessionScope,
   Uuid,
-} from "../types"
+} from "@/types/business"
 
 const SESSIONS = "/v1/sessions"
 
-export interface SessionListParams {
-  limit?: number
-  offset?: number
-  scope?: SessionScope
-  project_id?: Uuid
-  paper_id?: Uuid
-}
+import type { SessionListParams } from "@/types/session"
 
 export function sessionEndpoints(client: ApiClient) {
   return {

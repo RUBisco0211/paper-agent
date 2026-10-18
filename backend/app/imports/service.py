@@ -415,26 +415,20 @@ class ImportService:
             library = self._build_library_service(session, papers)
             attempted: set[str] = set()
             last_error = ErrorCode.PAPER_PDF_NOT_AVAILABLE
-            downloaded = False
             primary_urls = (
                 [outcome.metadata.pdf_url] if outcome.metadata.pdf_url else []
             )
-            for url in primary_urls:
-                attempted.add(url)
-                try:
-                    self._attach_pdf_from_url(
-                        library,
-                        url=url,
-                        user_id=record.user_id,
-                        user_paper_id=user_paper.id,
-                        filename=outcome.metadata.title or f"{identifier.value}.pdf",
-                    )
-                except AppError as exc:
-                    last_error = exc.code
-                    repository.expire_all()
-                else:
-                    downloaded = True
-                    break
+            downloaded, error = self._try_pdf_urls(
+                library,
+                urls=primary_urls,
+                attempted=attempted,
+                user_id=record.user_id,
+                user_paper_id=user_paper.id,
+                filename=outcome.metadata.title or f"{identifier.value}.pdf",
+                repository=repository,
+            )
+            if error is not None:
+                last_error = error
 
             if not downloaded and identifier.type is IdentifierType.DOI:
                 try:
@@ -443,25 +437,17 @@ class ImportService:
                     fallback_urls = []
                     if not attempted:
                         last_error = exc.code
-                for url in fallback_urls:
-                    if url in attempted:
-                        continue
-                    attempted.add(url)
-                    try:
-                        self._attach_pdf_from_url(
-                            library,
-                            url=url,
-                            user_id=record.user_id,
-                            user_paper_id=user_paper.id,
-                            filename=outcome.metadata.title
-                            or f"{identifier.value}.pdf",
-                        )
-                    except AppError as exc:
-                        last_error = exc.code
-                        repository.expire_all()
-                    else:
-                        downloaded = True
-                        break
+                downloaded, error = self._try_pdf_urls(
+                    library,
+                    urls=fallback_urls,
+                    attempted=attempted,
+                    user_id=record.user_id,
+                    user_paper_id=user_paper.id,
+                    filename=outcome.metadata.title or f"{identifier.value}.pdf",
+                    repository=repository,
+                )
+                if error is not None:
+                    last_error = error
 
             if not downloaded:
                 repository.expire_all()
@@ -501,6 +487,37 @@ class ImportService:
             session.close()
 
     # Internals -------------------------------------------------------------
+    def _try_pdf_urls(
+        self,
+        library: PaperLibraryService,
+        *,
+        urls: list[str],
+        attempted: set[str],
+        user_id: UUID,
+        user_paper_id: UUID,
+        filename: str,
+        repository: ImportRepository,
+    ) -> tuple[bool, str | None]:
+        last_error: str | None = None
+        for url in urls:
+            if url in attempted:
+                continue
+            attempted.add(url)
+            try:
+                self._attach_pdf_from_url(
+                    library,
+                    url=url,
+                    user_id=user_id,
+                    user_paper_id=user_paper_id,
+                    filename=filename,
+                )
+            except AppError as exc:
+                last_error = exc.code
+                repository.expire_all()
+            else:
+                return True, None
+        return False, last_error
+
     def _attach_pdf_from_url(
         self,
         library: PaperLibraryService,

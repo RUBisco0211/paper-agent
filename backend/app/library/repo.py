@@ -353,18 +353,7 @@ class PaperRepository:
 
     def paper_scope_for_user(self, user_id: UUID) -> dict[UUID, UUID]:
         """Map shared paper ids to the user's own entry ids (PDF-backed only)."""
-        rows = self._session.execute(
-            select(UserPaperRecord.paper_id, UserPaperRecord.id)
-            .where(
-                UserPaperRecord.user_id == user_id,
-                UserPaperRecord.paper_id.isnot(None),
-            )
-            .order_by(UserPaperRecord.created_at),
-        ).all()
-        scope: dict[UUID, UUID] = {}
-        for paper_id, user_paper_id in rows:
-            scope.setdefault(paper_id, user_paper_id)
-        return scope
+        return self._paper_scope(user_id=user_id)
 
     def paper_scope_of_entries(
         self,
@@ -373,16 +362,24 @@ class PaperRepository:
         user_paper_ids: list[UUID],
     ) -> dict[UUID, UUID]:
         """Map shared paper ids to entry ids for owned, PDF-backed entries."""
-        if not user_paper_ids:
+        return self._paper_scope(user_id=user_id, user_paper_ids=user_paper_ids)
+
+    def _paper_scope(
+        self,
+        *,
+        user_id: UUID,
+        user_paper_ids: list[UUID] | None = None,
+    ) -> dict[UUID, UUID]:
+        if user_paper_ids is not None and not user_paper_ids:
             return {}
+        statement = select(UserPaperRecord.paper_id, UserPaperRecord.id).where(
+            UserPaperRecord.user_id == user_id,
+            UserPaperRecord.paper_id.isnot(None),
+        )
+        if user_paper_ids is not None:
+            statement = statement.where(UserPaperRecord.id.in_(user_paper_ids))
         rows = self._session.execute(
-            select(UserPaperRecord.paper_id, UserPaperRecord.id)
-            .where(
-                UserPaperRecord.user_id == user_id,
-                UserPaperRecord.id.in_(user_paper_ids),
-                UserPaperRecord.paper_id.isnot(None),
-            )
-            .order_by(UserPaperRecord.created_at),
+            statement.order_by(UserPaperRecord.created_at),
         ).all()
         scope: dict[UUID, UUID] = {}
         for paper_id, user_paper_id in rows:

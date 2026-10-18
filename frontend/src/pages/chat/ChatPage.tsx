@@ -1,0 +1,280 @@
+import { useQuery } from "@tanstack/react-query";
+import {
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
+import { usePanelRef } from "react-resizable-panels";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useOutlet } from "react-router-dom";
+
+import { useApi } from "@/components/providers/ApiProvider";
+import { listBoundSessions } from "@/lib/agentSessions";
+import { Button } from "@/components/ui/Button";
+import { SidebarProvider } from "@/components/ui/Sidebar";
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from "@/components/ui/Resizable";
+import { ChatSidebar } from "@/components/chat/ChatSidebar";
+import {
+  ChatQuoteContext,
+  type ChatQuoteReceiver,
+  type PaperQuoteOpener,
+} from "@/components/chat/chatQuoteContext";
+import type { QuoteReference } from "@/types/chat";
+import { ConversationPapersPanel } from "@/components/chat/ConversationPapersPanel";
+import { chatPath } from "@/components/chat/chatView";
+
+export interface ChatWorkspaceContext {
+  draftQuoteKey: string;
+  draftProjectId: string;
+  setDraftProjectId: (projectId: string) => void;
+}
+
+export function ChatPage() {
+  const { api } = useApi();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const initialDraftProjectId =
+    (location.state as { initialProjectId?: string | null } | null)
+      ?.initialProjectId ?? "";
+  const [draftScope, setDraftScope] = useState({
+    key: location.key,
+    projectId: initialDraftProjectId,
+  });
+  const draftProjectId =
+    draftScope.key === location.key
+      ? draftScope.projectId
+      : initialDraftProjectId;
+  const draftQuoteKey = `draft:${location.key}:${draftProjectId || "global"}`;
+  const outlet = useOutlet({
+    draftQuoteKey,
+    draftProjectId,
+    setDraftProjectId: (projectId: string) =>
+      setDraftScope({ key: location.key, projectId }),
+  } satisfies ChatWorkspaceContext);
+  const mainRef = useRef<HTMLDivElement>(null);
+  const previousPath = useRef<string | null>(null);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [papersOpen, setPapersOpen] = useState(true);
+  const [readingPaper, setReadingPaper] = useState(false);
+  const papersPanelRef = usePanelRef();
+  const listPanelWidth = useRef<number | null>(null);
+  const previousPaperProject = useRef<string | null>(null);
+  const quoteReceivers = useRef(new Map<string, ChatQuoteReceiver>());
+  const paperOpeners = useRef(new Map<string, PaperQuoteOpener>());
+  const quoteBridge = useRef({
+    register: (sessionId: string, receiver: ChatQuoteReceiver) => {
+      quoteReceivers.current.set(sessionId, receiver);
+      return () => {
+        if (quoteReceivers.current.get(sessionId) === receiver)
+          quoteReceivers.current.delete(sessionId);
+      };
+    },
+    add: (sessionId: string, reference: QuoteReference) =>
+      quoteReceivers.current.get(sessionId)?.(reference) ?? false,
+    registerPaperOpener: (sessionId: string, opener: PaperQuoteOpener) => {
+      paperOpeners.current.set(sessionId, opener);
+      return () => {
+        if (paperOpeners.current.get(sessionId) === opener)
+          paperOpeners.current.delete(sessionId);
+      };
+    },
+    openPaper: (
+      sessionId: string,
+      reference: Extract<
+        QuoteReference,
+        { kind: "parsed_block" | "pdf_selection" }
+      >,
+    ) => {
+      const opened = paperOpeners.current.get(sessionId)?.(reference) ?? false;
+      if (opened) setPapersOpen(true);
+      return opened;
+    },
+  }).current;
+  const sessions = useQuery({
+    queryKey: ["bound-sessions"],
+    queryFn: () => listBoundSessions(api),
+  });
+
+  useEffect(() => {
+    if (!sessions.isSuccess) return;
+    const path = location.pathname;
+    if (
+      /^\/chat\/[^/]+\/[^/]+$/.test(path) &&
+      !path.startsWith("/chat/project/") &&
+      !sessions.data.some((session) => chatPath(session) === path)
+    ) {
+      navigate("/chat", { replace: true });
+    }
+  }, [location.pathname, sessions.isSuccess, sessions.data, navigate]);
+
+  const projectRouteId = location.pathname.startsWith("/chat/project/")
+    ? location.pathname.split("/")[3]
+    : null;
+  const activeSession = sessions.data?.find(
+    (item) => chatPath(item) === location.pathname,
+  );
+  const isNewChat = location.pathname === "/chat/new";
+  const projectId = isNewChat
+    ? draftProjectId || null
+    : (projectRouteId ?? activeSession?.binding.project_id ?? null);
+  const papersScope =
+    projectId ?? (activeSession || isNewChat ? "global" : null);
+
+  useEffect(() => {
+    if (projectRouteId) setPapersOpen(true);
+  }, [projectRouteId]);
+
+  useEffect(() => {
+    if (previousPaperProject.current !== papersScope) {
+      previousPaperProject.current = papersScope;
+      listPanelWidth.current = null;
+      setReadingPaper(false);
+      return;
+    }
+    if (!papersScope) {
+      listPanelWidth.current = null;
+      setReadingPaper(false);
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      const panel = papersPanelRef.current;
+      if (!panel) return;
+      if (readingPaper) {
+        if (listPanelWidth.current === null)
+          listPanelWidth.current = panel.getSize().inPixels;
+        panel.resize("58%");
+      } else if (listPanelWidth.current !== null) {
+        panel.resize(listPanelWidth.current);
+        listPanelWidth.current = null;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [readingPaper, papersScope, papersPanelRef]);
+
+  useEffect(() => {
+    if (!papersScope) return;
+    const frame = requestAnimationFrame(() => {
+      if (papersOpen) papersPanelRef.current?.expand();
+      else papersPanelRef.current?.collapse();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [papersOpen, papersScope, papersPanelRef]);
+
+  useLayoutEffect(() => {
+    if (previousPath.current === null) {
+      previousPath.current = location.pathname;
+      return;
+    }
+    if (previousPath.current === location.pathname) return;
+    previousPath.current = location.pathname;
+    const node = mainRef.current;
+    if (!node) return;
+    node.classList.remove("route-page-enter");
+    void node.offsetWidth;
+    node.classList.add("route-page-enter");
+    return () => node.classList.remove("route-page-enter");
+  }, [location.pathname]);
+
+  const title =
+    location.pathname === "/chat/new"
+      ? "新会话"
+      : activeSession?.session.session.config.name || "对话";
+  const main = (
+    <div ref={mainRef} className="h-full min-w-0 overflow-hidden bg-background">
+      {outlet}
+    </div>
+  );
+
+  return (
+    <ChatQuoteContext.Provider value={quoteBridge}>
+      <SidebarProvider className="min-h-0 flex-1">
+        <div className="flex h-full min-h-0 w-full flex-col">
+          <header
+            data-slot="app-toolbar"
+            aria-label="会话工具栏"
+            className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b bg-(--app-rail-background) px-3 text-foreground"
+          >
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={leftOpen ? "收起会话侧栏" : "展开会话侧栏"}
+              title={leftOpen ? "收起会话侧栏" : "展开会话侧栏"}
+              onClick={() => setLeftOpen((open) => !open)}
+            >
+              {leftOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+            </Button>
+            <span className="min-w-0 truncate text-sm font-medium">
+              {title}
+            </span>
+            {papersScope && (
+              <Button
+                className="ml-auto"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={papersOpen ? "收起文献侧栏" : "展开文献侧栏"}
+                title={papersOpen ? "收起文献侧栏" : "展开文献侧栏"}
+                onClick={() => setPapersOpen((open) => !open)}
+              >
+                {papersOpen ? <PanelRightClose /> : <PanelRightOpen />}
+              </Button>
+            )}
+          </header>
+          <div className="flex min-h-0 flex-1">
+            <div
+              aria-hidden={!leftOpen}
+              inert={!leftOpen}
+              className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-(--motion-duration-normal) ease-(--motion-ease-standard) motion-reduce:transition-none ${leftOpen ? "w-(--chat-sidebar-width) opacity-100" : "w-0 opacity-0"}`}
+            >
+              <ChatSidebar
+                currentProjectId={projectId}
+                papersOpen={papersOpen}
+                onTogglePapers={() => setPapersOpen((open) => !open)}
+              />
+            </div>
+            <ResizablePanelGroup
+              orientation="horizontal"
+              className="min-w-0 flex-1"
+            >
+              <ResizablePanel minSize="24rem">{main}</ResizablePanel>
+              {papersScope && (
+                <>
+                  <ResizableHandle
+                    withHandle
+                    className={
+                      papersOpen ? "" : "pointer-events-none opacity-0"
+                    }
+                  />
+                  <ResizablePanel
+                    data-animated-sidebar
+                    panelRef={papersPanelRef}
+                    collapsible
+                    collapsedSize={0}
+                    defaultSize="24rem"
+                    minSize="18rem"
+                    maxSize="75%"
+                  >
+                    <ConversationPapersPanel
+                      key={papersScope}
+                      projectId={projectId}
+                      sessionId={
+                        isNewChat
+                          ? draftQuoteKey
+                          : (activeSession?.session.session.id ?? null)
+                      }
+                      onReadingChange={setReadingPaper}
+                    />
+                  </ResizablePanel>
+                </>
+              )}
+            </ResizablePanelGroup>
+          </div>
+        </div>
+      </SidebarProvider>
+    </ChatQuoteContext.Provider>
+  );
+}

@@ -5,7 +5,7 @@ import type {
   Project,
   UserPaperSummary,
   Uuid,
-} from "../types";
+} from "@/types/business";
 
 const PROJECTS = "/v1/projects";
 

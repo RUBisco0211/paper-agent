@@ -1,5 +1,5 @@
 import type { ApiClient } from "../client"
-import type { ExternalDiscoveryResponse, ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "../types"
+import type { ExternalDiscoveryResponse, ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "@/types/business"
 
 export function importEndpoints(client: ApiClient) {
   return {

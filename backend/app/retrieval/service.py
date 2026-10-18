@@ -1,4 +1,5 @@
 import base64
+from dataclasses import replace
 from uuid import UUID
 
 import structlog
@@ -121,8 +122,11 @@ class BoundPaperService:
                 user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
             )
             source_text = text or block.get("formula") or ""
-            if (block["page"] != page or source_text[start:end] != selected_text
-                    or (not include_image and end <= start)):
+            if (
+                block["page"] != page
+                or source_text[start:end] != selected_text
+                or (not include_image and end <= start)
+            ):
                 raise ValueError("selection_mismatch")
             if include_image:
                 if block["type"] not in {"image", "chart"} or not block["has_image"]:
@@ -131,7 +135,10 @@ class BoundPaperService:
                     user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
                 )
                 if len(payload) > 5 * 1024 * 1024 or media_type not in {
-                    "image/png", "image/jpeg", "image/webp", "image/gif"
+                    "image/png",
+                    "image/jpeg",
+                    "image/webp",
+                    "image/gif",
                 }:
                     raise ValueError("image_unsupported")
                 return {
@@ -464,32 +471,13 @@ def _overall_status(reports: dict[str, ChannelReport]) -> SearchStatus:
 
 
 def _user_facing(evidence: Evidence, authorized: dict[UUID, UUID]) -> Evidence:
-    return Evidence(
+    return replace(
+        evidence,
         paper_id=authorized.get(evidence.paper_id, evidence.paper_id),
-        chunk_ids=evidence.chunk_ids,
-        title_path=evidence.title_path,
-        snippet=evidence.snippet,
-        page_start=evidence.page_start,
-        page_end=evidence.page_end,
-        score=evidence.score,
-        chunk_index=evidence.chunk_index,
-        keyword_rank=evidence.keyword_rank,
-        vector_rank=evidence.vector_rank,
     )
 
 
 def _trim(evidence: Evidence) -> Evidence:
     if len(evidence.snippet) <= SNIPPET_MAX_CHARS:
         return evidence
-    return Evidence(
-        paper_id=evidence.paper_id,
-        chunk_ids=evidence.chunk_ids,
-        title_path=evidence.title_path,
-        snippet=evidence.snippet[:SNIPPET_MAX_CHARS],
-        page_start=evidence.page_start,
-        page_end=evidence.page_end,
-        score=evidence.score,
-        chunk_index=evidence.chunk_index,
-        keyword_rank=evidence.keyword_rank,
-        vector_rank=evidence.vector_rank,
-    )
+    return replace(evidence, snippet=evidence.snippet[:SNIPPET_MAX_CHARS])
