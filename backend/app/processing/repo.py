@@ -243,10 +243,24 @@ class IngestionRepository:
         record.error_message = error_message
         self._session.flush()
 
-    def mark_stage_skipped(self, job_id: UUID, *, stage: IngestionStage) -> None:
+    def mark_stage_already_satisfied(
+        self,
+        job_id: UUID,
+        *,
+        stage: IngestionStage,
+    ) -> None:
+        """Record a stage whose artifact exists, without re-running it.
+
+        ``attempt`` stays at zero and ``started_at`` stays empty so the record
+        still distinguishes "done before this job" from "ran in this job".
+        """
         record = self._stage_record(job_id, stage)
-        record.status = StageStatus.SKIPPED.value
+        record.status = StageStatus.SUCCEEDED.value
+        record.attempt = 0
+        record.started_at = None
         record.finished_at = _now()
+        record.error_code = None
+        record.error_message = None
         self._session.flush()
 
     def finish_job(self, job_id: UUID, *, error_code: str | None = None) -> None:

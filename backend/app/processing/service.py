@@ -68,13 +68,13 @@ class IngestionService:
         job = self._repository.create_job(paper_id=paper_id, stages=STAGE_ORDER)
         for stage in STAGE_ORDER:
             if stage in satisfied:
-                self._repository.mark_stage_skipped(job.id, stage=stage)
+                self._repository.mark_stage_already_satisfied(job.id, stage=stage)
         self._repository.commit()
         logger.info(
             "service.ingestion.queued",
             job_id=str(job.id),
             paper_id=str(paper_id),
-            skipped=[stage.value for stage in sorted(satisfied)],
+            already_satisfied=[stage.value for stage in sorted(satisfied)],
         )
         if self._runner is not None:
             self._runner.submit(job.id)

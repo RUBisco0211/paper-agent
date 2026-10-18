@@ -5,7 +5,6 @@ import {
   FileUp,
   LoaderCircle,
   MessageSquarePlus,
-  Minus,
   RefreshCw,
   Sparkles,
   TriangleAlert,
@@ -272,8 +271,7 @@ export function PaperDetailSheet({
                         const failed = stage.status === "failed"
                         const active = stage.status === "running"
                         const complete = stage.status === "succeeded"
-                        const skipped = stage.status === "skipped"
-                        const Icon = failed ? X : active ? LoaderCircle : complete ? Check : skipped ? Minus : Circle
+                        const Icon = failed ? X : active ? LoaderCircle : complete ? Check : Circle
                         const explanation = STAGE_ERROR_TEXT[stage.error_code ?? ""] ??
                           (failed ? "处理失败，可重试" : null)
                         return <li key={stage.stage} className="flex gap-3">

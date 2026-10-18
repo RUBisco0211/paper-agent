@@ -105,7 +105,7 @@ export interface Capabilities {
 
 export type IngestionStage = "metadata" | "fulltext" | "chunking" | "embedding"
 export type IngestionStatus = "queued" | "running" | "succeeded" | "failed"
-export type StageStatus = "pending" | "running" | "succeeded" | "failed" | "skipped"
+export type StageStatus = "pending" | "running" | "succeeded" | "failed"
 
 export interface IngestionStageState {
   stage: IngestionStage

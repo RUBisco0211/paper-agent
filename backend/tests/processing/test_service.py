@@ -1,11 +1,13 @@
 """End-to-end pipeline tests with deterministic stand-in providers."""
 
 import hashlib
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from threading import Barrier
+from typing import cast
 from uuid import UUID
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -23,7 +25,7 @@ from app.processing.domain import IngestionStage
 from app.processing.repo import IngestionRepository
 from app.processing.service import IngestionService
 from app.retrieval.depends import get_embedding_adapter
-from tests.conftest import auth_headers, build_pdf_with_text
+from tests.conftest import ListedObjectStorage, auth_headers, build_pdf_with_text
 from tests.library.test_pdf_and_metadata import FakeProvider
 
 CONTENT_LIST = [
@@ -102,8 +104,10 @@ def test_two_papers_complete_fulltext_and_indexing_in_parallel(
         papers = PaperRepository(session)
         for job_id in job_ids:
             job = ingestion.get_job(job_id)
+            assert job is not None
             assert job.status.value == "succeeded"
             paper = papers.get_paper(job.paper_id)
+            assert paper is not None
             assert paper.artifact_manifest_key is not None
             assert paper.has_keyword_index and paper.has_embedding
 
@@ -146,7 +150,7 @@ class FakeEmbeddingAdapter:
     def is_configured(self) -> bool:
         return self.enabled
 
-    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
         self.documents.extend(texts)
         vectors = [
             [0.1 + index * 0.001 for index in range(self.dimensions)] for _ in texts
@@ -161,7 +165,7 @@ class FakeEmbeddingAdapter:
 def _override_services(
     client: TestClient,
     *,
-    session_factory: Callable[[], Session],
+    session_factory: sessionmaker[Session],
     storage: ObjectStorage,
     mineru: MineruParser,
     embeddings: FakeEmbeddingAdapter,
@@ -191,9 +195,10 @@ def _override_services(
 
     # Both the upload path (library) and the retry path (ingestion API) must
     # use the same stand-in providers.
-    client.app.dependency_overrides[get_ingestion_starter] = build_ingestion
-    client.app.dependency_overrides[get_ingestion_service] = build_ingestion
-    client.app.dependency_overrides[get_embedding_adapter] = lambda: embeddings
+    overrides = cast(FastAPI, client.app).dependency_overrides
+    overrides[get_ingestion_starter] = build_ingestion
+    overrides[get_ingestion_service] = build_ingestion
+    overrides[get_embedding_adapter] = lambda: embeddings
 
 
 def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
@@ -209,7 +214,7 @@ def test_failed_artifact_write_never_publishes_orphaned_fulltext(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
+    storage: ListedObjectStorage,
     monkeypatch,
 ) -> None:
     original_put = storage.put_bytes
@@ -242,7 +247,7 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
+    storage: ListedObjectStorage,
 ) -> None:
     mineru = FakeMineruParser()
     embeddings = FakeEmbeddingAdapter()
@@ -309,9 +314,10 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     with session_factory() as session:
         from app.library.repo import UserPaperRecord
 
-        paper = PaperRepository(session).get_paper(
-            session.get(UserPaperRecord, UUID(paper_id)).paper_id
-        )
+        user_paper = session.get(UserPaperRecord, UUID(paper_id))
+        assert user_paper is not None and user_paper.paper_id is not None
+        paper = PaperRepository(session).get_paper(user_paper.paper_id)
+        assert paper is not None
         assert paper.artifact_manifest_key is not None
         manifest = __import__("json").loads(
             storage.read_text(paper.artifact_manifest_key)
@@ -512,11 +518,11 @@ def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
     assert retried.status_code == 202, retried.text
     body = retried.json()
     stages = {stage["stage"]: stage["status"] for stage in body["stages"]}
-    # Only the missing embedding work is redone; verified stages are skipped.
+    # Only the missing embedding work is redone; verified stages stay succeeded.
     assert stages == {
         "metadata": "succeeded",
-        "fulltext": "skipped",
-        "chunking": "skipped",
+        "fulltext": "succeeded",
+        "chunking": "succeeded",
         "embedding": "succeeded",
     }
     assert body["status"] == "succeeded"

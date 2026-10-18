@@ -18,7 +18,7 @@ from collections.abc import Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, BinaryIO, Protocol
+from typing import Annotated, BinaryIO, Protocol, cast
 
 from fastapi import Depends
 
@@ -98,7 +98,7 @@ class LocalObjectStorage:
         ) as handle:
             temporary = Path(handle.name)
             try:
-                yield handle
+                yield cast(BinaryIO, handle)
                 handle.flush()
                 os.replace(temporary, path)
             finally:

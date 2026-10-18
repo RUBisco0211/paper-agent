@@ -35,7 +35,6 @@ class StageStatus(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
-    SKIPPED = "skipped"
 
 
 TERMINAL_STATUSES = {IngestionStatus.SUCCEEDED, IngestionStatus.FAILED}

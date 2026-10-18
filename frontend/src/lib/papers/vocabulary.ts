@@ -26,7 +26,6 @@ const PAPER_PROCESSING_STATUS_LABEL: Record<string, string> = {
   succeeded: "完成",
   matched: "已完成",
   failed: "失败",
-  skipped: "已跳过",
 }
 
 const IMPORT_QUEUE_LABEL: Record<string, string> = {

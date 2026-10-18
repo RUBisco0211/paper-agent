@@ -150,7 +150,7 @@ def test_ingestion_job_is_scoped_to_the_owning_user(
     assert stranger_view.json()["code"] == "ingestion_job_not_found"
 
 
-def test_retry_skips_verified_stages_and_reports_the_failed_one(
+def test_retry_marks_verified_stages_succeeded_and_reports_the_failed_one(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -196,7 +196,7 @@ def test_retry_skips_verified_stages_and_reports_the_failed_one(
     new_stages = {stage["stage"]: stage["status"] for stage in new_job["stages"]}
     # The retry only redoes what is still missing, and MinerU is still absent.
     assert new_stages == {
-        "metadata": "skipped",
+        "metadata": "succeeded",
         "fulltext": "failed",
         "chunking": "pending",
         "embedding": "pending",

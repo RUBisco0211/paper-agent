@@ -13,6 +13,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Protocol
 from uuid import uuid4
 
 import pytest
@@ -146,8 +147,18 @@ def storage_root(tmp_path: Path) -> Path:
     return root
 
 
+class ListedObjectStorage(ObjectStorage, Protocol):
+    """Test-facing view of storage that can enumerate keys.
+
+    Both concrete backends implement ``files``; it stays outside the production
+    protocol because only tests need to inspect what landed in storage.
+    """
+
+    def files(self, prefix: str) -> Iterator[str]: ...
+
+
 @pytest.fixture
-def storage(storage_root: Path) -> Iterator[ObjectStorage]:
+def storage(storage_root: Path) -> Iterator[ListedObjectStorage]:
     """应用使用的存储。
 
     默认是临时目录；设 ``PAPER_AGENT_LIVE_STORAGE=1`` 时改用 ``backend/.env``
