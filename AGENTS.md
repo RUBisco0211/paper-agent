@@ -41,21 +41,21 @@ api.py → service.py → domain.py / repo.py / ports.py → platform/
 - 新增后端测试 → 照 `backend/tests/library/test_upload.py`
 - 新增业务前端页面 → 照 `frontend/src/pages/DiscoverPage.tsx`；扩展 web_ui 会话页 → 照 `frontend/src/pages/chat/NewChatPage.tsx`
 - 新增前端组件 → 照 `frontend/src/components/papers/PaperDetailSheet.tsx`
-- 新增组件测试 → 与组件同名并使用 PascalCase `.test` 后缀，照 `frontend/src/components/papers/PaperDetailSheet.test.tsx`
-- 前端组件源码文件用 PascalCase；hooks、工具、类型、API 等非组件源码文件用 camelCase；组件测试与组件同名（PascalCase），hook/工具测试用 camelCase。基础原语放 `frontend/src/components/ui/`，业务组件按模块放 `frontend/src/components/<module>/`，应用级 Provider 放 `frontend/src/components/providers/`，路由页面放 `frontend/src/pages/`
+- 新增组件测试 → 与组件同名并使用 PascalCase `.test` 后缀，照 `frontend/tests/components/papers/PaperDetailSheet.test.tsx`
+- 前端组件源码文件用 PascalCase；hooks、工具、类型、API 等非组件源码文件用 camelCase；组件测试与组件同名（PascalCase），hook/工具测试用 camelCase；测试统一放 `frontend/tests/` 并镜像 `src/` 的目录结构，不与源码同目录。基础原语放 `frontend/src/components/ui/`，业务组件按模块放 `frontend/src/components/<module>/`，应用级 Provider 放 `frontend/src/components/providers/`，路由页面放 `frontend/src/pages/`
 
 ## 4. 外部依赖
 
-| 依赖 | 用途 | 失败时的行为 |
-|---|---|---|
-| PostgreSQL + pgvector | 业务数据、向量检索与持久邮件 outbox | 启动即失败，不降级 |
-| Redis | 邮箱临时验证、一次性凭证与冷却限流 | 不可用不得绕过验证；状态丢失重新验证 |
-| SMTP（QQ） | 验证码、安全邮件与显式开启的任务通知 | 投递失败保留 outbox 状态，不静默丢信或伪装成功 |
-| MinerU | PDF 正文解析 | 阶段置失败，保留 PDF 与条目，允许重试，不阻断其他阶段 |
-| Embedding（DashScope `text-embedding-v3` / TEI） | Chunk 向量 | 检索退化为仅关键词，**并在响应中标明**，不伪装成混合检索 |
-| LLM Provider（AgentScope） | Agent 回答 | 折成稳定错误码：`llm_not_configured` / `provider_rate_limited` / `agent_timeout` / `agent_max_iters` / `agent_unavailable` |
-| 对象存储（local / S3） | PDF、解析产物、Entry JSONL | 上传失败即报错，不静默丢弃 |
-| Zotero recognizer、Crossref / arXiv | 元数据补全与全文获取 | 尽力而为，失败保留占位条目；DOI/arXiv 导入终态可为 `pdf_unavailable` |
+| 依赖                                             | 用途                                 | 失败时的行为                                                                                                               |
+| ------------------------------------------------ | ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL + pgvector                            | 业务数据、向量检索与持久邮件 outbox  | 启动即失败，不降级                                                                                                         |
+| Redis                                            | 邮箱临时验证、一次性凭证与冷却限流   | 不可用不得绕过验证；状态丢失重新验证                                                                                       |
+| SMTP（QQ）                                       | 验证码、安全邮件与显式开启的任务通知 | 投递失败保留 outbox 状态，不静默丢信或伪装成功                                                                             |
+| MinerU                                           | PDF 正文解析                         | 阶段置失败，保留 PDF 与条目，允许重试，不阻断其他阶段                                                                      |
+| Embedding（DashScope `text-embedding-v3` / TEI） | Chunk 向量                           | 检索退化为仅关键词，**并在响应中标明**，不伪装成混合检索                                                                   |
+| LLM Provider（AgentScope）                       | Agent 回答                           | 折成稳定错误码：`llm_not_configured` / `provider_rate_limited` / `agent_timeout` / `agent_max_iters` / `agent_unavailable` |
+| 对象存储（local / S3）                           | PDF、解析产物、Entry JSONL           | 上传失败即报错，不静默丢弃                                                                                                 |
+| Zotero recognizer、Crossref / arXiv              | 元数据补全与全文获取                 | 尽力而为，失败保留占位条目；DOI/arXiv 导入终态可为 `pdf_unavailable`                                                       |
 
 「失败时的行为」不写，你会默认吞掉异常。
 
@@ -122,7 +122,7 @@ design 只允许四个字段，不许增加：
 - **测试第一次必须是红的**。第一次就全绿，说明你在描述已有代码，重写。
 - 后端测试跑真实 PostgreSQL（`docker compose up -d postgres`），不允许 mock 掉数据库语义。
 - 测试必须快且确定。不允许 flaky，不允许依赖真实网络（真实 Provider 联调除外，须显式标注）。
-- 前端测试用 `frontend/src/test/` 下的既有设施，不新造测试框架。
+- 前端测试用 `frontend/tests/setup.ts` 下的既有设施，不新造测试框架。
 
 ## 9. 完成标准（缺一不可）
 
@@ -157,22 +157,22 @@ design 只允许四个字段，不许增加：
 
 ### A. 约束类（等同于第 5 节，命中就必须遵守）
 
-| 触发场景 | 读 |
-|---|---|
-| **改动 Agent 后端、会话、检索或凭据接入** | `docs/DECISIONS.md` 中 0006–0016、0035–0037、0049、0070、0072、0075、0078，再按需读 `docs/research/agentscope/agentscope-agent-service.md` |
-| **改动产品功能范围、文献 / 摄取 / 引用行为** | `docs/DECISIONS.md` 中 0018–0034 |
-| **改任何前端代码或文案** | 0014（基座）、0032（文案）、0033（扩展边界）、0045（导航与对话）、0049（定时任务）、0055（弹窗）、0080（SMUI 与集中式样式）；按页面查 `docs/DECISIONS.md` |
-| **改包结构、依赖方向或路由入口** | `docs/ARCHITECTURE.md`，按实际代码核对 |
-| **改邮箱认证、密码重置、登录态回查或任务邮件通知** | 0081（局部取代 0022、0035、0049；其他片段仍有效） |
-| 涉及命名与领域术语 | 0034 |
-| 改后端日志事件名或错误码 | 无独立规范，见第 5 节；日志规范待业务服务定稿后另立条目 |
+| 触发场景                                           | 读                                                                                                                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **改动 Agent 后端、会话、检索或凭据接入**          | `docs/DECISIONS.md` 中 0006–0016、0035–0037、0049、0070、0072、0075、0078，再按需读 `docs/research/agentscope/agentscope-agent-service.md`                |
+| **改动产品功能范围、文献 / 摄取 / 引用行为**       | `docs/DECISIONS.md` 中 0018–0034                                                                                                                          |
+| **改任何前端代码或文案**                           | 0014（基座）、0032（文案）、0033（扩展边界）、0045（导航与对话）、0049（定时任务）、0055（弹窗）、0080（SMUI 与集中式样式）；按页面查 `docs/DECISIONS.md` |
+| **改包结构、依赖方向或路由入口**                   | `docs/ARCHITECTURE.md`，按实际代码核对                                                                                                                    |
+| **改邮箱认证、密码重置、登录态回查或任务邮件通知** | 0081（局部取代 0022、0035、0049；其他片段仍有效）                                                                                                         |
+| 涉及命名与领域术语                                 | 0034                                                                                                                                                      |
+| 改后端日志事件名或错误码                           | 无独立规范，见第 5 节；日志规范待业务服务定稿后另立条目                                                                                                   |
 
 ### B. 参考类（按需下钻，先索引后读）
 
-| 触发场景 | 读 |
-|---|---|
+| 触发场景           | 读                                                                     |
+| ------------------ | ---------------------------------------------------------------------- |
 | 需要某条决策的细节 | 先读 `docs/DECISIONS.md` 索引，再只读那一条 `docs/decisions/NNNN-*.md` |
-| 涉及已调研过的主题 | 先读 `docs/research/README.md` 分类索引，再按主题读取对应文档 |
+| 涉及已调研过的主题 | 先读 `docs/research/README.md` 分类索引，再按主题读取对应文档          |
 
 ### C. 工作态（生命周期有限，重构完成后删除）
 

@@ -1,9 +1,9 @@
-import path from "node:path"
+import path from "node:path";
 
-import tailwindcss from "@tailwindcss/vite"
-import react from "@vitejs/plugin-react"
-import svgr from "vite-plugin-svgr"
-import { defineConfig } from "vite"
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
+import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), svgr()],
@@ -25,7 +25,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}"],
-    setupFiles: ["src/test/setup.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
+    setupFiles: ["tests/setup.ts"],
   },
-})
+});
