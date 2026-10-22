@@ -6,7 +6,7 @@ import { useApi } from "@/components/providers/ApiProvider"
 import { credentialApi } from "@/lib/api/agentscope/credential"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/Sidebar"
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/Sidebar"
 
 export function ModelsSection() {
   const { api } = useApi()
@@ -39,17 +39,16 @@ export function ModelsSection() {
     }
   }
 
-  return <div className="flex gap-6">
-    <div className="w-52 shrink-0 border-r pr-4">
-    <Sidebar collapsible="none" className="bg-transparent">
-      <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
+  return <div className="flex flex-col gap-8 md:flex-row md:gap-10">
+    <div className="flex shrink-0 flex-col gap-2">
+      <p className="px-2 text-xs font-medium text-muted-foreground">提供商</p>
+      <SidebarMenu>
         {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
           <SidebarMenuButton isActive={selected === item.id} onClick={() => { setProvider(item.id); setError(""); setSuccess(false) }}><KeyRound />{item.label}</SidebarMenuButton>
         </SidebarMenuItem>)}
-      </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
-    </Sidebar>
+      </SidebarMenu>
     </div>
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0 flex-1 md:border-l md:pl-10">
     <div className="max-w-3xl space-y-8">
       <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>
         {credentials.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
