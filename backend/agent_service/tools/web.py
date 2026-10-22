@@ -39,8 +39,10 @@ def build_web_tools(user_id: str) -> list[ToolBase]:
     ) -> dict:
         """Read one web page as text.
 
-        Long pages come back in windows. When the result says it was truncated,
-        call again with the returned next_offset to read the continuation.
+        Start with offset 0 and keep passing back the returned next_offset until
+        truncated is false. Do not compute offsets yourself: an offset at or past
+        total_chars comes back with offset_out_of_range true and empty content,
+        which means the offset was wrong, not that the page has no more text.
         """
         return await _call(
             "web_fetch",
@@ -100,9 +102,11 @@ async def _call(
             "tool": tool,
         }
     except RuntimeError as exc:
+        # Missing internal configuration, not an upstream failure: surface it as
+        # the same unavailable code so both callers share one vocabulary.
         return {
             "status": "error",
-            "code": "web_search_unavailable",
+            "code": "provider_unavailable",
             "message": str(exc),
             "tool": tool,
         }

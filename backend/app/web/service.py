@@ -2,7 +2,10 @@
 
 from uuid import UUID
 
+import structlog
+
 from ..platform.errors import (
+    AppError,
     ErrorCode,
     ProviderNotConfiguredError,
     ProviderUnavailableError,
@@ -21,6 +24,8 @@ from .domain import (
 )
 from .page_cache import PageCacheUnavailable
 from .ports import CredentialReader, PageStore, ProviderFactory
+
+logger = structlog.get_logger(__name__)
 
 PROVIDER_KIND = "tavily"
 DEFAULT_PROVIDER_NAME = "tavily"
@@ -48,7 +53,8 @@ class WebSearchService:
         try:
             results = provider.search(query, max_results)
         except Exception as exc:
-            raise self._translate(exc, "联网搜索") from exc
+            failure = self._translate(exc, "联网搜索")
+            raise failure from exc
         return search_envelope(DEFAULT_PROVIDER_NAME, results)
 
     def fetch(self, user_id: UUID, url: str, offset: int, max_chars: int) -> dict:
@@ -59,7 +65,8 @@ class WebSearchService:
             try:
                 content = provider.extract(url)
             except Exception as exc:
-                raise self._translate(exc, "网页读取") from exc
+                failure = self._translate(exc, "网页读取")
+                raise failure from exc
             self._remember(user_id, url, content)
         return window_page(url, content, max(0, offset), size)
 
@@ -68,7 +75,8 @@ class WebSearchService:
         try:
             content = provider.extract_excerpt(url, query, chunks)
         except Exception as exc:
-            raise self._translate(exc, "网页读取") from exc
+            failure = self._translate(exc, "网页读取")
+            raise failure from exc
         return {
             "status": "ok",
             "url": url,
@@ -97,7 +105,7 @@ class WebSearchService:
             return
 
     @staticmethod
-    def _translate(exc: Exception, label: str) -> Exception:
+    def _translate(exc: Exception, label: str) -> AppError:
         if isinstance(exc, InvalidCredential):
             return InvalidWebCredentialError()
         if isinstance(exc, ProviderRateLimited):
@@ -111,7 +119,18 @@ class WebSearchService:
             return ProviderUnavailableError("该页面无法读取，可能已失效或不允许抓取")
         if isinstance(exc, ProviderUnavailable):
             return ProviderUnavailableError(f"{label}暂时不可用")
-        return exc
+        # A configuration fault inside the provider call is not an outage, but it
+        # is also not something the user can act on. Keep the type for diagnosis
+        # without exposing internals, and never let a bare 500 reach the caller.
+        logger.warning(
+            "web.unexpected_provider_error",
+            error=type(exc).__name__,
+            label=label,
+        )
+        return ProviderUnavailableError(
+            f"{label}暂时不可用",
+            details={"error": type(exc).__name__},
+        )
 
 
 __all__ = ["DEFAULT_MAX_CHARS", "InvalidWebCredentialError", "WebSearchService"]
