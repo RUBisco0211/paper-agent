@@ -11,6 +11,7 @@ from .api import build_api_router
 from .platform.config import settings
 from .platform.errors import register_exception_handlers
 from .platform.logging import configure_logging
+from .platform.redis import close_redis
 from .platform.request_logging import RequestLoggingMiddleware
 from .platform.storage import get_object_storage
 from .platform.tasks import ApiTaskScheduler, AsyncioTaskScheduler
@@ -66,6 +67,25 @@ def check_agent_internal_key() -> None:
         raise RuntimeError("AGENT_INTERNAL_KEY 必须配置为至少 32 字符")
 
 
+def check_credential_master_key() -> None:
+    """缺主密钥时每个凭据请求都会 500，所以启动就要拦住。"""
+    encoded = settings.credential_master_key.get_secret_value()
+    try:
+        valid = len(bytes.fromhex(encoded)) == 32
+    except ValueError:
+        valid = False
+    if valid:
+        return
+    logger.error(
+        "configuration.invalid_credential_master_key",
+        hint="生成随机密钥：openssl rand -hex 32，只写进 backend/.env",
+    )
+    raise RuntimeError(
+        "CREDENTIAL_MASTER_KEY 必须是 32 字节随机数的十六进制串："
+        "请在 backend/.env 设置后重启；已有凭据需沿用原密钥",
+    )
+
+
 def check_storage() -> None:
     """启动时确认对象存储可用（会顺带创建缺失的 bucket）。"""
     backend = settings.storage_backend
@@ -94,6 +114,7 @@ def check_storage() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     check_jwt_secret()
     check_agent_internal_key()
+    check_credential_master_key()
     check_embedding_dimensions()
     check_storage()
     scheduler = AsyncioTaskScheduler()
@@ -103,6 +124,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         await scheduler.shutdown()
+        close_redis()
 
 
 def create_app() -> FastAPI:

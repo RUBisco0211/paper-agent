@@ -15,6 +15,8 @@ import { GrepRenderer } from './GrepRenderer';
 import { ReadRenderer } from './ReadRenderer';
 import { TaskCreateRenderer } from './TaskCreateRenderer';
 import { PaperSearchRenderer } from './PaperSearchRenderer';
+import { WebSearchRenderer } from './WebSearchRenderer';
+import { WebFetchRenderer, WebExcerptRenderer } from './WebPageRenderer';
 import { PaperDiscoveryRenderer } from './PaperDiscoveryRenderer';
 import { AskUserRenderer } from './AskUserRenderer';
 import type { TFunction, ToolCallWithResult, ToolRenderer } from './types';
@@ -30,6 +32,9 @@ const renderers: Record<string, ToolRenderer> = {
 	TaskCreate: TaskCreateRenderer,
 	search_papers: PaperSearchRenderer,
 	discover_papers: PaperDiscoveryRenderer,
+	web_search: WebSearchRenderer,
+	web_fetch: WebFetchRenderer,
+	web_extract_excerpt: WebExcerptRenderer,
 	ask_user: AskUserRenderer,
 };
 

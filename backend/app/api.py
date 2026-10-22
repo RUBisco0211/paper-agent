@@ -18,8 +18,11 @@ from .platform.config import settings
 from .projects.api import router as projects_router
 from .retrieval.api import router as retrieval_router
 from .schedules.api import router as schedules_router
+from .service_credentials.api import internal_router as credentials_internal_router
+from .service_credentials.api import router as credentials_router
 from .sessions.api import bindings_router
 from .sessions.api import settings_router as agent_settings_router
+from .web.api import internal_router as web_internal_router
 
 
 def build_api_router() -> APIRouter:
@@ -36,4 +39,7 @@ def build_api_router() -> APIRouter:
     router.include_router(schedules_router)
     router.include_router(bindings_router)
     router.include_router(agent_settings_router)
+    router.include_router(credentials_router)
+    router.include_router(credentials_internal_router)
+    router.include_router(web_internal_router)
     return router

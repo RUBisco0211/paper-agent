@@ -71,6 +71,7 @@
 | 0080 | frontend | SMUI 深浅主题、等宽字体与方角；视觉集中在 token、基础组件与共享 variants | 当前 | [0080-smui-theme.md](decisions/0080-smui-theme.md) |
 | 0081 | security, product, agent, data, arch | 邮箱验证与密码找回、Agent 逐请求回查、Redis 临时状态、PG outbox 与可选任务邮件通知；已批准，非验收结论 | 当前 | [0081-email-auth-and-schedule-notifications.md](decisions/0081-email-auth-and-schedule-notifications.md) |
 | 0082 | agent, frontend, product | 首条提问并发自动命名会话，仅替换时间戳名称；失败保留原名 | 当前 | [0082-session-auto-naming.md](decisions/0082-session-auto-naming.md) |
+| 0083 | agent, product, security, frontend, data | 联网搜索三个读工具、Tavily 单一供应商、Redis 整页缓存、通用服务凭据表与设置页分类导航 | 当前 | [0083-web-search-and-fetch.md](decisions/0083-web-search-and-fetch.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

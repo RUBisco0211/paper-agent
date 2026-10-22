@@ -17,6 +17,20 @@ ROUTER_FILES = {
 
 LITERATURE_PACKAGES = {"library", "imports", "processing", "retrieval"}
 
+#: Packages that carry their own HTTP boundary and must therefore be uniform.
+#: Supporting packages (``web``, ``service_credentials``) live beside them with
+#: the file names that match what they contain.
+ROUTER_PACKAGES = {
+    "auth",
+    "imports",
+    "library",
+    "processing",
+    "projects",
+    "retrieval",
+    "schedules",
+    "sessions",
+}
+
 
 def test_literature_workflows_have_four_business_packages():
     for name in LITERATURE_PACKAGES:
@@ -42,8 +56,8 @@ def _imports(path: Path) -> list[str]:
 
 
 def test_router_packages_have_only_the_standard_modules():
-    packages = [path.parent for path in APP.glob("*/api.py")]
-    assert packages, "Expected business routers under app/"
+    packages = [APP / name for name in sorted(ROUTER_PACKAGES)]
+    assert all((package / "api.py").exists() for package in packages)
     for package in packages:
         assert {path.name for path in package.glob("*.py")} == ROUTER_FILES
         assert not [

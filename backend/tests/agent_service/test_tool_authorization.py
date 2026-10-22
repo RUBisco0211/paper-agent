@@ -24,6 +24,9 @@ def test_paper_agent_exposes_all_approved_tools_without_a_reset_tool():
         "list_papers",
         "search_papers",
         "get_paper_excerpt",
+        "web_search",
+        "web_fetch",
+        "web_extract_excerpt",
         "discover_papers",
         "import_selected_papers",
         "ask_user",
@@ -31,6 +34,7 @@ def test_paper_agent_exposes_all_approved_tools_without_a_reset_tool():
     }
     assert [group.name for group in agent.toolkit.tool_groups] == [
         "basic",
+        "public_web",
         "paper_discovery",
         "user_questions",
         "system_functions",
