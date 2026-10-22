@@ -12,7 +12,8 @@ import { ImportQueuePanel } from "@/components/imports/ImportQueuePanel"
 import { NewChatPage } from "@/pages/chat/NewChatPage"
 import { MessageNavigationRail } from "@/components/chat/MessageNavigationRail"
 import { CalendarTabPage } from "@/components/schedule/CalendarTabPage"
-import { ModelSettingsPage } from "@/pages/ModelSettingsPage"
+import { ModelsSection } from "@/components/settings/ModelsSection"
+import { SidebarProvider } from "@/components/ui/Sidebar"
 import "@/i18n"
 
 const queue = vi.hoisted(() => ({ items: [] as ImportQueueItem[] }))
@@ -72,7 +73,7 @@ it("the calendar date inherits the theme radius when it marks today", () => {
 })
 
 it("the credential form inherits the theme radius when model settings are opened", () => {
-  render(<QueryClientProvider client={createQueryClient()}><ModelSettingsPage /></QueryClientProvider>)
+  render(<QueryClientProvider client={createQueryClient()}><SidebarProvider><ModelsSection /></SidebarProvider></QueryClientProvider>)
   const surface = screen.getByText("保存凭据", { selector: "h2" }).closest("section")!
   expect(surface.classList.contains("rounded-lg")).toBe(true)
 })

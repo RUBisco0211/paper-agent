@@ -3,6 +3,7 @@ import { libraryEndpoints } from "./endpoints/library"
 import { projectEndpoints } from "./endpoints/projects"
 import { sessionEndpoints } from "./endpoints/sessions"
 import { importEndpoints, retrievalEndpoints } from "./endpoints/imports"
+import { serviceCredentialEndpoints } from "./endpoints/serviceCredentials"
 
 export * from "./client"
 export * from "./errors"
@@ -32,6 +33,7 @@ export function createApi(options: ApiClientOptions = {}) {
     sessions: sessionEndpoints(client),
     imports: importEndpoints(client),
     retrieval: retrievalEndpoints(client),
+    serviceCredentials: serviceCredentialEndpoints(client),
   }
 }
 

@@ -9,7 +9,9 @@ import { LoginPage } from "@/pages/LoginPage"
 import { RegisterPage } from "@/pages/RegisterPage"
 import { PasswordResetPage } from "@/pages/PasswordResetPage"
 import { AppLayout } from "@/components/layout/AppLayout"
-import { ModelSettingsPage } from "@/pages/ModelSettingsPage"
+import { SettingsLayout } from "@/components/settings/SettingsLayout"
+import { ModelsSection } from "@/components/settings/ModelsSection"
+import { WebSearchSection } from "@/components/settings/WebSearchSection"
 import { PaperChatPage } from "@/pages/chat/PaperChatPage"
 import { ChatPage } from "@/pages/chat/ChatPage"
 import { NewChatPage } from "@/pages/chat/NewChatPage"
@@ -31,7 +33,11 @@ const router = createBrowserRouter([
       { path: "/calendar", element: <Navigate to="/scheduled" replace /> },
       { path: "/scheduled", element: <PaperCalendarPage /> },
       { path: "/scheduled/:scheduleId/runs/:sessionId", element: <PaperCalendarPage /> },
-      { path: "/settings", element: <ModelSettingsPage /> },
+      { path: "/settings", element: <SettingsLayout />, children: [
+        { index: true, element: <Navigate to="/settings/models" replace /> },
+        { path: "models", element: <ModelsSection /> },
+        { path: "web-search", element: <WebSearchSection /> },
+      ] },
       { path: "/chat", element: <ChatPage />, children: [
         { path: "new", element: <NewChatPage /> },
         { path: "project/:projectId", element: <div className="flex h-full items-center justify-center text-muted-foreground">选择会话或新建会话</div> },

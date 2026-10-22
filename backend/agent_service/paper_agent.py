@@ -12,11 +12,12 @@ from .tools.base import (
 )
 
 LIBRARY_TOOLS = frozenset({"list_papers", "search_papers", "get_paper_excerpt"})
+WEB_TOOLS = frozenset({"web_search", "web_fetch", "web_extract_excerpt"})
 DISCOVERY_TOOLS = frozenset({"discover_papers", "import_selected_papers"})
 INTERACTION_TOOLS = frozenset({"ask_user"})
 SCHEDULE_TOOLS = frozenset({"create_scheduled_task"})
 PROJECT_TOOL_NAMES = (
-    LIBRARY_TOOLS | DISCOVERY_TOOLS | INTERACTION_TOOLS | SCHEDULE_TOOLS
+    LIBRARY_TOOLS | WEB_TOOLS | DISCOVERY_TOOLS | INTERACTION_TOOLS | SCHEDULE_TOOLS
 )
 
 
@@ -45,7 +46,7 @@ class PaperAgent(Agent):
                 if (
                     (
                         isinstance(tool, PaperReadTool)
-                        and tool.name in LIBRARY_TOOLS | {"discover_papers"}
+                        and tool.name in LIBRARY_TOOLS | WEB_TOOLS | {"discover_papers"}
                     )
                     or (
                         isinstance(tool, ApprovedImportTool)
@@ -65,6 +66,14 @@ class PaperAgent(Agent):
         approved = FixedProjectToolkit(
             tools=[allowed[name] for name in sorted(LIBRARY_TOOLS)],
             tool_groups=[
+                ToolGroup(
+                    name="public_web",
+                    description=(
+                        "Look things up on the public web to supply context the "
+                        "library cannot."
+                    ),
+                    tools=[allowed[name] for name in sorted(WEB_TOOLS)],
+                ),
                 ToolGroup(
                     name="paper_discovery",
                     description="Find papers and import a user-approved selection.",

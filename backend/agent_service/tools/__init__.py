@@ -9,6 +9,7 @@ from .library import build_library_tools
 from .questions import build_question_tool
 from .schedules import build_schedule_tool
 from .scope import prepare_schedule_scope
+from .web import build_web_tools
 
 
 async def build_agent_tools(
@@ -23,6 +24,7 @@ async def build_agent_tools(
     policy = always_allow or {}
     return [
         *build_library_tools(user_id, session_id),
+        *build_web_tools(user_id),
         *build_discovery_tools(
             user_id,
             session_id,

@@ -131,6 +131,8 @@ class Settings(BaseSettings):
     arxiv_pdf_url: str = "https://arxiv.org/pdf"
     zotero_recognizer_url: str | None = None
     outbound_timeout_seconds: float = 20.0
+    web_search_base_url: str = "https://api.tavily.com"
+    web_search_timeout_seconds: float = 30.0
 
     # Provider/model choices come from AgentScope model cards. Users may select
     # from this allow-list and supply a key, but cannot enter arbitrary names or URLs.

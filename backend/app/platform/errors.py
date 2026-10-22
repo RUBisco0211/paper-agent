@@ -85,6 +85,7 @@ class ErrorCode(StrEnum):
     PROVIDER_NOT_CONFIGURED = "provider_not_configured"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
+    PROVIDER_QUOTA_EXHAUSTED = "provider_quota_exhausted"
 
 
 class DomainValidationError(ValueError):
@@ -163,6 +164,12 @@ class NotImplementedAppError(AppError):
     code = ErrorCode.NOT_IMPLEMENTED
     status_code = status.HTTP_501_NOT_IMPLEMENTED
     message = "该能力尚未实现"
+
+
+class ProviderNotConfiguredError(AppError):
+    code = ErrorCode.PROVIDER_NOT_CONFIGURED
+    status_code = status.HTTP_409_CONFLICT
+    message = "尚未配置该服务的访问密钥"
 
 
 def error_body(error: AppError) -> dict[str, Any]:
