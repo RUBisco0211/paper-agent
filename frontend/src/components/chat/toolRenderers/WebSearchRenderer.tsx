@@ -1,5 +1,5 @@
 import { getResultText } from "@/components/chat/toolRenderers/shared"
-import { readFailureCode } from "./webFailure"
+import { WebToolError, isFailure } from "./WebToolResult"
 import type { ToolCallWithResult, ToolRenderer } from "./types"
 
 interface WebResult {
@@ -39,17 +39,12 @@ function shorten(text: string): string {
 }
 
 function WebResults({ pair }: { pair: ToolCallWithResult }) {
-  const failure = readFailureCode(getResultText(pair.result))
-  if (pair.result?.state === "error" || failure) {
-    return (
-      <p role="alert" className="p-3 font-mono text-sm text-destructive">
-        {failure ?? "provider_unavailable"}
-      </p>
-    )
+  if (pair.result?.state === "error" || isFailure(getResultText(pair.result))) {
+    return <WebToolError />
   }
   const results = readResults(pair)
   if (!results.length) {
-    return <p className="p-3 text-sm text-muted-foreground">no results</p>
+    return <p className="p-3 text-sm text-muted-foreground">无结果</p>
   }
   return (
     <div className="space-y-2 py-2">
@@ -79,6 +74,6 @@ function WebResults({ pair }: { pair: ToolCallWithResult }) {
 }
 
 export const WebSearchRenderer: ToolRenderer = {
-  renderHeader: () => <span>web search</span>,
+  renderHeader: () => <span>搜索网页</span>,
   renderBody: (pair) => (pair.result ? <WebResults pair={pair} /> : null),
 }

@@ -1,5 +1,5 @@
 import { getResultText, parseInput } from "@/components/chat/toolRenderers/shared"
-import { readFailureCode } from "./webFailure"
+import { WebToolError, isFailure } from "./WebToolResult"
 import type { ToolCallWithResult, ToolRenderer } from "./types"
 
 interface PageRead {
@@ -46,17 +46,12 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
 }
 
 function PageReadView({ pair }: { pair: ToolCallWithResult }) {
-  const failure = readFailureCode(getResultText(pair.result))
-  if (pair.result?.state === "error" || failure) {
-    return (
-      <p role="alert" className="p-3 font-mono text-sm text-destructive">
-        {failure ?? "provider_unavailable"}
-      </p>
-    )
+  if (pair.result?.state === "error" || isFailure(getResultText(pair.result))) {
+    return <WebToolError />
   }
   const page = readPage(pair)
   if (!page) {
-    return <p className="p-3 text-sm text-muted-foreground">no content</p>
+    return <p className="p-3 text-sm text-muted-foreground">无内容</p>
   }
   return (
     <div className="space-y-2 p-3 text-sm">
@@ -69,10 +64,10 @@ function PageReadView({ pair }: { pair: ToolCallWithResult }) {
         {domainOf(page.url)}
       </a>
       {page.excerptOnly && (
-        <p className="text-xs text-muted-foreground">excerpt only</p>
+        <p className="text-xs text-muted-foreground">以下是与问题相关的摘录</p>
       )}
       {page.outOfRange ? (
-        <p className="font-mono text-muted-foreground">offset out of range</p>
+        <p className="text-muted-foreground">已读到页面末尾</p>
       ) : (
         <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-sans text-xs">
           {page.content}
@@ -95,11 +90,11 @@ function headerFor(label: string) {
 }
 
 export const WebFetchRenderer: ToolRenderer = {
-  renderHeader: headerFor("read"),
+  renderHeader: headerFor("读取网页"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }
 
 export const WebExcerptRenderer: ToolRenderer = {
-  renderHeader: headerFor("excerpt"),
+  renderHeader: headerFor("摘录网页"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }

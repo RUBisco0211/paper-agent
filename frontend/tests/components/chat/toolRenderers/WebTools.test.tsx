@@ -41,31 +41,17 @@ describe("web tool rendering", () => {
     expect(screen.getByText("A decoding method.")).toBeTruthy()
   })
 
-  it("shows the stable code, not the message, when search could not run", () => {
-    const body = WebSearchRenderer.renderBody!(
-      pair(
-        "web_search",
-        '{"query":"RSC"}',
-        JSON.stringify({
-          status: "error",
-          code: "provider_not_configured",
-          message: "api key unavailable",
-        }),
-      ),
-      t,
-    )
-    render(<>{body}</>)
-    expect(screen.getByRole("alert").textContent).toBe("provider_not_configured")
-    expect(screen.queryByText("no results")).toBeNull()
-  })
-
-  it("falls back to a stable code when the tool result carries none", () => {
-    const body = WebSearchRenderer.renderBody!(
-      pair("web_search", "{}", JSON.stringify({ status: "error" })),
-      t,
-    )
-    render(<>{body}</>)
-    expect(screen.getByRole("alert").textContent).toBe("provider_unavailable")
+  it("shows one plain error for every failure reason", () => {
+    const codes = ["provider_not_configured", "rate_limited", "provider_unavailable"]
+    const alerts = codes.map((code) => {
+      const body = WebSearchRenderer.renderBody!(
+        pair("web_search", '{"query":"RSC"}', JSON.stringify({ status: "error", code })),
+        t,
+      )
+      return render(<>{body}</>).container.textContent
+    })
+    expect(new Set(alerts).size).toBe(1)
+    expect(alerts[0]).toBe("工具调用错误")
   })
 
   it("truncates a long search snippet before it reaches the page", () => {
@@ -109,23 +95,6 @@ describe("web tool rendering", () => {
     expect(screen.getByText("page body text")).toBeTruthy()
   })
 
-  it("shows the code when a page could not be read", () => {
-    const body = WebFetchRenderer.renderBody!(
-      pair(
-        "web_fetch",
-        '{"url":"https://example.org/page"}',
-        JSON.stringify({
-          status: "error",
-          code: "provider_unavailable",
-          message: "page not readable",
-        }),
-      ),
-      t,
-    )
-    render(<>{body}</>)
-    expect(screen.getByRole("alert").textContent).toBe("provider_unavailable")
-  })
-
   it("says so when a read started past the end of the page", () => {
     const body = WebFetchRenderer.renderBody!(
       pair(
@@ -144,7 +113,7 @@ describe("web tool rendering", () => {
       t,
     )
     render(<>{body}</>)
-    expect(screen.getByText("offset out of range")).toBeTruthy()
+    expect(screen.getByText("已读到页面末尾")).toBeTruthy()
   })
 
   it("marks an excerpt read so the user knows it is not the whole page", () => {
@@ -162,6 +131,6 @@ describe("web tool rendering", () => {
       t,
     )
     render(<>{body}</>)
-    expect(screen.getByText("excerpt only")).toBeTruthy()
+    expect(screen.getByText("以下是与问题相关的摘录")).toBeTruthy()
   })
 })
