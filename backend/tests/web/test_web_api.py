@@ -39,4 +39,4 @@ def test_web_fetch_without_a_configured_key_explains_what_is_missing(
 
     assert response.status_code == 409
     assert response.json()["code"] == "provider_not_configured"
-    assert "密钥" in response.json()["message"]
+    assert response.json()["message"] == "api key unavailable"

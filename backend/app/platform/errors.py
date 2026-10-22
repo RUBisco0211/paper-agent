@@ -169,7 +169,7 @@ class NotImplementedAppError(AppError):
 class ProviderNotConfiguredError(AppError):
     code = ErrorCode.PROVIDER_NOT_CONFIGURED
     status_code = status.HTTP_409_CONFLICT
-    message = "尚未配置该服务的访问密钥"
+    message = "api key unavailable"
 
 
 def error_body(error: AppError) -> dict[str, Any]:

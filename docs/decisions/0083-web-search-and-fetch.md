@@ -16,7 +16,7 @@
 - `raw_content` 原样透传：不解析 HTML、不抽取结构化字段、不从正文推断标题。Tavily 的 `title` 字段本就不在 extract 响应里，也刻意不去补。前端结果列表以域名充当条目标题。
 - 每用户自带 Key，存进新建的通用服务凭据表 `service_credentials(user_id, kind, label, fields JSONB)`，同 `user_id + kind` 唯一，写入即覆盖。`fields` 中只有 `api_key` 加密（AESGCM，密钥由主密钥 + user_id 经 HKDF 派生），其余字段明文。秘密字段清单由 `spec dict` 声明，新增服务只加一行。
 - 工具层不抛异常：`business_request` 把非 2xx 折成 `BusinessRequestFailed`，三个工具统一返回 `{status: "error", code, message, tool}`，前端 renderer 与 agent 读同一个信封。失败码为 `provider_not_configured` / `provider_quota_exhausted` / `rate_limited` / `provider_unavailable`。
-- 错误只用一个码族：`provider_not_configured`（该用户没有 Key）、`provider_quota_exhausted`（Tavily 432/433）、`rate_limited`（429）、`provider_unavailable`（401 以外的一切失败：超时、5xx、页面抓不下来）。每个码配一句可行动提示，让人与 agent 都能看懂下一步该做什么。Key 被拒（401）也算 `provider_not_configured`，因为对用户而言要做的动作相同：重填密钥。
+- 错误只用一个码族：`provider_not_configured`（该用户没有 Key）、`provider_quota_exhausted`（Tavily 432/433）、`rate_limited`（429）、`provider_unavailable`（401 以外的一切失败：超时、5xx、页面抓不下来）。Key 被拒（401）也归 `provider_not_configured`：对用户而言要做的动作相同，都是让 api-key 可用。`message` 一律用简短英文短语（`api key unavailable` / `rate limited` / `quota exhausted` / `page not readable` / `upstream unavailable`），不写面向用户的中文句子；前端错误提示直接显示 `code` 本身，不展示 `message`。
 - 401 不在库里标记"凭据已失效"：用户可能刚轮换 Key，下次调用自然恢复；持久状态字段会与设置页的"已保存"自相矛盾。
 - 供应商未预期的异常（解密失败、报文结构变化）不伪装成上游抖动，也不冒成 500：记 `web.unexpected_provider_error` 日志（含异常类型名），对外仍返回 `provider_unavailable` 并把类型名放进 `details.error`。
 - `web_search` 的 `query` 上限 1500 字符，贴合 Tavily 的接受上限；`results` 缺失（而非空数组）按 `provider_unavailable` 处理，不让 agent 误判成"网上没有"。

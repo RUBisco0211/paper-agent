@@ -1,4 +1,5 @@
 import { getResultText, parseInput } from "@/components/chat/toolRenderers/shared"
+import { readFailureCode } from "./webFailure"
 import type { ToolCallWithResult, ToolRenderer } from "./types"
 
 interface PageRead {
@@ -31,15 +32,6 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
       url?: unknown
       excerpt_only?: unknown
       offset_out_of_range?: unknown
-      message?: unknown
-    }
-    if (payload.status === "error") {
-      return {
-        content: typeof payload.message === "string" ? payload.message : "网页读取暂不可用",
-        url: "",
-        excerptOnly: false,
-        outOfRange: false,
-      }
     }
     if (typeof payload.content !== "string") return null
     return {
@@ -54,23 +46,17 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
 }
 
 function PageReadView({ pair }: { pair: ToolCallWithResult }) {
+  const failure = readFailureCode(getResultText(pair.result))
+  if (pair.result?.state === "error" || failure) {
+    return (
+      <p role="alert" className="p-3 font-mono text-sm text-destructive">
+        {failure ?? "provider_unavailable"}
+      </p>
+    )
+  }
   const page = readPage(pair)
-  if (pair.result?.state === "error") {
-    return (
-      <p role="alert" className="p-3 text-sm text-destructive">
-        网页读取暂不可用，请重试
-      </p>
-    )
-  }
   if (!page) {
-    return <p className="p-3 text-sm text-muted-foreground">没有读到网页内容</p>
-  }
-  if (!page.url) {
-    return (
-      <p role="alert" className="p-3 text-sm text-destructive">
-        {page.content}
-      </p>
-    )
+    return <p className="p-3 text-sm text-muted-foreground">no content</p>
   }
   return (
     <div className="space-y-2 p-3 text-sm">
@@ -83,10 +69,10 @@ function PageReadView({ pair }: { pair: ToolCallWithResult }) {
         {domainOf(page.url)}
       </a>
       {page.excerptOnly && (
-        <p className="text-xs text-muted-foreground">以下是与该问题相关的段落摘录</p>
+        <p className="text-xs text-muted-foreground">excerpt only</p>
       )}
       {page.outOfRange ? (
-        <p className="text-muted-foreground">已读到页面末尾，没有更多内容</p>
+        <p className="font-mono text-muted-foreground">offset out of range</p>
       ) : (
         <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-sans text-xs">
           {page.content}
@@ -109,11 +95,11 @@ function headerFor(label: string) {
 }
 
 export const WebFetchRenderer: ToolRenderer = {
-  renderHeader: headerFor("读取网页"),
+  renderHeader: headerFor("read"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }
 
 export const WebExcerptRenderer: ToolRenderer = {
-  renderHeader: headerFor("摘录网页"),
+  renderHeader: headerFor("excerpt"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }

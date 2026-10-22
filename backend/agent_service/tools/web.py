@@ -92,22 +92,11 @@ async def _call(
             "message": exc.message,
             "tool": tool,
         }
-    except httpx.HTTPError:
+    except (httpx.HTTPError, RuntimeError):
         return {
             "status": "error",
             "code": "provider_unavailable",
-            "message": (
-                "联网服务暂时不可用。请告知用户本次未能联网，并基于已有文献回答。"
-            ),
-            "tool": tool,
-        }
-    except RuntimeError as exc:
-        # Missing internal configuration, not an upstream failure: surface it as
-        # the same unavailable code so both callers share one vocabulary.
-        return {
-            "status": "error",
-            "code": "provider_unavailable",
-            "message": str(exc),
+            "message": "upstream unavailable",
             "tool": tool,
         }
 

@@ -80,7 +80,7 @@ def test_a_missing_key_becomes_a_result_the_agent_can_act_on(monkeypatch):
             409,
             {
                 "code": "provider_not_configured",
-                "message": "尚未配置该服务的访问密钥",
+                "message": "api key unavailable",
             },
         )
 
@@ -89,7 +89,7 @@ def test_a_missing_key_becomes_a_result_the_agent_can_act_on(monkeypatch):
 
     assert payload["status"] == "error"
     assert payload["code"] == "provider_not_configured"
-    assert payload["message"] == "尚未配置该服务的访问密钥"
+    assert payload["message"] == "api key unavailable"
 
 
 def test_a_rate_limit_keeps_its_own_code(monkeypatch):
@@ -123,7 +123,7 @@ def test_a_declared_failure_does_not_escape_as_an_exception(monkeypatch):
     payload = _payload(asyncio.run(_tool("web_search")(query="RSC")))
 
     assert payload["status"] == "error"
-    assert "AGENT_INTERNAL_KEY" in payload["message"]
+    assert payload["code"] == "provider_unavailable"
 
 
 @pytest.mark.parametrize("tool", ["web_search", "web_fetch", "web_extract_excerpt"])

@@ -1,4 +1,5 @@
 import { getResultText } from "@/components/chat/toolRenderers/shared"
+import { readFailureCode } from "./webFailure"
 import type { ToolCallWithResult, ToolRenderer } from "./types"
 
 interface WebResult {
@@ -25,23 +26,6 @@ function readResults(pair: ToolCallWithResult): WebResult[] {
   }
 }
 
-/**
- * Read a failure the agent tools report as an ordinary result. The business
- * service's HTTP errors reach the agent already translated into this shape.
- */
-function readFailure(pair: ToolCallWithResult): string | null {
-  const text = getResultText(pair.result)
-  try {
-    const data: unknown = JSON.parse(text)
-    if (!data || typeof data !== "object") return null
-    const { status, message } = data as { status?: unknown; message?: unknown }
-    if (status === "error" && typeof message === "string") return message
-    return null
-  } catch {
-    return null
-  }
-}
-
 function domainOf(url: string): string {
   try {
     return new URL(url).hostname
@@ -55,17 +39,17 @@ function shorten(text: string): string {
 }
 
 function WebResults({ pair }: { pair: ToolCallWithResult }) {
-  const failure = readFailure(pair)
+  const failure = readFailureCode(getResultText(pair.result))
   if (pair.result?.state === "error" || failure) {
     return (
-      <p role="alert" className="p-3 text-sm text-destructive">
-        {failure ?? "联网搜索暂不可用，请重试"}
+      <p role="alert" className="p-3 font-mono text-sm text-destructive">
+        {failure ?? "provider_unavailable"}
       </p>
     )
   }
   const results = readResults(pair)
   if (!results.length) {
-    return <p className="p-3 text-sm text-muted-foreground">没有找到相关网页</p>
+    return <p className="p-3 text-sm text-muted-foreground">no results</p>
   }
   return (
     <div className="space-y-2 py-2">
@@ -95,6 +79,6 @@ function WebResults({ pair }: { pair: ToolCallWithResult }) {
 }
 
 export const WebSearchRenderer: ToolRenderer = {
-  renderHeader: () => <span>搜索网页</span>,
+  renderHeader: () => <span>web search</span>,
   renderBody: (pair) => (pair.result ? <WebResults pair={pair} /> : null),
 }
