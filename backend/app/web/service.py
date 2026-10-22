@@ -1,6 +1,5 @@
 """Search the public web and read pages on one user's behalf."""
 
-from contextlib import suppress
 from uuid import UUID
 
 from ..platform.errors import (
@@ -20,6 +19,7 @@ from .domain import (
     search_envelope,
     window_page,
 )
+from .page_cache import PageCacheUnavailable
 from .ports import CredentialReader, PageStore, ProviderFactory
 
 PROVIDER_KIND = "tavily"
@@ -83,14 +83,18 @@ class WebSearchService:
         return self._provider_factory(api_key)
 
     def _cached(self, user_id: UUID, url: str) -> str | None:
+        """A cache miss and a broken cache are the same thing here: fetch again."""
         try:
             return self._pages.get(str(user_id), url)
-        except Exception:
+        except PageCacheUnavailable:
             return None
 
     def _remember(self, user_id: UUID, url: str, content: str) -> None:
-        with suppress(Exception):
+        """Failing to cache costs one extra fetch later; it must not fail the read."""
+        try:
             self._pages.put(str(user_id), url, content)
+        except PageCacheUnavailable:
+            return
 
     @staticmethod
     def _translate(exc: Exception, label: str) -> Exception:
@@ -107,7 +111,7 @@ class WebSearchService:
             return ProviderUnavailableError("该页面无法读取，可能已失效或不允许抓取")
         if isinstance(exc, ProviderUnavailable):
             return ProviderUnavailableError(f"{label}暂时不可用")
-        return ProviderUnavailableError(f"{label}暂时不可用")
+        return exc
 
 
 __all__ = ["DEFAULT_MAX_CHARS", "InvalidWebCredentialError", "WebSearchService"]

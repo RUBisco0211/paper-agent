@@ -1,10 +1,8 @@
 """Page reads are windowed, cached per user, and never leak across users."""
 
-import os
 from uuid import uuid4
 
 import pytest
-from redis import Redis
 
 from app.web.domain import (
     InvalidCredential,
@@ -13,7 +11,7 @@ from app.web.domain import (
     ProviderUnavailable,
     WebPageNotFound,
 )
-from app.web.repo import PageCacheUnavailable, WebPageCache
+from app.web.page_cache import PageCacheUnavailable, WebPageCache
 from app.web.service import InvalidWebCredentialError, WebSearchService
 
 
@@ -147,17 +145,14 @@ def test_reading_pages_without_a_key_says_it_is_not_configured():
     assert str(caught.value.code) == "provider_not_configured"
 
 
-def test_page_cache_round_trips_and_expires_through_redis():
-    url = os.environ.get("PAPER_AGENT_TEST_REDIS_URL", "redis://127.0.0.1:6379/0")
-    redis = Redis.from_url(url)
-    cache = WebPageCache(redis, ttl_seconds=60)
+def test_page_cache_round_trips_and_expires_through_redis(shared_redis):
+    cache = WebPageCache(shared_redis, ttl_seconds=60)
     user = uuid4().hex
     key = WebPageCache._key(user, "https://a")
     try:
         assert cache.get(user, "https://a") is None
         cache.put(user, "https://a", "body")
         assert cache.get(user, "https://a") == "body"
-        assert 0 < redis.ttl(key) <= 60
+        assert 0 < shared_redis.ttl(key) <= 60
     finally:
-        redis.delete(key)
-        redis.close()
+        shared_redis.delete(key)

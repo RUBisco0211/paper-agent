@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class WebSearchRequest(BaseModel):
     user_id: UUID
-    query: str = Field(min_length=1, max_length=2000)
+    query: str = Field(min_length=1, max_length=1500)
     max_results: int = Field(default=5, ge=1, le=10)
 
 
@@ -21,5 +21,5 @@ class WebFetchRequest(BaseModel):
 class WebExcerptRequest(BaseModel):
     user_id: UUID
     url: str = Field(min_length=1, max_length=2048)
-    query: str = Field(min_length=1, max_length=2000)
+    query: str = Field(min_length=1, max_length=1500)
     chunks: int = Field(default=3, ge=1, le=5)

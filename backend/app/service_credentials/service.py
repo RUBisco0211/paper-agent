@@ -4,9 +4,13 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from ..platform.errors import ErrorCode, ProviderNotConfiguredError, ValidationError
+from .crypto import CredentialCipher
 from .domain import SPECS, spec_for
-from .ports import CredentialCipher
 from .repo import ServiceCredentialRecord, ServiceCredentialRepository
+
+
+class UnknownSecretField(ValueError):
+    """A field that a service did not declare as secret was requested as one."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +75,7 @@ class ServiceCredentialService:
             label or spec.label,
             stored,
         )
+        self._repository.commit()
         record = self._repository.get(user_id, kind)
         if record is None:
             raise RuntimeError("credential_upsert_lost")
@@ -78,18 +83,23 @@ class ServiceCredentialService:
 
     def delete(self, user_id: UUID, kind: str) -> None:
         self._repository.delete(user_id, kind)
+        self._repository.commit()
 
     def secret(self, user_id: UUID, kind: str, field: str) -> str | None:
-        """Return the decrypted value, or None when the user has not set it."""
+        """Return the decrypted value, or None when the user has not set it.
+
+        Only fields a service declared as secret are served here; anything else
+        is a programming error rather than a value to hand back in the clear.
+        """
+        spec = SPECS.get(kind)
+        if spec is None or field not in spec.secret_fields:
+            raise UnknownSecretField(f"{kind}.{field}")
         record = self._repository.get(user_id, kind)
         if record is None:
             return None
         value = record.fields.get(field)
         if not isinstance(value, str) or not value:
             return None
-        spec = SPECS.get(kind)
-        if spec is None or field not in spec.secret_fields:
-            return value
         return self._cipher.decrypt(str(user_id), kind, field, value)
 
     def _view(self, record: ServiceCredentialRecord) -> CredentialView:
@@ -112,7 +122,10 @@ def require_secret(
     field: str,
 ) -> str:
     """Read a secret or fail with a code the caller can translate for the user."""
-    value = service.secret(user_id, kind, field)
+    try:
+        value = service.secret(user_id, kind, field)
+    except UnknownSecretField as exc:
+        raise ValidationError("不支持的字段", code=ErrorCode.VALIDATION_ERROR) from exc
     if value is None:
         raise ProviderNotConfiguredError()
     return value

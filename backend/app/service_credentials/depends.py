@@ -4,7 +4,7 @@ from fastapi import Depends
 
 from ..platform.config import settings
 from ..platform.database import SessionDep
-from .ports import CredentialCipher
+from .crypto import CredentialCipher
 from .repo import ServiceCredentialRepository
 from .service import ServiceCredentialService
 

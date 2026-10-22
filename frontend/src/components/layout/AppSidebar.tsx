@@ -1,5 +1,5 @@
 import { useRef } from "react"
-import { BookOpen, Clock3, KeyRound, ListChecks, LoaderCircle, LockKeyhole, LogOut, MessageSquareText, Search } from "lucide-react"
+import { BookOpen, Clock3, ListChecks, LoaderCircle, LockKeyhole, LogOut, MessageSquareText, Search, Settings } from "lucide-react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/components/providers/AuthProvider"
@@ -14,7 +14,7 @@ const routes = [
   { to: "/library", label: "文献库", icon: BookOpen },
   { to: "/discover", label: "在线检索", icon: Search },
   { to: "/scheduled", label: "定时任务", icon: Clock3 },
-  { to: "/settings", label: "模型设置", icon: KeyRound },
+  { to: "/settings", label: "设置", icon: Settings },
 ]
 
 export function AppSidebar() {
@@ -47,7 +47,7 @@ export function AppSidebar() {
       </SidebarMenuButton></DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="end" className="w-52">
           <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel><DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => navigate("/settings")}><KeyRound />模型设置</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => navigate("/settings")}><Settings />设置</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => navigate("/password-reset")}><LockKeyhole />重置密码</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void logout().then(() => navigate("/login", { replace: true }))}><LogOut />退出登录</DropdownMenuItem>

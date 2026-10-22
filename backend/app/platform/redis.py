@@ -27,3 +27,11 @@ def set_redis(client: Redis | None) -> None:
     """Replace or clear the shared client; used by tests and shutdown."""
     global _client
     _client = client
+
+
+def close_redis() -> None:
+    """Release the pool; call once during shutdown."""
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None

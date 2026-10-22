@@ -39,16 +39,18 @@ export function ModelsSection() {
     }
   }
 
-  return <div className="flex h-full w-full">
-    <Sidebar collapsible="none" className="border-r">
+  return <div className="flex gap-6">
+    <div className="w-52 shrink-0 border-r pr-4">
+    <Sidebar collapsible="none" className="bg-transparent">
       <SidebarContent><SidebarGroup><SidebarGroupLabel>提供商</SidebarGroupLabel><SidebarGroupContent><SidebarMenu>
         {catalog.data?.providers.map((item) => <SidebarMenuItem key={item.id}>
           <SidebarMenuButton isActive={selected === item.id} onClick={() => { setProvider(item.id); setError(""); setSuccess(false) }}><KeyRound />{item.label}</SidebarMenuButton>
         </SidebarMenuItem>)}
       </SidebarMenu></SidebarGroupContent></SidebarGroup></SidebarContent>
     </Sidebar>
-    <div className="min-w-0 flex-1 overflow-y-auto">
-    <div className="mx-auto max-w-3xl space-y-8">
+    </div>
+    <div className="min-w-0 flex-1">
+    <div className="max-w-3xl space-y-8">
       <section className="space-y-4"><h2 className="text-base font-medium">已保存的凭据</h2>
         {credentials.isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
         {saved.length === 0 && !credentials.isPending && <p className="text-sm text-muted-foreground">尚未配置</p>}

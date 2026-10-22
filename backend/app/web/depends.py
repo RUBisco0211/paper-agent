@@ -8,8 +8,8 @@ from ..platform.redis import get_redis
 from ..service_credentials.depends import CredentialCipherDep
 from ..service_credentials.repo import ServiceCredentialRepository
 from ..service_credentials.service import ServiceCredentialService
+from .page_cache import WebPageCache
 from .ports import TavilyWeb
-from .repo import WebPageCache
 from .service import WebSearchService
 
 

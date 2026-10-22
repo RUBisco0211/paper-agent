@@ -104,7 +104,8 @@ class TavilyWeb:
         )
         results = data.get("results")
         if not isinstance(results, list):
-            return []
+            # A missing results array is a broken payload, not "nothing found".
+            raise ProviderUnavailable
         return [
             {
                 "title": item.get("title") or "",

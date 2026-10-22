@@ -1,13 +1,16 @@
 """Read and search the public web on the user's behalf.
 
 Both reads leave the business service in charge of credentials and caching, so
-this module never holds a secret or a Redis handle of its own.
+this module never holds a secret or a Redis handle of its own. Failures come
+back as ordinary tool results carrying a stable code and an actionable message,
+so the agent can tell the user what to do instead of retrying blindly.
 """
 
+import httpx
 from agentscope.tool import ToolBase
 
 from .base import PaperReadTool
-from .request import business_request
+from .request import BusinessRequestFailed, business_request
 
 
 def build_web_tools(user_id: str) -> list[ToolBase]:
@@ -19,10 +22,10 @@ def build_web_tools(user_id: str) -> list[ToolBase]:
         find out what it refers to. Each result is a title, a URL and a short
         snippet, and none of them carries a citation identifier.
         """
-        return await business_request(
-            "POST",
+        return await _call(
+            "web_search",
             "web-search",
-            json={
+            {
                 "user_id": user_id,
                 "query": query,
                 "max_results": max(1, min(max_results, 10)),
@@ -39,10 +42,10 @@ def build_web_tools(user_id: str) -> list[ToolBase]:
         Long pages come back in windows. When the result says it was truncated,
         call again with the returned next_offset to read the continuation.
         """
-        return await business_request(
-            "POST",
+        return await _call(
+            "web_fetch",
             "web-fetch",
-            json={
+            {
                 "user_id": user_id,
                 "url": url,
                 "offset": max(0, offset),
@@ -56,10 +59,10 @@ def build_web_tools(user_id: str) -> list[ToolBase]:
         Use this instead of web_fetch when a page is long and the question is
         narrow; the returned text is assembled from passages chosen for it.
         """
-        return await business_request(
-            "POST",
+        return await _call(
+            "web_extract_excerpt",
             "web-extract-excerpt",
-            json={
+            {
                 "user_id": user_id,
                 "url": url,
                 "query": query,
@@ -71,3 +74,38 @@ def build_web_tools(user_id: str) -> list[ToolBase]:
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
         for func in (web_search, web_fetch, web_extract_excerpt)
     ]
+
+
+async def _call(
+    tool: str,
+    path: str,
+    payload: dict,
+) -> dict:
+    try:
+        return await business_request("POST", path, json=payload)
+    except BusinessRequestFailed as exc:
+        return {
+            "status": "error",
+            "code": exc.code,
+            "message": exc.message,
+            "tool": tool,
+        }
+    except httpx.HTTPError:
+        return {
+            "status": "error",
+            "code": "provider_unavailable",
+            "message": (
+                "联网服务暂时不可用。请告知用户本次未能联网，并基于已有文献回答。"
+            ),
+            "tool": tool,
+        }
+    except RuntimeError as exc:
+        return {
+            "status": "error",
+            "code": "web_search_unavailable",
+            "message": str(exc),
+            "tool": tool,
+        }
+
+
+__all__ = ["build_web_tools"]

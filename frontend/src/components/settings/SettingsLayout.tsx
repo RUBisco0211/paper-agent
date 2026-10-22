@@ -15,18 +15,13 @@ import {
 } from "@/components/ui/Sidebar"
 
 const SECTIONS = [
-  { to: "/settings/models", label: "模型", icon: Cpu },
-  { to: "/settings/web-search", label: "网络搜索", icon: Globe },
+  { to: "/settings/models", label: "模型", title: "模型设置", icon: Cpu },
+  { to: "/settings/web-search", label: "网络搜索", title: "网络搜索", icon: Globe },
 ]
-
-const TITLES: Record<string, string> = {
-  "/settings/models": "模型",
-  "/settings/web-search": "网络搜索",
-}
 
 export function SettingsLayout() {
   const location = useLocation()
-  const title = TITLES[location.pathname] ?? "设置"
+  const title = SECTIONS.find((section) => section.to === location.pathname)?.title ?? "设置"
   return (
     <SidebarProvider className="min-h-0 flex-1">
       <div className="flex h-full w-full">

@@ -5,6 +5,7 @@ interface PageRead {
   content: string
   url: string
   excerptOnly: boolean
+  outOfRange: boolean
 }
 
 function domainOf(url: string): string {
@@ -15,6 +16,10 @@ function domainOf(url: string): string {
   }
 }
 
+/**
+ * Read a page result, or the failure the agent tools report in the same shape.
+ * A failure has no `url`, so the caller can tell them apart.
+ */
 function readPage(pair: ToolCallWithResult): PageRead | null {
   const text = getResultText(pair.result)
   try {
@@ -25,6 +30,7 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
       content?: unknown
       url?: unknown
       excerpt_only?: unknown
+      offset_out_of_range?: unknown
       message?: unknown
     }
     if (payload.status === "error") {
@@ -32,6 +38,7 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
         content: typeof payload.message === "string" ? payload.message : "网页读取暂不可用",
         url: "",
         excerptOnly: false,
+        outOfRange: false,
       }
     }
     if (typeof payload.content !== "string") return null
@@ -39,6 +46,7 @@ function readPage(pair: ToolCallWithResult): PageRead | null {
       content: payload.content,
       url: typeof payload.url === "string" ? payload.url : "",
       excerptOnly: payload.excerpt_only === true,
+      outOfRange: payload.offset_out_of_range === true,
     }
   } catch {
     return null
@@ -57,49 +65,55 @@ function PageReadView({ pair }: { pair: ToolCallWithResult }) {
   if (!page) {
     return <p className="p-3 text-sm text-muted-foreground">没有读到网页内容</p>
   }
-  const failed = !page.url
+  if (!page.url) {
+    return (
+      <p role="alert" className="p-3 text-sm text-destructive">
+        {page.content}
+      </p>
+    )
+  }
   return (
     <div className="space-y-2 p-3 text-sm">
-      {failed ? (
-        <p role="alert" className="text-destructive">
-          {page.content}
-        </p>
+      <a
+        href={page.url}
+        target="_blank"
+        rel="noreferrer"
+        className="block truncate font-medium underline"
+      >
+        {domainOf(page.url)}
+      </a>
+      {page.excerptOnly && (
+        <p className="text-xs text-muted-foreground">以下是与该问题相关的段落摘录</p>
+      )}
+      {page.outOfRange ? (
+        <p className="text-muted-foreground">已读到页面末尾，没有更多内容</p>
       ) : (
-        <>
-          <a
-            href={page.url}
-            target="_blank"
-            rel="noreferrer"
-            className="block truncate font-medium underline"
-          >
-            {domainOf(page.url)}
-          </a>
-          {page.excerptOnly && (
-            <p className="text-xs text-muted-foreground">以下是与该问题相关的段落摘录</p>
-          )}
-          <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-sans text-xs">
-            {page.content}
-          </pre>
-        </>
+        <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-sans text-xs">
+          {page.content}
+        </pre>
       )}
     </div>
   )
 }
 
-export const WebFetchRenderer: ToolRenderer = {
-  renderHeader: (pair) => {
+function headerFor(label: string) {
+  return (pair: ToolCallWithResult) => {
     const input = parseInput(pair.call.input) as { url?: unknown }
     const url = typeof input.url === "string" ? input.url : ""
-    return <span className="truncate">读取网页 {url ? domainOf(url) : ""}</span>
-  },
+    return (
+      <span className="truncate">
+        {label} {url ? domainOf(url) : ""}
+      </span>
+    )
+  }
+}
+
+export const WebFetchRenderer: ToolRenderer = {
+  renderHeader: headerFor("读取网页"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }
 
 export const WebExcerptRenderer: ToolRenderer = {
-  renderHeader: (pair) => {
-    const input = parseInput(pair.call.input) as { url?: unknown }
-    const url = typeof input.url === "string" ? input.url : ""
-    return <span className="truncate">摘录网页 {url ? domainOf(url) : ""}</span>
-  },
+  renderHeader: headerFor("摘录网页"),
   renderBody: (pair) => (pair.result ? <PageReadView pair={pair} /> : null),
 }

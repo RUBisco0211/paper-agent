@@ -39,6 +39,7 @@ def window_page(url: str, content: str, start: int, size: int) -> dict:
             "truncated": False,
             "next_offset": None,
             "total_chars": len(content),
+            "offset_out_of_range": True,
         }
     end = start + size
     truncated = end < len(content)
@@ -49,6 +50,7 @@ def window_page(url: str, content: str, start: int, size: int) -> dict:
         "truncated": truncated,
         "next_offset": end if truncated else None,
         "total_chars": len(content),
+        "offset_out_of_range": False,
     }
 
 

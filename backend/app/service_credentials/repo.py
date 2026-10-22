@@ -28,6 +28,10 @@ class ServiceCredentialRepository:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def commit(self) -> None:
+        """End the write so the caller can read its own change back."""
+        self.session.commit()
+
     def get(self, user_id: UUID, kind: str) -> ServiceCredentialRecord | None:
         return self.session.execute(
             select(ServiceCredentialRecord).where(
@@ -70,10 +74,10 @@ class ServiceCredentialRepository:
                 },
             )
         )
-        self.session.commit()
+        self.session.flush()
 
     def delete(self, user_id: UUID, kind: str) -> None:
         record = self.get(user_id, kind)
         if record is not None:
             self.session.delete(record)
-            self.session.commit()
+            self.session.flush()

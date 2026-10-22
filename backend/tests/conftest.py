@@ -242,6 +242,15 @@ def auth_redis(tmp_path_factory):
         socket_dir.cleanup()
 
 
+@pytest.fixture(autouse=True)
+def shared_redis(auth_redis, monkeypatch):
+    """Bind the process-wide client to the isolated test Redis."""
+    from app.platform import redis as redis_module
+
+    monkeypatch.setattr(redis_module, "_client", auth_redis, raising=False)
+    yield auth_redis
+
+
 @pytest.fixture
 def email_verification_store(auth_redis, monkeypatch):
     from app.auth.repo import EmailVerificationStore
