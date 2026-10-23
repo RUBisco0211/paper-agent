@@ -104,6 +104,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     blocks: CitationBlock[]
   } | null>(null)
   const [pendingQuotes, setPendingQuotes] = useState<QuoteReference[]>([])
+  const citationRequestToken = useRef(0)
   const [activeAnnotationKey, setActiveAnnotationKey] = useState<string | null>(null)
   useEffect(() => {
     const dismiss = (event: MouseEvent) => {
@@ -124,6 +125,11 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }, [])
   useEffect(() => quoteBridge?.register(sessionId, addPendingQuote), [quoteBridge, sessionId, addPendingQuote])
   useEffect(() => { setPendingQuotes([]) }, [sessionId])
+  useEffect(() => {
+    setCitationDetail(null)
+    // Invalidate responses still in flight for the session being left.
+    citationRequestToken.current += 1
+  }, [sessionId])
   const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm, onExternalAnswer } =
     useMessages(agentId || null, sessionId || null)
   const messageAnnotations = useMemo(() => {
@@ -236,6 +242,8 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }
 
   async function openCitation(citationId: string) {
+    const requestedSession = sessionId
+    const requestToken = ++citationRequestToken.current
     try {
       const citation = await api.client.request<{
         paper_id: string
@@ -243,6 +251,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         page_start: number | null
         source_locations?: Array<{ block_id: number; page?: number | null }>
       }>(`/v1/session-bindings/${sessionId}/citations/${citationId}`)
+      if (requestToken !== citationRequestToken.current || requestedSession !== sessionId) return
       setCitationDetail({
         paperId: citation.paper_id,
         fallbackPage: citation.page_start,
@@ -250,6 +259,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
         blocks: citation.source_locations ?? [],
       })
     } catch (error) {
+      if (requestToken !== citationRequestToken.current || requestedSession !== sessionId) return
       notifyError(error, "无法读取引用详情")
     }
   }
