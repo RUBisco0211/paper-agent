@@ -77,6 +77,7 @@
 | 0086 | retrieval, ingest, deployment | 平台统一自部署 bge-large、英文工具查询、单层请求分批、有界重试与精简检索状态；自部署部分已被 0087 取代 | 已被 0087 局部取代 | [0086-self-hosted-embedding.md](decisions/0086-self-hosted-embedding.md) |
 | 0087 | ingest, deployment, retrieval | MinerU 与 Embedding 都改回远程服务；本机不跑模型容器，bge-m3 1024 维并重置向量 | 当前 | [0087-remote-parsing-and-embedding.md](decisions/0087-remote-parsing-and-embedding.md) |
 | 0088 | retrieval, security, ingest | 入库向量化平台付费、检索 query 向量用用户自带 Key；无 Key 时降级为纯关键词 | 当前 | [0088-paid-ingestion-byok-search.md](decisions/0088-paid-ingestion-byok-search.md) |
+| 0089 | agent, security | 强制关闭文件 offloader 和目录提示，保留内建压缩；修正无能力工作区隔离与生命周期 | 当前 | [0089-no-file-offloader.md](decisions/0089-no-file-offloader.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

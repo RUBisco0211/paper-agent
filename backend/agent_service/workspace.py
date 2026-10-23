@@ -22,6 +22,9 @@ class NoCapabilityWorkspace(WorkspaceBase):
     async def initialize(self) -> None:
         self.is_alive = True
 
+    async def close(self) -> None:
+        self.is_alive = False
+
     async def get_instructions(self) -> str:
         return ""
 

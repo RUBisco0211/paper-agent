@@ -39,6 +39,10 @@ class FixedProjectToolkit(Toolkit):
 
 class PaperAgent(Agent):
     def __init__(self, *args, toolkit: Toolkit | None = None, **kwargs) -> None:
+        # The app runtime always supplies a workspace as offloader. This
+        # product has no file access: keep built-in compression/truncation,
+        # but neither offload content nor inject workspace directory prompts.
+        kwargs["offloader"] = None
         groups = toolkit.tool_groups if toolkit is not None else []
         allowed = {}
         for group in groups:
