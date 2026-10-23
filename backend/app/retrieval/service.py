@@ -70,9 +70,44 @@ class BoundSearchService:
                 snippet=evidence.snippet,
                 page_start=evidence.page_start,
                 page_end=evidence.page_end,
-                source_locations=self._search.source_locations(evidence.chunk_ids),
+                source_locations=flatten_source_locations(
+                    self._search.source_locations(evidence.chunk_ids)
+                ),
             )
         return outcome, scope
+
+
+def flatten_source_locations(locations: list[dict]) -> list[dict]:
+    """Collapse chunk grouping into one ordered block list for locating the evidence."""
+    merged: dict[int, dict] = {}
+    for location in locations:
+        for source in location.get("source_ranges") or []:
+            block_id = source.get("block_id")
+            if not isinstance(block_id, int):
+                continue
+            start = source.get("char_start")
+            end = source.get("char_end")
+            existing = merged.get(block_id)
+            if existing is None:
+                merged[block_id] = {
+                    "block_id": block_id,
+                    "page": source.get("page"),
+                    "bbox": source.get("bbox"),
+                    "char_start": start,
+                    "char_end": end,
+                }
+                continue
+            if isinstance(start, int):
+                existing["char_start"] = (
+                    start
+                    if existing["char_start"] is None
+                    else min(existing["char_start"], start)
+                )
+            if isinstance(end, int):
+                existing["char_end"] = (
+                    end if existing["char_end"] is None else max(existing["char_end"], end)
+                )
+    return [merged[block_id] for block_id in sorted(merged)]
 
 
 class BoundPaperService:
@@ -201,38 +236,6 @@ class BoundPaperService:
             ],
         )
 
-    def get_excerpt(
-        self,
-        *,
-        user_id: UUID,
-        session_id: UUID,
-        citation_id: str,
-    ) -> dict:
-        citation = self._bindings.require_citation(
-            user_id=user_id,
-            session_id=session_id,
-            citation_id=citation_id,
-        )
-        entry = self._library.get_entry(
-            user_id=user_id,
-            user_paper_id=citation.user_paper_id,
-        )
-        return {
-            "citation_id": citation.citation_id,
-            "paper_id": citation.user_paper_id,
-            "paper_title": entry.user_paper.title if entry else None,
-            "title_path": citation.title_path,
-            "snippet": citation.snippet,
-            "page_start": citation.page_start,
-            "page_end": citation.page_end,
-            "chunk_ids": citation.chunk_ids,
-            "source_locations": citation.source_locations or [],
-        }
-
-
-SNIPPET_MAX_CHARS = 1200
-EVIDENCE_MAX_CHARS = 6000
-
 
 class SearchService:
     """Authorized hybrid retrieval: keyword + vector recall, RRF fusion."""
@@ -249,6 +252,7 @@ class SearchService:
         rrf_k: int,
         max_evidence: int,
         max_evidence_per_paper: int,
+        evidence_max_chars: int,
     ) -> None:
         self._chunks = chunks
         self._papers = papers
@@ -259,6 +263,7 @@ class SearchService:
         self._rrf_k = rrf_k
         self._max_evidence = max_evidence
         self._max_evidence_per_paper = max_evidence_per_paper
+        self._evidence_max_chars = evidence_max_chars
 
     def source_locations(self, chunk_ids: list[UUID]) -> list[dict]:
         return self._chunks.source_locations(chunk_ids)
@@ -313,7 +318,7 @@ class SearchService:
             fused,
             max_evidence=min(limit, self._max_evidence),
             max_per_paper=self._max_evidence_per_paper,
-            max_chars=EVIDENCE_MAX_CHARS,
+            max_chars=self._evidence_max_chars,
         )
         logger.info(
             "service.retrieval.searched",
@@ -327,7 +332,7 @@ class SearchService:
         # shared paper id never reaches a client.
         return SearchOutcome(
             status=_overall_status(reports),
-            evidence=[_user_facing(_trim(item), authorized) for item in evidence],
+            evidence=[_user_facing(item, authorized) for item in evidence],
             channels=reports,
         )
 
@@ -475,9 +480,3 @@ def _user_facing(evidence: Evidence, authorized: dict[UUID, UUID]) -> Evidence:
         evidence,
         paper_id=authorized.get(evidence.paper_id, evidence.paper_id),
     )
-
-
-def _trim(evidence: Evidence) -> Evidence:
-    if len(evidence.snippet) <= SNIPPET_MAX_CHARS:
-        return evidence
-    return replace(evidence, snippet=evidence.snippet[:SNIPPET_MAX_CHARS])

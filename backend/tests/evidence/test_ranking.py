@@ -99,3 +99,44 @@ def test_budgets_merge_adjacent_chunks_of_one_paper() -> None:
     assert combined.snippet == "part one\npart two"
     assert combined.page_start == 0
     assert combined.page_end == 1
+
+
+def test_merge_marks_the_cut_when_the_combined_snippet_exceeds_the_budget() -> None:
+    paper_id = uuid4()
+    evidence = reciprocal_rank_fusion(
+        [
+            ChunkMatch(_chunk(paper_id, 0, "a" * 30), 1.0, 1, "keyword"),
+            ChunkMatch(_chunk(paper_id, 1, "b" * 30), 1.0, 2, "keyword"),
+        ],
+    )
+
+    merged = apply_budgets(
+        evidence,
+        max_evidence=10,
+        max_per_paper=10,
+        max_chars=40,
+    )
+
+    snippet = merged[0].snippet
+    assert snippet.startswith("a" * 30)
+    assert snippet.endswith("…")
+    assert "b" * 30 not in snippet
+
+
+def test_merge_leaves_a_short_combined_snippet_unmarked() -> None:
+    paper_id = uuid4()
+    evidence = reciprocal_rank_fusion(
+        [
+            ChunkMatch(_chunk(paper_id, 0, "part one"), 1.0, 1, "keyword"),
+            ChunkMatch(_chunk(paper_id, 1, "part two"), 1.0, 2, "keyword"),
+        ],
+    )
+
+    merged = apply_budgets(
+        evidence,
+        max_evidence=10,
+        max_per_paper=10,
+        max_chars=10_000,
+    )
+
+    assert merged[0].snippet == "part one\npart two"

@@ -325,32 +325,20 @@ def test_internal_search_uses_bound_project_and_registers_retrievable_citation(
     assert [item["paper_id"] for item in body["evidence"]] == [inside]
     assert body["evidence"][0]["citation_id"].startswith("cit_")
     excerpt = client.get(
-        f"{api_prefix}/internal/excerpt",
-        headers={"X-Agent-Internal-Key": "a" * 64},
-        params={
-            "user_id": user["user"]["id"],
-            "session_id": session_id,
-            "citation_id": body["evidence"][0]["citation_id"],
-        },
+        f"{api_prefix}/session-bindings/{session_id}/citations/{body['evidence'][0]['citation_id']}",
+        headers=auth_headers(token),
     )
     assert excerpt.status_code == 200
     assert excerpt.json()["paper_id"] == inside
     assert excerpt.json()["page_start"] == 1
-    assert (
-        excerpt.json()["source_locations"][0]["chunk_id"]
-        == body["evidence"][0]["chunk_ids"][0]
-    )
-    assert excerpt.json()["source_locations"][0]["source_ranges"][0]["char_end"] == 21
+    assert excerpt.json()["source_locations"] == [
+        {"block_id": 0, "page": None, "bbox": None, "char_start": 0, "char_end": 21}
+    ]
     db_session.delete(indexed_chunk)
     db_session.commit()
     after_reindex = client.get(
-        f"{api_prefix}/internal/excerpt",
-        headers={"X-Agent-Internal-Key": "a" * 64},
-        params={
-            "user_id": user["user"]["id"],
-            "session_id": session_id,
-            "citation_id": body["evidence"][0]["citation_id"],
-        },
+        f"{api_prefix}/session-bindings/{session_id}/citations/{body['evidence'][0]['citation_id']}",
+        headers=auth_headers(token),
     )
     assert (
         after_reindex.json()["source_locations"] == excerpt.json()["source_locations"]
@@ -396,3 +384,99 @@ def test_internal_search_covers_all_owned_papers_when_session_is_global(
         first,
         second,
     }
+
+
+def test_long_evidence_is_returned_whole_when_it_exceeds_the_old_display_budget(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
+    user = register_user()
+    token = user["access_token"]
+    paper_id = _upload(client, api_prefix, token, make_pdf(page_count=1))
+    body_text = "attention " * 200
+    _index_chunks(
+        db_session,
+        user_paper_id=paper_id,
+        contents=[f"{body_text}tail marker"],
+    )
+    session_id = str(uuid4())
+    bound = client.post(
+        f"{api_prefix}/session-bindings",
+        headers=auth_headers(token),
+        json={"session_id": session_id},
+    )
+    assert bound.status_code == 201, bound.text
+
+    response = client.post(
+        f"{api_prefix}/internal/search",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        json={
+            "user_id": user["user"]["id"],
+            "session_id": session_id,
+            "query": "attention",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    snippet = response.json()["evidence"][0]["snippet"]
+    assert snippet.endswith("tail marker")
+    assert len(snippet) > 1200
+
+
+def test_registered_citation_flattens_source_ranges_into_ordered_blocks(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
+    user = register_user()
+    token = user["access_token"]
+    paper_id = _upload(client, api_prefix, token, make_pdf(page_count=1))
+    _index_chunks(
+        db_session, user_paper_id=paper_id, contents=["attention span marker"]
+    )
+    shared_paper_id = db_session.get(UserPaperRecord, UUID(paper_id)).paper_id
+    chunk = db_session.query(ChunkRecord).filter_by(paper_id=shared_paper_id).one()
+    chunk.chunk_metadata = {
+        "artifact_manifest_key": "mineru/example/manifest.json",
+        "source_ranges": [
+            {"block_id": 4, "char_start": 0, "char_end": 9, "page": 2, "bbox": [1, 2, 3, 4]},
+        ],
+    }
+    db_session.commit()
+    session_id = str(uuid4())
+    client.post(
+        f"{api_prefix}/session-bindings",
+        headers=auth_headers(token),
+        json={"session_id": session_id},
+    )
+
+    found = client.post(
+        f"{api_prefix}/internal/search",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        json={
+            "user_id": user["user"]["id"],
+            "session_id": session_id,
+            "query": "attention",
+        },
+    )
+    assert found.status_code == 200, found.text
+    citation_id = found.json()["evidence"][0]["citation_id"]
+
+    response = client.get(
+        f"{api_prefix}/session-bindings/{session_id}/citations/{citation_id}",
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["source_locations"] == [
+        {"block_id": 4, "page": 2, "bbox": [1, 2, 3, 4], "char_start": 0, "char_end": 9}
+    ]
