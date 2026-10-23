@@ -194,3 +194,39 @@ def test_split_chunk_keeps_exact_source_offsets_and_its_own_page() -> None:
 def test_empty_blocks_produce_no_chunks() -> None:
     assert build_chunks([]) == []
     assert build_chunks([{"type": "image"}]) == []
+
+
+def test_nested_display_formula_reads_math_content_when_flat_fields_are_absent() -> None:
+    chunks = build_chunks(
+        [
+            _block("text", "The objective is"),
+            {
+                "type": "equation_interline",
+                "page_idx": 0,
+                "content": {"math_content": "$$L = -\\log p$$"},
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    assert len(chunks) == 1
+    assert "$$L = -\\log p$$" in chunks[0].content
+
+
+def test_nested_figure_caption_reads_image_caption_when_flat_field_is_absent() -> None:
+    chunks = build_chunks(
+        [
+            _block("title", "3 Method", page=0, text_level=1),
+            {
+                "type": "image",
+                "page_idx": 0,
+                "content": {"image_caption": ["Figure 1: Architecture"]},
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    assert "[图 第1页 | 3 Method] Figure 1: Architecture" in chunks[0].content
+    assert chunks[0].chunk_metadata["figures"][0]["caption"] == (
+        "Figure 1: Architecture"
+    )

@@ -207,6 +207,11 @@ def _page_number(block: dict) -> int | None:
     return None
 
 
+def _nested(block: dict) -> dict:
+    content = block.get("content")
+    return content if isinstance(content, dict) else {}
+
+
 def _block_text(block: dict) -> str | None:
     block_type = str(block.get("type") or "").lower()
     if block_type in {"text", "title", "heading"}:
@@ -215,9 +220,13 @@ def _block_text(block: dict) -> str | None:
         return _clean(block.get("table_body") or block.get("text"))
     if block_type in {"equation", "formula", "equation_interline"}:
         latex = block.get("text") or block.get("latex")
+        if not latex:
+            latex = _nested(block).get("math_content")
         return _clean(latex)
     if block_type == "image":
-        captions = block.get("img_caption") or []
+        captions = block.get("img_caption") or _nested(block).get("image_caption") or []
+        if isinstance(captions, str):
+            captions = [captions]
         joined = " ".join(str(item) for item in captions)
         return _clean(joined) or None
     return _clean(block.get("text"))
