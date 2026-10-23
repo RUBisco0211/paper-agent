@@ -22,6 +22,7 @@ class _Buffer:
     page_start: int | None = None
     page_end: int | None = None
     title_path: str | None = None
+    figures: list[dict] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -35,13 +36,23 @@ class _Buffer:
         self.texts.clear()
         self.block_ids.clear()
         self.spans.clear()
+        self.figures.clear()
         self.page_start = None
         self.page_end = None
 
-    def append(self, text: str, block_id: int, block: dict, page: int | None) -> None:
+    def append(
+        self,
+        text: str,
+        block_id: int,
+        block: dict,
+        page: int | None,
+        figure: dict | None = None,
+    ) -> None:
         start = len(self.text) + (2 if self.texts else 0)
         self.texts.append(text)
         self.block_ids.append(block_id)
+        if figure is not None:
+            self.figures.append(figure)
         span: dict = {
             "block_id": block_id,
             "start": start,
@@ -112,6 +123,7 @@ def build_chunks(
                     chunk_metadata={
                         "char_count": len(piece),
                         "source_ranges": source_ranges,
+                        "figures": _figures_in(source_ranges, buffer.figures),
                     },
                 ),
             )
@@ -138,10 +150,15 @@ def build_chunks(
             buffer.title_path = " > ".join(headings) or None
             continue
 
-        if not text:
+        figure = _is_figure(block, page)
+        if not text and not figure:
             continue
         buffer.title_path = buffer.title_path or (" > ".join(headings) or None)
-        buffer.append(text, block_id, block, page)
+        entry = None
+        if figure:
+            entry = _figure_entry(block, block_id, page, buffer.title_path)
+            text = _figure_placeholder(entry)
+        buffer.append(text, block_id, block, page, entry)
 
         if (
             _estimated_tokens(buffer.text) >= target_tokens
@@ -196,7 +213,7 @@ def _block_text(block: dict) -> str | None:
         return _clean(block.get("text"))
     if block_type == "table":
         return _clean(block.get("table_body") or block.get("text"))
-    if block_type in {"equation", "formula"}:
+    if block_type in {"equation", "formula", "equation_interline"}:
         latex = block.get("text") or block.get("latex")
         return _clean(latex)
     if block_type == "image":
@@ -204,6 +221,54 @@ def _block_text(block: dict) -> str | None:
         joined = " ".join(str(item) for item in captions)
         return _clean(joined) or None
     return _clean(block.get("text"))
+
+
+def _figures_in(source_ranges: list[dict], figures: list[dict]) -> list[dict]:
+    """Keep only the figures whose block landed inside this piece."""
+    block_ids = {item["block_id"] for item in source_ranges}
+    return [
+        {key: value for key, value in figure.items() if key != "block_id"}
+        for figure in figures
+        if figure["block_id"] in block_ids
+    ]
+
+
+def _is_figure(block: dict, page: int | None) -> bool:
+    """A figure with no page cannot be located, so it stays out of the body."""
+    return str(block.get("type") or "").lower() == "image" and page is not None
+
+
+def _figure_entry(
+    block: dict,
+    block_id: int,
+    page: int,
+    section: str | None,
+) -> dict:
+    """Locator for a figure, kept in chunk metadata so the body stays clean."""
+    return {
+        "block_id": block_id,
+        "page": page,
+        "section": section,
+        "caption": _block_text(block),
+        "path": _figure_path(block),
+    }
+
+
+def _figure_path(block: dict) -> str | None:
+    raw = block.get("img_path")
+    if not raw and isinstance(block.get("content"), dict):
+        source = block["content"].get("image_source")
+        raw = source.get("path") if isinstance(source, dict) else None
+    return str(raw) if isinstance(raw, str) and raw.strip() else None
+
+
+def _figure_placeholder(figure: dict) -> str:
+    """Address a figure that carries no body text, so retrieval can still hit it."""
+    parts = [f"第{figure['page']}页"]
+    if figure["section"]:
+        parts.append(figure["section"])
+    header = f"[图 {' | '.join(parts)}]"
+    return f"{header} {figure['caption']}" if figure["caption"] else header
 
 
 def _clean(value: object) -> str | None:
