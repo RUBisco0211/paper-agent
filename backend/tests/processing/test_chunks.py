@@ -54,6 +54,112 @@ def test_non_text_blocks_are_mapped_to_searchable_text() -> None:
     assert chunks[0].page_end == 2
 
 
+def test_display_formula_block_keeps_its_latex_when_text_is_empty() -> None:
+    chunks = build_chunks(
+        [
+            _block("text", "The objective is"),
+            {"type": "equation_interline", "text": "", "latex": "$$L = -\\log p$$", "page_idx": 0},
+            _block("text", "under the softmax."),
+        ],
+        target_tokens=10_000,
+    )
+
+    assert len(chunks) == 1
+    assert "$$L = -\\log p$$" in chunks[0].content
+
+
+def test_figure_placeholder_carries_page_section_and_caption() -> None:
+    chunks = build_chunks(
+        [
+            _block("title", "4 Experiments", page=2, text_level=1),
+            _block("title", "4.2 Ablation", page=2, text_level=2),
+            {
+                "type": "image",
+                "img_caption": ["Figure 3: Perplexity across models"],
+                "page_idx": 2,
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    assert (
+        "[图 第3页 | 4 Experiments > 4.2 Ablation] Figure 3: Perplexity across models"
+        in chunks[0].content
+    )
+
+
+def test_captionless_figure_still_reaches_the_chunk_body() -> None:
+    chunks = build_chunks(
+        [
+            _block("title", "5 Results", page=6, text_level=1),
+            {"type": "image", "page_idx": 6},
+            _block("text", "The trend is consistent.", page=6),
+        ],
+        target_tokens=10_000,
+    )
+
+    assert "[图 第7页 | 5 Results]" in chunks[0].content
+
+
+def test_figure_before_any_heading_keeps_only_its_page() -> None:
+    chunks = build_chunks(
+        [{"type": "image", "page_idx": 0}, _block("text", "Front matter.", page=0)],
+        target_tokens=10_000,
+    )
+
+    assert "[图 第1页]" in chunks[0].content
+
+
+def test_figure_metadata_lists_page_section_caption_and_path() -> None:
+    chunks = build_chunks(
+        [
+            _block("title", "4 Experiments", page=2, text_level=1),
+            {
+                "type": "image",
+                "img_caption": ["Figure 3: Perplexity across models"],
+                "img_path": "images/fig3.png",
+                "page_idx": 2,
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    figures = chunks[0].chunk_metadata["figures"]
+    assert figures == [
+        {
+            "page": 3,
+            "section": "4 Experiments",
+            "caption": "Figure 3: Perplexity across models",
+            "path": "images/fig3.png",
+        }
+    ]
+    assert "images/fig3.png" not in chunks[0].content
+
+
+def test_figure_metadata_survives_an_oversized_split() -> None:
+    filler = " ".join(["sentence"] * 200)
+    chunks = build_chunks(
+        [
+            _block("text", filler, page=0),
+            {"type": "image", "img_path": "images/fig9.png", "page_idx": 1},
+        ],
+        target_tokens=10_000,
+        max_chars=300,
+    )
+
+    pages = {
+        figure["page"]
+        for chunk in chunks
+        for figure in chunk.chunk_metadata.get("figures", [])
+    }
+    assert pages == {2}
+    assert sum(
+        1
+        for chunk in chunks
+        for _ in chunk.chunk_metadata.get("figures", [])
+    ) == 1
+
+
 def test_oversized_block_is_split_instead_of_truncated() -> None:
     long_text = " ".join(["sentence"] * 400)
 
@@ -88,3 +194,39 @@ def test_split_chunk_keeps_exact_source_offsets_and_its_own_page() -> None:
 def test_empty_blocks_produce_no_chunks() -> None:
     assert build_chunks([]) == []
     assert build_chunks([{"type": "image"}]) == []
+
+
+def test_nested_display_formula_reads_math_content_when_flat_fields_are_absent() -> None:
+    chunks = build_chunks(
+        [
+            _block("text", "The objective is"),
+            {
+                "type": "equation_interline",
+                "page_idx": 0,
+                "content": {"math_content": "$$L = -\\log p$$"},
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    assert len(chunks) == 1
+    assert "$$L = -\\log p$$" in chunks[0].content
+
+
+def test_nested_figure_caption_reads_image_caption_when_flat_field_is_absent() -> None:
+    chunks = build_chunks(
+        [
+            _block("title", "3 Method", page=0, text_level=1),
+            {
+                "type": "image",
+                "page_idx": 0,
+                "content": {"image_caption": ["Figure 1: Architecture"]},
+            },
+        ],
+        target_tokens=10_000,
+    )
+
+    assert "[图 第1页 | 3 Method] Figure 1: Architecture" in chunks[0].content
+    assert chunks[0].chunk_metadata["figures"][0]["caption"] == (
+        "Figure 1: Architecture"
+    )

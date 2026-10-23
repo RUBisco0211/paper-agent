@@ -87,15 +87,3 @@ class BoundListResponse(BaseModel):
     scope: SearchScope
     total: int
     papers: list[dict]
-
-
-class BoundExcerptResponse(BaseModel):
-    citation_id: str
-    paper_id: UUID
-    paper_title: str | None
-    title_path: str | None
-    snippet: str
-    page_start: int | None
-    page_end: int | None
-    chunk_ids: list[UUID]
-    source_locations: list[dict] = Field(default_factory=list)

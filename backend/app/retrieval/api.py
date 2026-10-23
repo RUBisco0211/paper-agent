@@ -15,7 +15,6 @@ from .depends import (
 from .domain import SearchOutcome
 from .schemas import (
     BoundEvidenceRead,
-    BoundExcerptResponse,
     BoundListResponse,
     BoundSearchRequest,
     BoundSearchResponse,
@@ -100,23 +99,6 @@ def list_bound_papers(
     )
     return BoundListResponse.model_validate(
         {"scope": scope, "total": total, "papers": papers}
-    )
-
-
-@router.get("/internal/excerpt", response_model=BoundExcerptResponse)
-def get_bound_excerpt(
-    user_id: UUID,
-    session_id: UUID,
-    citation_id: str,
-    _auth: AgentInternalAuth,
-    service: BoundPaperServiceDep,
-) -> BoundExcerptResponse:
-    return BoundExcerptResponse(
-        **service.get_excerpt(
-            user_id=user_id,
-            session_id=session_id,
-            citation_id=citation_id,
-        )
     )
 
 

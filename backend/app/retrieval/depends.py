@@ -57,6 +57,7 @@ def get_search_service(
         rrf_k=settings.rrf_k,
         max_evidence=settings.max_evidence_chunks,
         max_evidence_per_paper=settings.max_evidence_per_paper,
+        evidence_max_chars=settings.evidence_max_chars,
     )
 
 

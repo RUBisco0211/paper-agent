@@ -23,7 +23,6 @@ def test_paper_agent_exposes_all_approved_tools_without_a_reset_tool():
     assert {schema["function"]["name"] for schema in schemas} == {
         "list_papers",
         "search_papers",
-        "get_paper_excerpt",
         "web_search",
         "web_fetch",
         "web_extract_excerpt",

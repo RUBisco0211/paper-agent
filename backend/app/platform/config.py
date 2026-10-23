@@ -151,6 +151,7 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     max_evidence_chunks: int = 12
     max_evidence_per_paper: int = 4
+    evidence_max_chars: int = 2500
 
     # Chunking
     chunk_token_num: int = 512

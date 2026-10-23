@@ -337,7 +337,7 @@ Agent 回合由独立的 `agent_service` 使用 AgentScope 执行。业务服务
 
 | 工具组         | 工具                                                | 作用                                               |
 | -------------- | --------------------------------------------------- | -------------------------------------------------- |
-| 文献阅读       | `list_papers`、`search_papers`、`get_paper_excerpt` | 列出授权文献、检索并登记证据、按已登记引用读取原文 |
+| 文献阅读       | `list_papers`、`search_papers` | 列出授权文献、检索并登记证据 |
 | 库外发现与入库 | `discover_papers`、`import_selected_papers`         | 查找库外候选；经用户授权后入库                     |
 | 用户交互       | `ask_user`                                          | 暂停回复并收集用户答案                             |
 | 系统功能       | `create_scheduled_task`                             | 经用户授权后创建定时任务                           |

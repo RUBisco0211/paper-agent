@@ -11,7 +11,7 @@ from .tools.base import (
     ScheduleCreateTool,
 )
 
-LIBRARY_TOOLS = frozenset({"list_papers", "search_papers", "get_paper_excerpt"})
+LIBRARY_TOOLS = frozenset({"list_papers", "search_papers"})
 WEB_TOOLS = frozenset({"web_search", "web_fetch", "web_extract_excerpt"})
 DISCOVERY_TOOLS = frozenset({"discover_papers", "import_selected_papers"})
 INTERACTION_TOOLS = frozenset({"ask_user"})

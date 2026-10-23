@@ -88,11 +88,13 @@ class Evidence:
     def merged_with(self, other: "Evidence", *, max_chars: int) -> "Evidence":
         """Merge an adjacent chunk of the same paper into this evidence."""
         snippet = f"{self.snippet}\n{other.snippet}"
+        if len(snippet) > max_chars:
+            snippet = f"{snippet[:max_chars]}…"
         return Evidence(
             paper_id=self.paper_id,
             chunk_ids=[*self.chunk_ids, *other.chunk_ids],
             title_path=self.title_path or other.title_path,
-            snippet=snippet[:max_chars],
+            snippet=snippet,
             page_start=self.page_start,
             page_end=other.page_end if other.page_end is not None else self.page_end,
             score=max(self.score, other.score),

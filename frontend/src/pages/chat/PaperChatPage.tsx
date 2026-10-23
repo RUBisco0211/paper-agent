@@ -16,6 +16,7 @@ import { messageQuoteKey, readQuoteReferences } from "@/components/chat/quoteRef
 import { restoreRenderedSelection } from "@/components/chat/renderedSelection"
 import { AskUserQuestionnaire } from "@/components/chat/AskUserQuestionnaire"
 import { CitationProvider } from "@/components/chat/CitationProvider"
+import { CitationDetailDialog, type CitationBlock } from "@/components/chat/CitationDetailDialog"
 import { DiscoveryImportContext } from "@/components/chat/toolRenderers/PaperDiscoveryRenderer"
 import { TextInput } from "@/components/chat/TextInput"
 import { Button } from "@/components/ui/Button"
@@ -96,7 +97,14 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewBusy, setReviewBusy] = useState(false)
   const [reviewError, setReviewError] = useState("")
+  const [citationDetail, setCitationDetail] = useState<{
+    paperId: string
+    fallbackPage: number | null
+    snippet?: string
+    blocks: CitationBlock[]
+  } | null>(null)
   const [pendingQuotes, setPendingQuotes] = useState<QuoteReference[]>([])
+  const citationRequestToken = useRef(0)
   const [activeAnnotationKey, setActiveAnnotationKey] = useState<string | null>(null)
   useEffect(() => {
     const dismiss = (event: MouseEvent) => {
@@ -117,6 +125,11 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }, [])
   useEffect(() => quoteBridge?.register(sessionId, addPendingQuote), [quoteBridge, sessionId, addPendingQuote])
   useEffect(() => { setPendingQuotes([]) }, [sessionId])
+  useEffect(() => {
+    setCitationDetail(null)
+    // Invalidate responses still in flight for the session being left.
+    citationRequestToken.current += 1
+  }, [sessionId])
   const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm, onExternalAnswer } =
     useMessages(agentId || null, sessionId || null)
   const messageAnnotations = useMemo(() => {
@@ -229,23 +242,39 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }
 
   async function openCitation(citationId: string) {
+    const requestedSession = sessionId
+    const requestToken = ++citationRequestToken.current
     try {
       const citation = await api.client.request<{
         paper_id: string
+        snippet?: string
         page_start: number | null
-        source_locations?: Array<{ source_ranges?: Array<{ block_id: number; page?: number }> }>
+        source_locations?: Array<{ block_id: number; page?: number | null }>
       }>(`/v1/session-bindings/${sessionId}/citations/${citationId}`)
-      const source = citation.source_locations?.flatMap((item) => item.source_ranges ?? [])[0]
-      const params = new URLSearchParams()
-      const page = source?.page ?? citation.page_start
-      if (page) params.set("page", String(page))
-      if (source) params.set("block", String(source.block_id))
-      navigate(`/library/${citation.paper_id}${params.size ? `?${params}` : ""}`, {
-        state: { from: location.pathname },
+      if (requestToken !== citationRequestToken.current || requestedSession !== sessionId) return
+      setCitationDetail({
+        paperId: citation.paper_id,
+        fallbackPage: citation.page_start,
+        snippet: citation.snippet,
+        blocks: citation.source_locations ?? [],
       })
     } catch (error) {
-      notifyError(error, "无法打开引用原文")
+      if (requestToken !== citationRequestToken.current || requestedSession !== sessionId) return
+      notifyError(error, "无法读取引用详情")
     }
+  }
+
+  function openCitationBlock(blockId: number, page?: number | null) {
+    const detail = citationDetail
+    if (!detail) return
+    const params = new URLSearchParams()
+    const targetPage = page ?? detail.fallbackPage
+    if (targetPage) params.set("page", String(targetPage))
+    params.set("block", String(blockId))
+    setCitationDetail(null)
+    navigate(`/library/${detail.paperId}?${params}`, {
+      state: { from: location.pathname },
+    })
   }
 
   async function changeModel(value: string) {
@@ -355,6 +384,13 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
             onInterrupt={() => void interrupt()}
           />
         </div>
+        <CitationDetailDialog
+          open={citationDetail !== null}
+          blocks={citationDetail?.blocks ?? []}
+          snippet={citationDetail?.snippet}
+          onOpenChange={(open) => { if (!open) setCitationDetail(null) }}
+          onOpenBlock={openCitationBlock}
+        />
         {pendingWrite?.toolCall.name === "import_selected_papers" && <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
           <DialogContent className="sm:max-w-lg">
             <DialogHeader><DialogTitle>确认文献入库</DialogTitle><DialogDescription>确认后，所列文献将加入入库队列。</DialogDescription></DialogHeader>

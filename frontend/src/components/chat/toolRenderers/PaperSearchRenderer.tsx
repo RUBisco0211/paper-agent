@@ -35,7 +35,7 @@ function PaperEvidence({ pair }: { pair: ToolCallWithResult }) {
         <div key={item.citation_id} className="rounded-lg border bg-card p-3 text-sm">
           <p className="line-clamp-4 whitespace-pre-wrap">{item.snippet}</p>
           <button type="button" className="mt-2 text-xs font-medium underline" onClick={() => openCitation?.(item.citation_id)}>
-            引用原文{item.page_start ? ` · 第 ${item.page_start}${item.page_end && item.page_end !== item.page_start ? `–${item.page_end}` : ""} 页` : ""}
+            查看详情{item.page_start ? ` · 第 ${item.page_start}${item.page_end && item.page_end !== item.page_start ? `–${item.page_end}` : ""} 页` : ""}
           </button>
         </div>
       ))}
