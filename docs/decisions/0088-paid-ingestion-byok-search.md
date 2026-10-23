@@ -13,6 +13,7 @@
 - 用户未配置 Key 时，检索照常返回关键词结果；向量通道 `status=unavailable`、`detail="no embedding api key"`，整体 `degraded`。不抛错，也不回退到平台 Key。
 - 用户在检索时 Key 失效（401/429/超时）与未配置的处理相同：向量通道不可用，只有关键词召回。
 - 检索侧的适配器工厂是 `get_search_embedding_factory`，按 `user_id` 现取现建；`SearchService` 只接受工厂，不再持有全局适配器。入库路径完全不看用户凭据。
+- 共享装配函数省略 Key 参数才使用平台 Key；显式提供用户 Key、None 或空字符串均不得回退。默认模型固定为 bge-m3；回归测试保留真实工厂与 PostgreSQL，仅替换 HTTP transport，验证两侧模型标记及检索命中。
 - 设置页新增 `/settings/retrieval`（向量检索），只负责保存/移除这把 Key；失败文案沿用 0032，不自拟错误分类。
 
 ## REJECTED

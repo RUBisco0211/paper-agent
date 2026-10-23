@@ -1,5 +1,7 @@
 """向量适配层：上层只依赖 ``EmbeddingAdapter``。"""
 
+from enum import Enum
+
 from app.literature_support.embedding.base import EmbeddingProfile, prepare
 from app.literature_support.embedding.client import OpenAICompatibleEmbeddingAdapter
 from app.literature_support.embedding.profiles import (
@@ -21,12 +23,18 @@ __all__ = [
 ]
 
 
-def build_embedding_adapter() -> EmbeddingAdapter:
+class _KeySource(Enum):
+    PLATFORM = "platform"
+
+
+def build_embedding_adapter(
+    *, api_key: str | _KeySource | None = _KeySource.PLATFORM,
+) -> EmbeddingAdapter:
     """按部署配置装配适配器。
 
-    向量由平台统一产生：托管服务用部署方自己的 ``EMBEDDING_API_KEY``，
-    自部署服务留空即不发送鉴权头。共享的 chunk 向量因此只属于平台，
-    用户不参与付费。目前只有 ``openai_compatible`` 一种实现；
+    入库省略 api_key 时使用平台密钥；检索显式提供用户密钥。
+    显式 None 或空字符串表示不鉴权，绝不回退到平台密钥。
+    两侧仍使用同一份部署级模型档案。目前只有 ``openai_compatible`` 一种实现；
     新增提供方时在这里按 ``EMBEDDING_ADAPTER`` 分支注册，无需改动检索与流水线代码。
     """
     from app.platform.config import settings
@@ -42,5 +50,7 @@ def build_embedding_adapter() -> EmbeddingAdapter:
     )
     return OpenAICompatibleEmbeddingAdapter(
         profile=profile,
-        api_key=settings.embedding_api_key,
+        api_key=(
+            settings.embedding_api_key if api_key is _KeySource.PLATFORM else api_key
+        ),
     )

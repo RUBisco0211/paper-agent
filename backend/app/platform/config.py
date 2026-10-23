@@ -114,10 +114,10 @@ class Settings(BaseSettings):
     ingestion_concurrency: int = 2
     embedding_api_url: str | None = None
     embedding_api_key: str | None = None
-    # 统一使用 bge-large-en-v1.5：1024 维、512 token 上下文。
+    # 统一使用 bge-m3：1024 维、多语言、8192 token 上下文。
     # 维度必须与 alembic 迁移里 chunks.embedding 的维度一致。
     embedding_adapter: str = "openai_compatible"
-    embedding_model: str = "BAAI/bge-large-en-v1.5"
+    embedding_model: str = "BAAI/bge-m3"
     embedding_dimensions: int = 1024
     # 留空则用模型档案里的默认值（见 embedding/profiles.py）
     embedding_max_input_chars: int | None = None
