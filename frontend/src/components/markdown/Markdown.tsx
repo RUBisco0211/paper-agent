@@ -1,6 +1,6 @@
 import { cjk } from "@streamdown/cjk";
 import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
+import { createMathPlugin } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import * as React from "react";
 import { Streamdown } from "streamdown";
@@ -8,6 +8,7 @@ import "katex/dist/katex.min.css";
 
 import { cn } from "@/lib/utils";
 
+const math = createMathPlugin({ singleDollarTextMath: true });
 const DEFAULT_PLUGINS = { code, math, cjk, mermaid };
 
 // Mermaid embeds its own stylesheet in each SVG; token references keep existing
