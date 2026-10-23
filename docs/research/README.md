@@ -39,6 +39,7 @@
 | 文档 | 内容 |
 |---|---|
 | [Agentero 论文工作流](literature/agentero-paper-workflow.md) | 论文解析、元数据与 Agent 工具 |
+| [LLM 重排流程草案](literature/llm-as-reranker.md) | RRF 后候选重排、凭据与证据边界、待评估项；尚未实现 |
 
 ## AI 开发协作（`development/`）
 
