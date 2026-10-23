@@ -48,7 +48,6 @@ from app.retrieval.repo import ChunkRepository
 
 logger = structlog.get_logger(__name__)
 
-EMBEDDING_BATCH_SIZE = 32
 NON_BLOCKING_STAGES = {IngestionStage.METADATA}
 CONTENT_LIST_OBJECT = "content_list.json"
 BLOCKS_INDEX_OBJECT = "blocks_index.json"
@@ -136,6 +135,7 @@ class IngestionPipeline:
                         job_id=str(job_id),
                         stage=stage.value,
                         error_code=str(exc.code),
+                        detail=getattr(exc, "details", None),
                     )
                     if stage not in NON_BLOCKING_STAGES:
                         blocking_failure = str(exc.code)
@@ -408,29 +408,26 @@ class IngestionPipeline:
         chunks: ChunkRepository,
         paper_id: UUID,
     ) -> dict:
-        if not self._embeddings.is_configured:
+        embeddings = self._embeddings
+        if not embeddings.is_configured:
             raise AppError(
                 "Embedding 服务未配置",
                 code=ErrorCode.PROVIDER_NOT_CONFIGURED,
                 status_code=503,
             )
-        indexed = 0
-        for batch in _batched(
-            chunks.pending_embedding_chunks(paper_id), EMBEDDING_BATCH_SIZE
-        ):
-            # 前缀与截断由适配器按模型档案处理，这里只负责分批
-            vectors = self._embeddings.embed_documents(
-                [chunk.content for chunk in batch],
-            )
-            for chunk, vector in zip(batch, vectors, strict=True):
+        # 整篇一次交给适配器：切分只在适配器发生，按模型档案的条数与字符上限，
+        # 不再在流水线里预先切成固定大小（旧做法会在尾批里塞进不完整的一批）。
+        pending = chunks.pending_embedding_chunks(paper_id)
+        if pending:
+            vectors = embeddings.embed_documents([chunk.content for chunk in pending])
+            for chunk, vector in zip(pending, vectors, strict=True):
                 chunks.set_embedding(
                     chunk_id=chunk.id,
                     embedding=vector,
-                    model=self._embeddings.model,
+                    model=embeddings.model,
                 )
-            indexed += len(batch)
         papers.set_paper_capabilities(paper_id, has_embedding=True)
-        return {"embedded": indexed, "model": self._embeddings.model}
+        return {"embedded": len(pending), "model": embeddings.model}
 
     @contextmanager
     def _pdf_file(self, file_hash: str) -> Iterator[Path]:
@@ -454,9 +451,6 @@ def _source_entry(identifier: Identifier, source: str | None) -> dict:
         "at": datetime.now(UTC).isoformat(),
     }
 
-
-def _batched(items: list, size: int) -> list[list]:
-    return [items[index : index + size] for index in range(0, len(items), size)]
 
 
 def build_ingestion_service(

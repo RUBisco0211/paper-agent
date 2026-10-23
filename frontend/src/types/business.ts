@@ -366,7 +366,7 @@ export interface SessionEvent {
 // --- Retrieval ------------------------------------------------------------
 export type SearchScope = "library" | "project" | "paper"
 export type SearchStatus = "ok" | "degraded" | "unavailable"
-export type ChannelStatus = "ok" | "skipped" | "degraded" | "unavailable"
+export type ChannelStatus = "ok" | "unavailable"
 
 export interface SearchChannel {
   status: ChannelStatus

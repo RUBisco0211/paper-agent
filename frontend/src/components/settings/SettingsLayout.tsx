@@ -1,4 +1,4 @@
-import { Cpu, Globe } from "lucide-react"
+import { Cpu, Globe, Waypoints } from "lucide-react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 
 import {
@@ -16,6 +16,7 @@ import {
 
 const SECTIONS = [
   { to: "/settings/models", label: "模型", title: "模型设置", icon: Cpu },
+  { to: "/settings/retrieval", label: "向量检索", title: "向量检索", icon: Waypoints },
   { to: "/settings/web-search", label: "网络搜索", title: "网络搜索", icon: Globe },
 ]
 

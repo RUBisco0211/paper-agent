@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends
 
@@ -9,12 +10,16 @@ from ..library.repo import PaperRepository
 from ..platform.config import settings
 from ..platform.database import SessionDep
 from ..projects.repo import ProjectRepository
+from ..service_credentials.depends import CredentialCipherDep
+from ..service_credentials.repo import ServiceCredentialRepository
+from ..service_credentials.service import ServiceCredentialService
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import EmbeddingAdapter
 from .repo import ChunkRepository
 from .service import (
     BoundPaperService,
     BoundSearchService,
+    SearchEmbeddingFactory,
     SearchService,
 )
 
@@ -33,19 +38,37 @@ def get_project_repository(session: SessionDep) -> ProjectRepository:
 ProjectRepositoryDep = Annotated[ProjectRepository, Depends(get_project_repository)]
 
 
-def get_embedding_adapter() -> EmbeddingAdapter:
-    """Instance-level embedding model; user input never selects it."""
-    return build_embedding_adapter()
+def _build_adapter(api_key: str) -> EmbeddingAdapter:
+    """Indirection so tests can substitute the provider call."""
+    return build_embedding_adapter(api_key=api_key)
 
 
-EmbeddingAdapterDep = Annotated[EmbeddingAdapter, Depends(get_embedding_adapter)]
+def get_search_embedding_factory(
+    session: SessionDep,
+    cipher: CredentialCipherDep,
+) -> SearchEmbeddingFactory:
+    """Read the searching user's own key; the model stays deployment-wide."""
+
+    def factory(user_id: UUID) -> EmbeddingAdapter | None:
+        service = ServiceCredentialService(ServiceCredentialRepository(session), cipher)
+        api_key = service.secret(user_id, "embedding", "api_key")
+        if api_key is None:
+            return None
+        return _build_adapter(api_key)
+
+    return factory
+
+
+SearchEmbeddingFactoryDep = Annotated[
+    SearchEmbeddingFactory, Depends(get_search_embedding_factory)
+]
 
 
 def get_search_service(
     chunks: ChunkRepositoryDep,
     session: SessionDep,
     projects: ProjectRepositoryDep,
-    embeddings: EmbeddingAdapterDep,
+    embeddings: SearchEmbeddingFactoryDep,
 ) -> SearchService:
     return SearchService(
         chunks,

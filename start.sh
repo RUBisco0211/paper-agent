@@ -7,8 +7,6 @@
 #   ./start.sh --frontend-only  只启动前端（需后端已在别处运行）
 #   ./start.sh --no-install     跳过 uv sync / pnpm install
 #   ./start.sh --skip-db        不启动 PostgreSQL（使用已有数据库；后端仍启动本机 Redis）
-#   ./start.sh --with-embeddings 同时启动自建 Embedding 服务（TEI + bge-m3）
-#                               注意：bge-m3 常驻约 2.5~3GB 内存，内存吃紧时改用云 Embedding
 #   ./start.sh --with-storage   同时启动对象存储（RustFS，S3 兼容）
 #                               backend/.env 里 STORAGE_BACKEND=s3 时会自动启动
 #
@@ -34,7 +32,6 @@ FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 START_DB=1
 START_BACKEND=1
 START_FRONTEND=1
-START_EMBEDDINGS=0
 START_STORAGE=0
 DO_INSTALL=1
 
@@ -72,7 +69,6 @@ while [[ $# -gt 0 ]]; do
     --frontend-only) START_BACKEND=0; START_DB=0 ;;
     --no-install)    DO_INSTALL=0 ;;
     --skip-db)       START_DB=0 ;;
-    --with-embeddings) START_EMBEDDINGS=1 ;;
     --with-storage)   START_STORAGE=1 ;;
     -h|--help)       usage; exit 0 ;;
     *) die "未知参数：$1（使用 --help 查看用法）" ;;
@@ -269,18 +265,6 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
       || die "Redis 不是 Compose 实例，请停止占用 6379 的其他进程"
   fi
   ok "Redis 已就绪"
-  echo
-fi
-
-# --- Embedding 服务（可选）--------------------------------------------------
-if [[ "$START_EMBEDDINGS" -eq 1 ]]; then
-  step "启动 Embedding 服务（TEI + bge-m3，首次会下载模型）"
-  (cd "$ROOT_DIR" && docker compose --profile embeddings up -d embedding) >/dev/null
-  if wait_for_http "http://127.0.0.1:8080/health" "embedding" 240; then
-    ok "Embedding 已就绪（http://127.0.0.1:8080/v1）"
-  else
-    warn "Embedding 未在预期时间内就绪，可稍后再看：docker compose logs embedding"
-  fi
   echo
 fi
 

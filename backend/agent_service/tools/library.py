@@ -8,7 +8,12 @@ from .request import business_request
 
 def build_library_tools(user_id: str, session_id: str) -> list[ToolBase]:
     async def list_papers(limit: int = 20, offset: int = 0) -> dict:
-        """List papers in this session's authorized library or project scope."""
+        """List papers in this session's authorized library or project scope.
+
+        Each paper includes capabilities: has_fulltext says whether parsing is
+        ready, has_keyword_index whether chunks are indexed, and has_embedding
+        whether vectors are ready. Check these before searching its evidence.
+        """
         return await business_request(
             "GET",
             "papers",
@@ -21,7 +26,13 @@ def build_library_tools(user_id: str, session_id: str) -> list[ToolBase]:
         )
 
     async def search_papers(query: str, limit: int = 8) -> dict:
-        """Search paper evidence in this session; returns registered citation IDs."""
+        """Search paper evidence in this session; returns registered citation IDs.
+
+        The library is indexed with a multilingual embedding model, so query
+        in the user's own language and keep technical terms as written. If
+        status is degraded, explain that only the available retrieval channel
+        contributed; details are English phrases.
+        """
         return await business_request(
             "POST",
             "search",

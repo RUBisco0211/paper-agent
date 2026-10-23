@@ -22,10 +22,12 @@ __all__ = [
 
 
 def build_embedding_adapter() -> EmbeddingAdapter:
-    """按配置装配适配器。
+    """按部署配置装配适配器。
 
-    目前只有 ``openai_compatible`` 一种实现；新增提供方时在这里按
-    ``EMBEDDING_ADAPTER`` 分支注册，无需改动检索与流水线代码。
+    向量由平台统一产生：托管服务用部署方自己的 ``EMBEDDING_API_KEY``，
+    自部署服务留空即不发送鉴权头。共享的 chunk 向量因此只属于平台，
+    用户不参与付费。目前只有 ``openai_compatible`` 一种实现；
+    新增提供方时在这里按 ``EMBEDDING_ADAPTER`` 分支注册，无需改动检索与流水线代码。
     """
     from app.platform.config import settings
 
@@ -38,4 +40,7 @@ def build_embedding_adapter() -> EmbeddingAdapter:
         query_prefix=settings.embedding_query_prefix,
         document_prefix=settings.embedding_document_prefix,
     )
-    return OpenAICompatibleEmbeddingAdapter(profile=profile)
+    return OpenAICompatibleEmbeddingAdapter(
+        profile=profile,
+        api_key=settings.embedding_api_key,
+    )

@@ -37,53 +37,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # Embedding 服务（text-embeddings-inference + BAAI/bge-m3，1024 维）
-  # 默认镜像适用于 Apple Silicon 的 Docker（纯 CPU）；服务器按硬件替换 TEI_IMAGE：
-  #   NVIDIA Ampere 8.0（A100/A30） ghcr.io/huggingface/text-embeddings-inference:1.9
-  #   NVIDIA Ampere 8.6（A10/A40） ghcr.io/huggingface/text-embeddings-inference:86-1.9
-  #   NVIDIA Ada（RTX 4000）       ghcr.io/huggingface/text-embeddings-inference:89-1.9
-  #   NVIDIA Hopper（H100）        ghcr.io/huggingface/text-embeddings-inference:hopper-1.9
-  #   x86_64 纯 CPU                ghcr.io/huggingface/text-embeddings-inference:cpu-1.9
-  #   Apple Silicon（Docker/CPU）  ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9
-  # 自建向量服务。默认**不随 `docker compose up -d` 启动**，需要显式启用：
-  #   本地/服务器：docker compose --profile embeddings up -d embedding
-  # 原因：bge-m3 是 fp32 的 2.3GB 权重，加载后常驻约 2.5~3GB；内存吃紧的机器
-  # （笔记本）会被拖进换页。本地开发建议用云 Embedding（见 backend/.env.example），
-  # 自建留给内存充足的服务器。
-  embedding:
-    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-1.9}
-    container_name: paper-agent-embedding
-    profiles: ["embeddings"]
-    restart: unless-stopped
-    environment:
-      # 拉取权重的 HF 端点。默认官方站点；网络无法直连 HF 时在仓库根 .env 里设
-      # HF_ENDPOINT=https://hf-mirror.com（容器不会自动继承宿主机代理）
-      HF_ENDPOINT: ${HF_ENDPOINT:-https://huggingface.co}
-    command:
-      - --model-id
-      # 默认按模型名由容器内下载；网络受限时可预下载到 ./models 并把该值设成 /models/bge-m3
-      - ${EMBEDDING_MODEL:-BAAI/bge-m3}
-      - --port
-      - "80"
-      # 与后端每批 32 条一致；bge-m3 上下文 8192，超长自动截断
-      - --max-client-batch-size
-      - "32"
-      - --auto-truncate
-    ports:
-      # 只绑本机：TEI 自身没有鉴权，服务器上不要对外暴露；后端与它同机或走内网
-      - "127.0.0.1:8080:80"
-    volumes:
-      # 模型权重缓存在卷里，重启不重复下载
-      - embedding-data:/data
-      # 也可把预下载好的权重放在 ./models 下（只读挂载）
-      - ./models:/models:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 120s
-
   # 对象存储（RustFS，S3 兼容，Apache-2.0）。默认**不随 `docker compose up -d` 启动**：
   #   docker compose --profile storage up -d storage
   # 后端改用它的方式（backend/.env）：
@@ -123,5 +76,4 @@ services:
 
 volumes:
   postgres-data:
-  embedding-data:
   storage-data:

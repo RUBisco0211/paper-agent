@@ -45,9 +45,9 @@
 | 包或文件                                         | 管理内容                                                                                                            |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | `app/platform/`                                  | 配置、数据库、存储（local/S3）、任务调度、安全、错误、日志；不承载业务规则。                                        |
-| `app/literature_support/processing/`             | PDF/MinerU 解析、块生成、并发 worker 与阶段执行。                                                                   |
+| `app/literature_support/processing/`             | PDF/MinerU 解析（远程 API）、块生成、并发 worker 与阶段执行。                                                                   |
 | `app/literature_support/scholar/`                | 标识符解析、Crossref/arXiv/OpenAlex 元数据、开放 PDF 来源与下载。                                                   |
-| `app/literature_support/embedding/`              | 模型档案、输入批处理和 OpenAI 兼容向量接口。                                                                        |
+| `app/literature_support/embedding/`              | 模型档案、输入批处理和 OpenAI 兼容向量接口（远程 bge-m3）。                                                                        |
 | `app/literature_support/evidence/`               | 引用定位与证据排序的纯逻辑。                                                                                        |
 | `app/agent/`                                     | 业务侧模型目录支持。                                                                                                |
 | `agent_service/paper_agent.py`                   | AgentScope 智能体行为和系统提示词。                                                                                 |

@@ -1,4 +1,5 @@
 import base64
+from collections.abc import Callable
 from dataclasses import replace
 from uuid import UUID
 
@@ -26,6 +27,9 @@ from .domain import (
     SearchStatus,
 )
 from .repo import ChunkRepository
+
+#: Builds one user's query adapter, or ``None`` when they saved no key.
+SearchEmbeddingFactory = Callable[[UUID], EmbeddingAdapter | None]
 
 logger = structlog.get_logger(__name__)
 
@@ -245,7 +249,7 @@ class SearchService:
         chunks: ChunkRepository,
         papers: PaperRepository,
         projects: ProjectRepository,
-        embeddings: EmbeddingAdapter,
+        embeddings: SearchEmbeddingFactory,
         *,
         keyword_top_n: int,
         vector_top_n: int,
@@ -285,29 +289,33 @@ class SearchService:
             paper_ids=paper_ids,
         )
         shared_paper_ids = list(authorized)
-        if not shared_paper_ids:
+        if not shared_paper_ids or not any(
+            self._chunks.count_chunks(paper_id) for paper_id in shared_paper_ids
+        ):
             return SearchOutcome(
-                status=SearchStatus.OK,
+                status=SearchStatus.UNAVAILABLE,
                 evidence=[],
                 channels={
                     "keyword": ChannelReport(
                         channel="keyword",
-                        status=ChannelStatus.OK,
+                        status=ChannelStatus.UNAVAILABLE,
                         result_count=0,
-                        detail="授权范围内没有可检索的全文",
+                        detail="no full text in scope",
                     ),
                     "vector": ChannelReport(
                         channel="vector",
-                        status=ChannelStatus.SKIPPED,
+                        status=ChannelStatus.UNAVAILABLE,
                         result_count=0,
-                        detail="授权范围内没有可检索的全文",
+                        detail="no full text in scope",
                     ),
                 },
             )
 
         reports: dict[str, ChannelReport] = {}
         keyword_matches = self._keyword_channel(shared_paper_ids, query, reports)
-        vector_matches = self._vector_channel(shared_paper_ids, query, reports)
+        vector_matches = self._vector_channel(
+            user_id, shared_paper_ids, query, reports
+        )
 
         fused = reciprocal_rank_fusion(
             keyword_matches,
@@ -358,7 +366,7 @@ class SearchService:
                 channel="keyword",
                 status=ChannelStatus.UNAVAILABLE,
                 result_count=0,
-                detail="关键词检索通道不可用",
+                detail="keyword channel unavailable",
             )
             return []
         reports["keyword"] = ChannelReport(
@@ -370,20 +378,35 @@ class SearchService:
 
     def _vector_channel(
         self,
+        user_id: UUID,
         paper_ids: list[UUID],
         query: str,
         reports: dict[str, ChannelReport],
     ) -> list:
-        if not self._embeddings.is_configured:
+        # Query vectors are billed to the person searching, not to whoever
+        # ingested the paper; without their key only keyword recall runs.
+        try:
+            embeddings = self._embeddings(user_id)
+        except Exception as exc:  # a broken credential must not fail the search
+            logger.warning(
+                "service.retrieval.embedding_credential_failed",
+                error_type=type(exc).__name__,
+            )
+            embeddings = None
+        if embeddings is None or not embeddings.is_configured:
             reports["vector"] = ChannelReport(
                 channel="vector",
-                status=ChannelStatus.SKIPPED,
+                status=ChannelStatus.UNAVAILABLE,
                 result_count=0,
-                detail="实例未配置 Embedding 服务，本次只有关键词召回",
+                detail=(
+                    "no embedding api key"
+                    if embeddings is None
+                    else "embedding service not configured"
+                ),
             )
             return []
         try:
-            vector = self._embeddings.embed_query(query)
+            vector = embeddings.embed_query(query)
         except Exception as exc:  # provider errors carry stable codes already
             logger.warning(
                 "service.retrieval.embedding_failed",
@@ -391,9 +414,9 @@ class SearchService:
             )
             reports["vector"] = ChannelReport(
                 channel="vector",
-                status=ChannelStatus.DEGRADED,
+                status=ChannelStatus.UNAVAILABLE,
                 result_count=0,
-                detail="向量召回本次不可用",
+                detail="vector recall unavailable",
             )
             return []
 
@@ -401,7 +424,7 @@ class SearchService:
             matches = self._chunks.search_vector(
                 paper_ids=paper_ids,
                 embedding=vector,
-                model=self._embeddings.model,
+                model=embeddings.model,
                 limit=self._vector_top_n,
             )
         except SQLAlchemyError as exc:
@@ -413,7 +436,7 @@ class SearchService:
                 channel="vector",
                 status=ChannelStatus.UNAVAILABLE,
                 result_count=0,
-                detail="向量检索通道不可用",
+                detail="vector search unavailable",
             )
             return []
         reports["vector"] = ChannelReport(

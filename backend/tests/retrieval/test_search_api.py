@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.library.repo import PaperRepository
 from app.platform.config import settings
-from app.retrieval.depends import get_embedding_adapter
+from app.retrieval.depends import get_search_embedding_factory
 from app.retrieval.domain import ChunkDraft
 from app.retrieval.repo import ChunkRepository
 from tests.conftest import auth_headers
@@ -104,11 +104,11 @@ def test_keyword_search_returns_evidence_with_stable_ids(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["scope"] == "library"
-    # Vector recall is skipped without a configured embedding service.
+    # This user saved no embedding key, so only keyword recall ran.
     assert body["status"] == "degraded"
     assert body["channels"]["keyword"]["status"] == "ok"
     assert body["channels"]["keyword"]["result_count"] == 1
-    assert body["channels"]["vector"]["status"] == "skipped"
+    assert body["channels"]["vector"]["status"] == "unavailable"
 
     evidence = body["evidence"]
     assert len(evidence) == 1
@@ -146,7 +146,7 @@ def test_search_does_not_leak_other_users_papers(
     assert response.status_code == 200
     body = response.json()
     assert body["evidence"] == []
-    assert body["channels"]["keyword"]["detail"] == "授权范围内没有可检索的全文"
+    assert body["channels"]["keyword"]["detail"] == "no full text in scope"
 
 
 def test_paper_scope_restricts_search_to_selected_entries(
@@ -256,7 +256,9 @@ def test_hybrid_search_fuses_keyword_and_vector_channels(
         embedding=vector,
     )
     fake = FakeEmbeddingAdapter(vector)
-    client.app.dependency_overrides[get_embedding_adapter] = lambda: fake
+    client.app.dependency_overrides[get_search_embedding_factory] = (
+        lambda: (lambda _user_id: fake)
+    )
 
     response = client.post(
         f"{api_prefix}/search",

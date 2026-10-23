@@ -25,7 +25,18 @@ TAVILY = ServiceCredentialSpec(
     required_fields=("api_key",),
 )
 
-SPECS: dict[str, ServiceCredentialSpec] = {spec.kind: spec for spec in (TAVILY,)}
+#: The user's own key for search-time query vectors. The model stays fixed by
+#: the deployment, so only the key differs between users.
+EMBEDDING = ServiceCredentialSpec(
+    kind="embedding",
+    label="Embedding",
+    secret_fields=("api_key",),
+    required_fields=("api_key",),
+)
+
+SPECS: dict[str, ServiceCredentialSpec] = {
+    spec.kind: spec for spec in (TAVILY, EMBEDDING)
+}
 
 
 def spec_for(kind: str) -> ServiceCredentialSpec:

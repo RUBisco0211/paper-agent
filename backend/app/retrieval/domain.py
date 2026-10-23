@@ -24,8 +24,6 @@ class SearchStatus(StrEnum):
 
 class ChannelStatus(StrEnum):
     OK = "ok"
-    SKIPPED = "skipped"
-    DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
 
 

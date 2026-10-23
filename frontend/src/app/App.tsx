@@ -11,6 +11,7 @@ import { PasswordResetPage } from "@/pages/PasswordResetPage"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { SettingsLayout } from "@/components/settings/SettingsLayout"
 import { ModelsSection } from "@/components/settings/ModelsSection"
+import { RetrievalSection } from "@/components/settings/RetrievalSection"
 import { WebSearchSection } from "@/components/settings/WebSearchSection"
 import { PaperChatPage } from "@/pages/chat/PaperChatPage"
 import { ChatPage } from "@/pages/chat/ChatPage"
@@ -36,6 +37,7 @@ const router = createBrowserRouter([
       { path: "/settings", element: <SettingsLayout />, children: [
         { index: true, element: <Navigate to="/settings/models" replace /> },
         { path: "models", element: <ModelsSection /> },
+        { path: "retrieval", element: <RetrievalSection /> },
         { path: "web-search", element: <WebSearchSection /> },
       ] },
       { path: "/chat", element: <ChatPage />, children: [

@@ -74,6 +74,9 @@
 | 0083 | agent, product, security, frontend, data | 联网搜索三个读工具、Tavily 单一供应商、Redis 整页缓存、通用服务凭据表与设置页分类导航 | 当前 | [0083-web-search-and-fetch.md](decisions/0083-web-search-and-fetch.md) |
 | 0084 | frontend | 会话公式开启单美元行内语法，块级公式沿用双美元；锁定兼容的样式转换依赖 | 当前 | [0084-chat-math-rendering.md](decisions/0084-chat-math-rendering.md) |
 | 0085 | ingest, agent, frontend | 行间公式与图片进入正文、单一截断点、引用定位改为拍平块列表并由前端消费 | 当前 | [0085-parsing-fidelity-and-citation-locating.md](decisions/0085-parsing-fidelity-and-citation-locating.md) |
+| 0086 | retrieval, ingest, deployment | 平台统一自部署 bge-large、英文工具查询、单层请求分批、有界重试与精简检索状态；自部署部分已被 0087 取代 | 已被 0087 局部取代 | [0086-self-hosted-embedding.md](decisions/0086-self-hosted-embedding.md) |
+| 0087 | ingest, deployment, retrieval | MinerU 与 Embedding 都改回远程服务；本机不跑模型容器，bge-m3 1024 维并重置向量 | 当前 | [0087-remote-parsing-and-embedding.md](decisions/0087-remote-parsing-and-embedding.md) |
+| 0088 | retrieval, security, ingest | 入库向量化平台付费、检索 query 向量用用户自带 Key；无 Key 时降级为纯关键词 | 当前 | [0088-paid-ingestion-byok-search.md](decisions/0088-paid-ingestion-byok-search.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

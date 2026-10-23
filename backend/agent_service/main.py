@@ -6,7 +6,6 @@ from pathlib import Path
 from agentscope.app import create_app
 from agentscope.app.deps import get_current_user_id
 from agentscope.app.message_bus import InMemoryMessageBus
-from agentscope.app.workspace_manager import IsolationPolicy, LocalWorkspaceManager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.engine import make_url
@@ -21,6 +20,7 @@ from .schedule_notifications import ScheduleNotificationStorage
 from .session_name import router as session_name_router
 from .tools import build_agent_tools
 from .tools.request import business_request
+from .workspace_manager import NoCapabilityWorkspaceManager
 
 
 def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI:
@@ -44,16 +44,14 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
             user_id, agent_id, session_id, always_allow=policy
         )
 
-    # AgentScope requires a workspace binding. Its local manager still uses an
-    # agent-level filesystem path; PaperAgent exposes no filesystem tools, and
-    # project artifacts must never use that path as their storage boundary.
+    # AgentScope requires a workspace binding. The stock local manager would
+    # inject instructions about a writable directory, skills/ and scratch/ into
+    # the system prompt and hand the agent Bash / Read / Write tools. Paper
+    # Agent has none of those capabilities, so the binding grants nothing.
     app = create_app(
         storage=storage,
         message_bus=InMemoryMessageBus(),
-        workspace_manager=LocalWorkspaceManager(
-            str(workspace_root),
-            isolation=IsolationPolicy.PER_SESSION,
-        ),
+        workspace_manager=NoCapabilityWorkspaceManager(str(workspace_root)),
         title="Paper Agent AgentScope Service",
         extra_agent_tools=scoped_paper_tools,
         custom_agent_cls=PaperAgent,

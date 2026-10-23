@@ -5,7 +5,8 @@
 适配器只负责组装请求、解析响应并把失败映射成稳定错误码。
 """
 
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 
 import httpx
 import structlog
@@ -19,7 +20,7 @@ logger = structlog.get_logger(__name__)
 
 
 class OpenAICompatibleEmbeddingAdapter:
-    """实例级配置的向量服务；模型与维度永不由用户提供。"""
+    """One call target: the model comes from settings, the key from the caller."""
 
     name = "openai_compatible"
 
@@ -30,17 +31,35 @@ class OpenAICompatibleEmbeddingAdapter:
         api_key: str | None = None,
         model: str | None = None,
         profile: EmbeddingProfile | None = None,
-        http_client_factory: HttpClientFactory = default_http_client_factory,
+        http_client_factory: HttpClientFactory | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
+        sleeper: Callable[[float], None] = time.sleep,
     ) -> None:
         self._base_url = (
             base_url if base_url is not None else settings.embedding_api_url
         )
-        self._api_key = api_key if api_key is not None else settings.embedding_api_key
+        self._api_key = api_key
         self._model = model or settings.embedding_model
         self._profile = profile or EmbeddingProfile(
             dimensions=settings.embedding_dimensions,
         )
-        self._client_factory = http_client_factory
+        # Resolved at call time so a swapped-in factory (tests, instrumentation)
+        # is honoured by adapters that were already built. The shared factory's
+        # timeout is sized for metadata lookups, not CPU embedding batches.
+        self._client_factory = _with_timeout(
+            http_client_factory or default_http_client_factory,
+            settings.embedding_timeout_seconds,
+        )
+        self._max_retries = (
+            settings.embedding_max_retries if max_retries is None else max_retries
+        )
+        self._retry_backoff = (
+            settings.embedding_retry_backoff_seconds
+            if retry_backoff is None
+            else retry_backoff
+        )
+        self._sleeper = sleeper
 
     @property
     def model(self) -> str:
@@ -95,6 +114,56 @@ class OpenAICompatibleEmbeddingAdapter:
         )[0]
 
     # Provider call --------------------------------------------------------
+    def _post_with_retry(
+        self, url: str, *, json: dict, headers: dict
+    ) -> httpx.Response:
+        """POST once, retrying only failures that a second attempt can fix.
+
+        Rate limits and provider-side 5xx are transient: without a retry a single
+        429 fails a whole paper's embedding stage. Transport errors that never
+        reached the provider (connect refused, DNS) are not retried — the
+        service being down does not become up within one backoff window.
+        """
+        delay = self._retry_backoff
+        for attempt in range(self._max_retries + 1):
+            last = attempt == self._max_retries
+            try:
+                with self._client_factory() as client:
+                    response = client.post(url, json=json, headers=headers)
+            except httpx.ReadTimeout as exc:
+                if last:
+                    raise AppError(
+                        "Embedding 服务响应超时",
+                        code=ErrorCode.PROVIDER_UNAVAILABLE,
+                        status_code=504,
+                    ) from exc
+                self._sleep(delay)
+                delay *= 2
+                continue
+            except httpx.HTTPError as exc:
+                if last or isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+                    raise AppError(
+                        "无法连接 Embedding 服务",
+                        code=ErrorCode.PROVIDER_UNAVAILABLE,
+                        status_code=502,
+                    ) from exc
+                self._sleep(delay)
+                delay *= 2
+                continue
+            if last or not _is_retryable(response.status_code):
+                return response
+            logger.warning(
+                "provider.embedding.retrying",
+                status_code=response.status_code,
+                attempt=attempt + 1,
+            )
+            self._sleep(delay)
+            delay *= 2
+        raise AssertionError("unreachable: the loop returns or raises")
+
+    def _sleep(self, delay: float) -> None:
+        self._sleeper(delay)
+
     def _embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
@@ -111,43 +180,44 @@ class OpenAICompatibleEmbeddingAdapter:
             headers["Authorization"] = f"Bearer {self._api_key}"
         payload = {"model": self._model, "input": list(texts)}
 
-        try:
-            with self._client_factory() as client:
-                response = client.post(
-                    f"{base_url.rstrip('/')}/embeddings",
-                    json=payload,
-                    headers=headers,
-                )
-        except httpx.TimeoutException as exc:
-            raise AppError(
-                "Embedding 服务响应超时",
-                code=ErrorCode.PROVIDER_UNAVAILABLE,
-                status_code=504,
-            ) from exc
-        except httpx.HTTPError as exc:
-            raise AppError(
-                "无法连接 Embedding 服务",
-                code=ErrorCode.PROVIDER_UNAVAILABLE,
-                status_code=502,
-            ) from exc
+        response = self._post_with_retry(
+            f"{base_url.rstrip('/')}/embeddings",
+            json=payload,
+            headers=headers,
+        )
 
         if response.status_code in {401, 403}:
+            # The provider's own explanation is the only text that tells the
+            # user what to fix, so it travels with the failure unedited.
             raise AppError(
-                "Embedding 服务鉴权失败",
+                _provider_message(response) or "Embedding 服务鉴权失败",
                 code=ErrorCode.PROVIDER_NOT_CONFIGURED,
                 status_code=503,
+                details={
+                    "upstream": _provider_message(response) or "HTTP 401/403"
+                },
             )
         if response.status_code == 429:
             raise AppError(
-                "Embedding 服务限流",
+                _provider_message(response) or "Embedding 服务限流",
                 code=ErrorCode.PROVIDER_RATE_LIMITED,
                 status_code=429,
+                details={
+                    "upstream": _provider_message(response) or "HTTP 429"
+                },
             )
         if response.status_code >= 400:
             raise AppError(
-                f"Embedding 服务返回错误（HTTP {response.status_code}）",
+                _provider_message(response)
+                or f"Embedding 服务返回错误（HTTP {response.status_code}）",
                 code=ErrorCode.PROVIDER_UNAVAILABLE,
                 status_code=502,
+                details={
+                    "upstream": _provider_message(response)
+                    or f"HTTP {response.status_code}",
+                    "status": response.status_code,
+                    "model": self._model,
+                },
             )
 
         data = response.json().get("data", [])
@@ -157,6 +227,11 @@ class OpenAICompatibleEmbeddingAdapter:
                 "Embedding 服务返回的向量数量不匹配",
                 code=ErrorCode.PROVIDER_UNAVAILABLE,
                 status_code=502,
+                details={
+                    "expected": len(texts),
+                    "returned": len(vectors),
+                    "model": self._model,
+                },
             )
         for vector in vectors:
             if len(vector) != self._profile.dimensions:
@@ -165,12 +240,57 @@ class OpenAICompatibleEmbeddingAdapter:
                     f"实际 {len(vector)}）",
                     code=ErrorCode.PROVIDER_UNAVAILABLE,
                     status_code=502,
+                    details={
+                        "expected_dimensions": self._profile.dimensions,
+                        "actual_dimensions": len(vector),
+                        "model": self._model,
+                    },
                 )
         return vectors
 
 
 def _index_of(item: dict) -> int:
     return int(item.get("index", 0))
+
+
+def _with_timeout(factory: HttpClientFactory, seconds: float) -> HttpClientFactory:
+    """Give the embedding call its own read timeout, keeping the caller's factory."""
+
+    def build() -> httpx.Client:
+        client = factory()
+        client.timeout = httpx.Timeout(seconds, connect=10.0)
+        return client
+
+    return build
+
+
+#: Status codes worth a second attempt: rate limiting and provider-side blips.
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def _is_retryable(status_code: int) -> bool:
+    return status_code in RETRYABLE_STATUS
+
+
+def _provider_message(response: httpx.Response) -> str | None:
+    """Pull the provider's own error sentence out of an OpenAI-compatible body."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    message = body.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return None
 
 
 def _split_batches(

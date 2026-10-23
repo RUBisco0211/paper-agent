@@ -113,155 +113,53 @@ tests/            # 按职责分包的测试与架构约束
 
 ## Provider 配置说明
 
-`MINERU_API_URL` 只填 **base URL**（例如 `https://mineru.net`）：适配器会自行拼接
-`/api/v4/file-urls/batch`（申请上传地址）与 `/api/v4/extract-results/batch/{batch_id}`（轮询结果）。
-即使误填了具体端点（例如 `https://mineru.net/api/v4/extract/task`），适配器也会归一化到 base URL；
-只有自建服务挂在子路径下（不含 `/api/v4`）时才原样使用。
+MinerU 与 Embedding 都是**远程服务**，本机不再跑任何模型容器；docker compose 只保留
+PostgreSQL、Redis 与对象存储。
 
-适配器已经处理的两个 MinerU 实际行为（都有回归用例）：
+### MinerU（远程）
 
-1. **预签名上传地址不能带 `Content-Type`**：OSS 签名按空 Content-Type 计算，多带一个头会返回
-   `403 SignatureDoesNotMatch`。
-2. 响应由 `code/msg/trace_id/data` 包装：`code != 0` 时把 `msg` 映射成稳定错误码（鉴权 →
-   `provider_not_configured`、限流 → `provider_rate_limited`、其他 → `provider_unavailable`）；
-   `waiting-file` 持续过久会明确报"未收到上传的文件"。
-
-用测试时不需要这些凭据：集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`；
-确实想用真实服务跑测试时设置 `PAPER_AGENT_LIVE_PROVIDERS=1`。
-
-## Embedding（可选）
-
-向量通道由一个 **OpenAI 兼容的 `/embeddings`** 服务提供，默认按 `BAAI/bge-m3` 配置
-（1024 维 / 8192 上下文 / 不需要 query、document 前缀，适合英文论文长句）。
-推荐 `text-embeddings-inference`（TEI）：本地与服务器同一套接口，只是镜像/安装方式不同。
-
-### 云服务（本地开发推荐）
-
-本地不需要跑模型，把 `.env` 指向云即可（与自建走同一套适配器）：
+使用 MinerU 官方 HTTP API（`/api/v4` 上传地址 → PUT PDF → 轮询批次 → 下载并校验 ZIP）：
 
 ```dotenv
-# 阿里云百炼 DashScope（当前默认）：text-embedding-v3，1024 维
-EMBEDDING_API_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+MINERU_API_URL=https://mineru.net
+MINERU_API_KEY=sk-...
+MINERU_TIMEOUT_SECONDS=600
+```
+
+`MINERU_API_URL` 只填 base URL；误填到具体端点时适配器会归一化。预签名上传地址**不能**带
+`Content-Type`（OSS 按空 Content-Type 签名，否则 403 SignatureDoesNotMatch）。响应由
+`code/msg/trace_id/data` 包装，`code != 0` 会映射成稳定错误码。ZIP 仍检查路径穿越、下载
+大小与解压后各类产物大小。
+
+### Embedding（远程，SiliconFlow）
+
+**两侧分开计费**：入库时的向量由部署级 Key 产生（chunk 向量是共享资产），检索时的
+query 向量用提问者自己的 Key——在设置页「向量检索」里保存。两侧模型必须相同：用户只提供
+Key，不能选模型或 Base URL，否则 query 与 chunk 会落在不同向量空间，召回静默失真。
+用户没配 Key 时检索只走关键词，向量通道标记为不可用。
+
+```dotenv
+EMBEDDING_API_URL=https://api.siliconflow.cn/v1
 EMBEDDING_API_KEY=sk-...
-EMBEDDING_MODEL=text-embedding-v3
-EMBEDDING_DIMENSIONS=1024
-```
-
-供应商差异都在模型档案里：DashScope 单请求 **≤10 条**且整批 token 有上限，适配层会同时按
-「条数」和「总字符」拆包；SiliconFlow 提供同款 `BAAI/bge-m3`（1024 维，32 条/请求），
-复用同一份档案。两者维度都是 1024，与迁移一致，**不需要迁移**。
-
-### 自建（服务器）
-
-Docker 是唯一入口（本地与服务器同一套）：
-
-```bash
-cd <仓库根>
-
-# 只跑数据库（日常开发，不起模型）
-docker compose up -d postgres
-
-# 本地联调：数据库 + Embedding（首次会拉镜像约 1.5GB、模型约 2.3GB）
-./start.sh --with-embeddings
-
-# 服务器：把 TEI_IMAGE 换成匹配 GPU 的镜像后整体拉起
-TEI_IMAGE=ghcr.io/huggingface/text-embeddings-inference:1.9 docker compose up -d
-```
-
-### 权重来源（两条路）
-
-1. **容器内下载**（服务器默认）：`EMBEDDING_MODEL=BAAI/bge-m3`，权重缓存在 `embedding-data`
-   卷里。需要容器能访问 HuggingFace；容器**不会**继承宿主机代理，网络受限时可在仓库根 `.env`
-   设 `HF_ENDPOINT` 指向镜像。
-2. **宿主机预下载 + 挂载**（无法直连 HF、或镜像源缺 etag 时用这条）：
-
-   ```bash
-   cd <仓库根>
-   ./scripts/fetch-embedding-model.sh        # 默认从 ModelScope 取 BAAI/bge-m3 的 dense 权重
-   # 仓库根 .env
-   EMBEDDING_MODEL=/models/bge-m3
-   docker compose up -d embedding
-   ```
-
-   该脚本只取 dense 推理需要的文件（不含 `onnx/`、`colbert_linear.pt`、`sparse_linear.pt`，
-   省掉约 2GB），`./models` 以只读方式挂到容器 `/models`。
-
-实测结论（脚本已按此实现）：
-
-- **ModelScope 支持 Range 分片**：10 连接并行约 4~5MB/s，是受限网络下的首选源
-  （`SOURCE=modelscope`，默认）。国内直连可达，无需代理。
-- **hf-mirror 的大文件走 Xet 重建、不支持 Range**，单连接速率在 0.1~1.3MB/s 之间波动，
-  只能用单连接兜底（`SOURCE=hf-mirror`）。
-- 宿主机若配置了 HTTP 代理，`curl`/`hf` 默认走代理，而代理在 GB 级传输上会中途卡死
-  （下载停在某个字节不再增长）。脚本对下载源设了 `--noproxy '*'`。
-- `hf download` 的 `--include` 只接受单个模式，多写会被当成显式文件名
-  （给出 "Ignoring `--include`" 警告），所以脚本用 curl + 文件列表。
-- 大文件按分片下载后逐片校验大小再拼接，避免服务端忽略 Range 造成错位。
-
-服务器注意：TEI 自身没有鉴权，compose 里只把端口绑到 `127.0.0.1:8080`，不要对外暴露；
-模型权重持久化在 `embedding-data` 卷里，重启不会重复下载。
-镜像后缀按计算能力选：A100/A30→无后缀、A10/A40→`86-`、RTX 4000→`89-`、H100→`hopper-`、
-纯 CPU（x86）→`cpu-`、Apple Silicon→`cpu-arm64-`（版本号 1.9）。
-
-对应配置（`backend/.env`）：
-
-```dotenv
-EMBEDDING_API_URL=http://127.0.0.1:8080/v1
 EMBEDDING_MODEL=BAAI/bge-m3
 EMBEDDING_DIMENSIONS=1024
 ```
 
-### 适配层
+`BAAI/bge-m3` 是 1024 维、多语言、无需 query/document 前缀，与 `chunks.embedding` 列一致。
+批大小与字符上限走 `app/literature_support/embedding/profiles.py` 的档案默认值
+（32 条 / 32000 字符），需要时用 `EMBEDDING_MAX_BATCH_ITEMS`、`EMBEDDING_MAX_BATCH_CHARS`
+覆盖。`EMBEDDING_TIMEOUT_SECONDS` 是单请求读超时（默认 120 秒），与元数据查询共用的
+`OUTBOUND_TIMEOUT_SECONDS` 分开，避免长批量被误判超时。
+换模型就换了向量空间，同维度的旧向量也**不能**混用，必须整库重算。
 
-向量差异都收敛在 `app/literature_support/embedding/`：
-
-```text
-base.py              EmbeddingProfile（维度/截断/前缀）+ prepare()
-profiles.py          已知模型的默认行为（bge-m3、bge-*-en-v1.5、e5、nomic、embeddinggemma、
-                     qwen3-embedding、text-embedding-3-*）；未知模型走默认档案
-client.py            实现协议：组装 /embeddings 请求、解析响应、映射错误码
-__init__.py          build_embedding_adapter()：按配置装配当前兼容实现
-```
-
-协议定义在 `app/retrieval/ports.py`。上层只调用 `embed_documents()`（chunk）与 `embed_query()`（查询），前缀与截断由档案决定，
-因此**换模型只需要改配置**；换成非 OpenAI 兼容的服务时，新增一个实现 `EmbeddingAdapter`
-的类并在 `build_embedding_adapter()` 里注册即可，检索与流水线代码不用动。
-
-### 换模型
-
-1. 改 `EMBEDDING_MODEL`（模型档案会自动带上维度、截断长度与前缀；除非要覆盖）
-2. 维度变了就做一次离线迁移：改 `alembic/versions/*_resize_chunk_embeddings_for_bge.py`
-   里的 `NEW_DIMENSIONS` → 新增一次迁移（重建列并重置 `papers.has_embedding`）
-3. 对受影响的条目重试处理，重新生成向量（`papers.has_embedding=false` 的条目会被重跑）
-
-启动时会比对 `EMBEDDING_DIMENSIONS` 与 `chunks.embedding` 的实际维度，不一致会记录
-`configuration.embedding_dimension_mismatch` 错误日志（而不是等到写入时才发现）。
-
-### 本机实测的容量提醒
-
-fp32 `bge-m3` 权重 2.3GB，加载后常驻约 2.5~3GB。在一台已用 18.8GB swap 的笔记本上强启，
-OrbStack 与 Docker 守护进程会一起被换页拖死（`docker ps` 无响应）。因此：
-
-- 本地开发优先用云 Embedding（上面的 DashScope / SiliconFlow），零内存占用；
-- 自建留给内存充足的服务器，并用 `--profile embeddings` 显式启用；
-- 服务器上按 GPU 选镜像（`TEI_IMAGE`），CPU 上跑 bge-m3 会比较慢。
-
-注意事项：
-
-- **维度必须与迁移一致**：`chunks.embedding` 是 `vector(1024)`（迁移 `20260917_0007`）。
-  换模型且维度不同时，需要一次离线迁移：改迁移里的维度 → 重建列 → 迁移会重置
-  `papers.has_embedding`，之后对条目重试处理即可重新生成向量。
-- **模型名要跟着一起改**：`EMBEDDING_MODEL` 会写进 `chunks.embedding_model`，向量检索按它过滤，
-  避免新旧模型向量混用。
-- 未配置时 embedding 阶段会以 `provider_not_configured` 失败，全文与关键词检索照常可用（检索状态为 `degraded`）。
-- 需要前缀的模型（`e5`、`nomic-embed-text`、`embeddinggemma`）当前不支持：适配层对 query 与 chunk
-  使用同一套文本，不注入 `query:`/`passage:` 前缀。
+集成测试会在会话内清空 Provider 配置，避免用例依赖本地 `.env`；
+确实想用真实服务跑测试时设置 `PAPER_AGENT_LIVE_PROVIDERS=1`。
 
 ## 手工验证真实解析
 
 ```bash
 cd backend
-# 用 .env 里的 MinerU 凭据上传一篇真实英文论文，观察阶段与检索
+# 用 .env 里配置的远程 MinerU/Embedding 上传一篇真实英文论文，观察阶段与检索
 uv run python - <<'SCRIPT'
 import time, uuid
 from pathlib import Path
@@ -300,7 +198,7 @@ SCRIPT
 ## 凭据与端口
 
 - **不入库的凭据**：仓库根 `.env`（compose 用：`POSTGRES_PASSWORD`、`RUSTFS_ACCESS_KEY/SECRET_KEY`）
-  与 `backend/.env`（后端用：`DATABASE_URL`、`JWT_SECRET_KEY`、`MINERU_API_KEY`、`EMBEDDING_API_KEY`、
+  与 `backend/.env`（后端用：`DATABASE_URL`、`JWT_SECRET_KEY`、`MINERU_API_URL`、`EMBEDDING_API_URL`、
   `S3_ACCESS_KEY/SECRET_KEY`、Redis/邮件配置与 SMTP 授权码）都在 `.gitignore` 里；邮件配置示例只保留空值，不提交真实秘密。
 - **两处密码必须一致**：compose 的 `POSTGRES_PASSWORD` 与 `backend/.env` 里 `DATABASE_URL` 的密码。
   改密码时注意 `POSTGRES_PASSWORD` **只在数据卷首次初始化时生效**，已有数据卷上要用

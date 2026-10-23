@@ -24,7 +24,7 @@ from app.processing.depends import get_ingestion_service
 from app.processing.domain import IngestionStage
 from app.processing.repo import IngestionRepository
 from app.processing.service import IngestionService
-from app.retrieval.depends import get_embedding_adapter
+from app.retrieval.depends import get_search_embedding_factory
 from tests.conftest import ListedObjectStorage, auth_headers, build_pdf_with_text
 from tests.library.test_pdf_and_metadata import FakeProvider
 
@@ -198,7 +198,9 @@ def _override_services(
     overrides = cast(FastAPI, client.app).dependency_overrides
     overrides[get_ingestion_starter] = build_ingestion
     overrides[get_ingestion_service] = build_ingestion
-    overrides[get_embedding_adapter] = lambda: embeddings
+    overrides[get_search_embedding_factory] = lambda: (
+        lambda _user_id: embeddings
+    )
 
 
 def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
@@ -390,7 +392,7 @@ def test_fulltext_survives_an_unavailable_embedding_provider(
     )
     payload = search.json()
     assert payload["channels"]["keyword"]["status"] == "ok"
-    assert payload["channels"]["vector"]["status"] == "skipped"
+    assert payload["channels"]["vector"]["status"] == "unavailable"
     assert payload["status"] == "degraded"
     assert payload["evidence"]
 
