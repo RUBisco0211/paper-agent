@@ -12,7 +12,6 @@ def test_agent_tools_expose_project_capabilities_when_built() -> None:
     assert {tool.name for tool in tools} == {
         "list_papers",
         "search_papers",
-        "get_paper_excerpt",
         "web_search",
         "web_fetch",
         "web_extract_excerpt",

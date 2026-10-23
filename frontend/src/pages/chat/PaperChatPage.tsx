@@ -233,15 +233,16 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
       const citation = await api.client.request<{
         paper_id: string
         page_start: number | null
-        source_locations?: Array<{ source_ranges?: Array<{ block_id: number; page?: number }> }>
+        source_locations?: Array<{ block_id: number; page?: number | null }>
       }>(`/v1/session-bindings/${sessionId}/citations/${citationId}`)
-      const source = citation.source_locations?.flatMap((item) => item.source_ranges ?? [])[0]
+      const blocks = citation.source_locations ?? []
+      const first = blocks[0]
       const params = new URLSearchParams()
-      const page = source?.page ?? citation.page_start
+      const page = first?.page ?? citation.page_start
       if (page) params.set("page", String(page))
-      if (source) params.set("block", String(source.block_id))
+      if (first) params.set("block", String(first.block_id))
       navigate(`/library/${citation.paper_id}${params.size ? `?${params}` : ""}`, {
-        state: { from: location.pathname },
+        state: { from: location.pathname, citationBlocks: blocks },
       })
     } catch (error) {
       notifyError(error, "无法打开引用原文")

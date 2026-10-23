@@ -33,19 +33,7 @@ def build_library_tools(user_id: str, session_id: str) -> list[ToolBase]:
             },
         )
 
-    async def get_paper_excerpt(citation_id: str) -> dict:
-        """Read the registered original excerpt and page for a citation ID."""
-        return await business_request(
-            "GET",
-            "excerpt",
-            params={
-                "user_id": user_id,
-                "session_id": session_id,
-                "citation_id": citation_id,
-            },
-        )
-
     return [
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
-        for func in (list_papers, search_papers, get_paper_excerpt)
+        for func in (list_papers, search_papers)
     ]
