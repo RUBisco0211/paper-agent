@@ -26,4 +26,22 @@ it("reports no evidence when search completed without a match", () => {
 it("marks a partial search when only a subset of channels completed", () => {
   showSearchResult("degraded")
   expect(screen.getByText("检索已降级，未找到可引用的文献片段")).toBeTruthy()
+  expect(screen.getByText("请检查查询向量化服务是否可用")).toBeTruthy()
+})
+
+it("tells the user to check the query embedding service when results are partial", () => {
+  const pair = {
+    call: { id: "call-1", name: "search_papers" },
+    result: {
+      state: "success",
+      output: JSON.stringify({
+        status: "degraded",
+        evidence: [{ citation_id: "cit_1", snippet: "attention", page_start: 1 }],
+      }),
+    },
+  } as ToolCallWithResult
+  render(PaperSearchRenderer.renderBody!(pair, (key) => key))
+
+  expect(screen.getByText("请检查查询向量化服务是否可用")).toBeTruthy()
+  expect(screen.queryByText(/仅使用可用通道/)).toBeNull()
 })

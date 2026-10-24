@@ -31,3 +31,38 @@ export interface ToolSearchEvidence {
   page_start: number | null
   page_end: number | null
 }
+
+/**
+ * What the conversation sidebar reader can show for one paper entry.
+ *
+ * A plain entry has no locator; a located reference points at one parsed block
+ * or PDF selection. They share one shape so a click and a citation take the
+ * same path into the reader.
+ */
+export interface PaperOpenReference {
+  kind: "paper" | "parsed_block" | "pdf_selection"
+  user_paper_id: string
+  page: number | null
+  block_id?: number
+  selected_text?: string
+  comment?: string
+}
+
+export type PaperOpen = (reference: PaperOpenReference) => boolean
+/** Registers a sidebar opener; the returned function unregisters it. */
+export type PaperOpenRegistrar = (opener: PaperOpen) => () => void
+
+/**
+ * One paper as the agent's `list_papers` tool receives it.
+ *
+ * Deliberately narrower than a library entry: the internal list endpoint sends
+ * the user's entry id plus just enough to recognise the paper and its state.
+ */
+export interface ToolListedPaper {
+  paper_id: string
+  title: string | null
+  authors?: string[] | null
+  year?: number | null
+  venue?: string | null
+  has_fulltext?: boolean
+}

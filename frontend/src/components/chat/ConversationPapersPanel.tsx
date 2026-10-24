@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { useApi } from "@/components/providers/ApiProvider";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { PaperReadingPage } from "@/pages/PaperReadingPage";
-import type { PaperQuote, QuoteReference } from "@/types/chat";
+import type { PaperOpenReference, PaperQuote, QuoteReference } from "@/types/chat";
 import { ChatQuoteContext } from "./chatQuoteContext";
 
 export function ConversationPapersPanel({
@@ -33,14 +33,37 @@ export function ConversationPapersPanel({
     [readingId, onReadingChange],
   );
   const quoteBridge = useContext(ChatQuoteContext);
+  // One registry serves both quoted blocks and plain tool-clicked entries, so
+  // the chat never has to know which reader is on screen.
+  const bridge = quoteBridge;
   useEffect(() => {
-    if (!sessionId) return;
-    return quoteBridge?.registerPaperOpener(sessionId, (reference) => {
+    if (!bridge) return;
+    const openEntry = bridge.openEntry;
+    if (!openEntry) return;
+    const open = (reference: PaperOpenReference) => {
       setReadingId(reference.user_paper_id);
-      setLocatedQuote(reference);
+      setLocatedQuote(
+        reference.kind === "paper" || reference.page === null
+          ? null
+          : {
+              kind: reference.kind,
+              user_paper_id: reference.user_paper_id,
+              version: "",
+              page: reference.page,
+              block_id: reference.block_id,
+              selected_text: reference.selected_text ?? "",
+              comment: reference.comment ?? "",
+            },
+      );
       return true;
-    });
-  }, [quoteBridge, sessionId]);
+    };
+    const stopEntries = openEntry(open);
+    const stopQuotes = bridge.registerPaperOpener(sessionId ?? "", open);
+    return () => {
+      stopEntries();
+      stopQuotes();
+    };
+  }, [bridge, sessionId]);
   const papers = useInfiniteQuery({
     queryKey: projectId
       ? ["project-papers", projectId, "sidebar", searchQuery]

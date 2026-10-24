@@ -14,6 +14,7 @@ import { GlobRenderer } from './GlobRenderer';
 import { GrepRenderer } from './GrepRenderer';
 import { ReadRenderer } from './ReadRenderer';
 import { TaskCreateRenderer } from './TaskCreateRenderer';
+import { ListPapersRenderer } from './ListPapersRenderer';
 import { PaperSearchRenderer } from './PaperSearchRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { WebFetchRenderer, WebExcerptRenderer } from './WebPageRenderer';
@@ -30,6 +31,7 @@ const renderers: Record<string, ToolRenderer> = {
 	Glob: GlobRenderer,
 	Grep: GrepRenderer,
 	TaskCreate: TaskCreateRenderer,
+	list_papers: ListPapersRenderer,
 	search_papers: PaperSearchRenderer,
 	discover_papers: PaperDiscoveryRenderer,
 	web_search: WebSearchRenderer,

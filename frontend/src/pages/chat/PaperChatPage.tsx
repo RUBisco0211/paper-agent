@@ -10,7 +10,7 @@ import { MessageNavigationRail } from "@/components/chat/MessageNavigationRail"
 import { ChatQuoteContext } from "@/components/chat/chatQuoteContext"
 import { MessageBubble } from "@/components/chat/MessageBubble"
 import { QuoteBadge } from "@/components/chat/QuoteBadge"
-import type { MessageQuote, QuoteReference } from "@/types/chat"
+import type { MessageQuote, PaperOpenReference, QuoteReference } from "@/types/chat"
 import type { ImportApprovalPreview } from "@/types/business"
 import { messageQuoteKey, readQuoteReferences } from "@/components/chat/quoteReferences"
 import { restoreRenderedSelection } from "@/components/chat/renderedSelection"
@@ -264,9 +264,38 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     }
   }
 
+  function openPaperEntry(reference: PaperOpenReference) {
+    const opened = quoteBridge?.openPaper(sessionId, {
+      kind: reference.kind === "paper" ? "parsed_block" : reference.kind,
+      user_paper_id: reference.user_paper_id,
+      version: "",
+      page: reference.page ?? 0,
+      block_id: reference.block_id,
+      selected_text: reference.selected_text ?? "",
+      comment: reference.comment ?? "",
+    }) ?? false
+    // A bare entry has no locator; the sidebar still knows how to show it.
+    return opened || reference.kind === "paper"
+  }
+
   function openCitationBlock(blockId: number, page?: number | null) {
     const detail = citationDetail
     if (!detail) return
+    // The block belongs to the conversation: show it in the sidebar reader
+    // first and only leave the chat when nothing there can take it.
+    const opened = quoteBridge?.openPaper(sessionId, {
+      kind: "parsed_block",
+      user_paper_id: detail.paperId,
+      version: "",
+      page: page ?? detail.fallbackPage ?? 0,
+      block_id: blockId,
+      selected_text: detail.snippet ?? "",
+      comment: "",
+    })
+    if (opened) {
+      setCitationDetail(null)
+      return
+    }
     const params = new URLSearchParams()
     const targetPage = page ?? detail.fallbackPage
     if (targetPage) params.set("page", String(targetPage))
@@ -312,7 +341,10 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
   }
 
   return (
-    <DiscoveryImportContext.Provider value={importSelected}><CitationProvider onOpen={(id) => void openCitation(id)}>
+    <DiscoveryImportContext.Provider value={importSelected}><CitationProvider
+      onOpen={(id) => void openCitation(id)}
+      onOpenPaper={openPaperEntry}
+    >
       <main className="flex h-full min-h-0 flex-col">
         {scheduledRun && <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-2">

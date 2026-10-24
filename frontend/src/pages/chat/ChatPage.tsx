@@ -6,7 +6,7 @@ import {
   PanelRightOpen,
 } from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useOutlet } from "react-router-dom";
 
 import { useApi } from "@/components/providers/ApiProvider";
@@ -24,7 +24,7 @@ import {
   type ChatQuoteReceiver,
   type PaperQuoteOpener,
 } from "@/components/chat/chatQuoteContext";
-import type { QuoteReference } from "@/types/chat";
+import type { PaperOpen, QuoteReference } from "@/types/chat";
 import { ConversationPapersPanel } from "@/components/chat/ConversationPapersPanel";
 import { chatPath } from "@/components/chat/chatView";
 
@@ -66,6 +66,8 @@ export function ChatPage() {
   const previousPaperProject = useRef<string | null>(null);
   const quoteReceivers = useRef(new Map<string, ChatQuoteReceiver>());
   const paperOpeners = useRef(new Map<string, PaperQuoteOpener>());
+  // One sidebar reader serves quoted blocks and tool-clicked entries alike.
+  const entryOpeners = useRef(new Set<PaperOpen>());
   const quoteBridge = useRef({
     register: (sessionId: string, receiver: ChatQuoteReceiver) => {
       quoteReceivers.current.set(sessionId, receiver);
@@ -95,6 +97,18 @@ export function ChatPage() {
       return opened;
     },
   }).current;
+  // Exposed through the bridge so tool renderers and the citation dialog can
+  // reuse the same sidebar reader that quoted blocks already open.
+  const registerEntryOpener = useCallback((opener: PaperOpen) => {
+    entryOpeners.current.add(opener);
+    return () => {
+      entryOpeners.current.delete(opener);
+    };
+  }, []);
+  const bridge = useMemo(
+    () => ({ ...quoteBridge, openEntry: registerEntryOpener }),
+    [quoteBridge, registerEntryOpener],
+  );
   const sessions = useQuery({
     queryKey: ["bound-sessions"],
     queryFn: () => listBoundSessions(api),
@@ -191,7 +205,7 @@ export function ChatPage() {
   );
 
   return (
-    <ChatQuoteContext.Provider value={quoteBridge}>
+    <ChatQuoteContext.Provider value={bridge}>
       <SidebarProvider className="min-h-0 flex-1">
         <div className="flex h-full min-h-0 w-full flex-col">
           <header
