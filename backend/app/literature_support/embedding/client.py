@@ -5,6 +5,7 @@
 适配器只负责组装请求、解析响应并把失败映射成稳定错误码。
 """
 
+import math
 import time
 from collections.abc import Callable, Sequence
 
@@ -44,13 +45,8 @@ class OpenAICompatibleEmbeddingAdapter:
         self._profile = profile or EmbeddingProfile(
             dimensions=settings.embedding_dimensions,
         )
-        # Resolved at call time so a swapped-in factory (tests, instrumentation)
-        # is honoured by adapters that were already built. The shared factory's
-        # timeout is sized for metadata lookups, not CPU embedding batches.
-        self._client_factory = _with_timeout(
-            http_client_factory or default_http_client_factory,
-            settings.embedding_timeout_seconds,
-        )
+        self._client_factory = http_client_factory or default_http_client_factory
+        self._read_timeout = settings.embedding_timeout_seconds
         self._max_retries = (
             settings.embedding_max_retries if max_retries is None else max_retries
         )
@@ -129,14 +125,20 @@ class OpenAICompatibleEmbeddingAdapter:
             last = attempt == self._max_retries
             try:
                 with self._client_factory() as client:
-                    response = client.post(url, json=json, headers=headers)
-            except httpx.ReadTimeout as exc:
+                    timeout = httpx.Timeout(
+                        connect=client.timeout.connect, read=self._read_timeout,
+                        write=client.timeout.write, pool=client.timeout.pool,
+                    )
+                    response = client.post(
+                        url, json=json, headers=headers, timeout=timeout,
+                    )
+            except httpx.ReadTimeout:
                 if last:
                     raise AppError(
                         "Embedding 服务响应超时",
                         code=ErrorCode.PROVIDER_UNAVAILABLE,
                         status_code=504,
-                    ) from exc
+                    ) from None
                 self._sleep(delay)
                 delay *= 2
                 continue
@@ -146,7 +148,7 @@ class OpenAICompatibleEmbeddingAdapter:
                         "无法连接 Embedding 服务",
                         code=ErrorCode.PROVIDER_UNAVAILABLE,
                         status_code=502,
-                    ) from exc
+                    ) from None
                 self._sleep(delay)
                 delay *= 2
                 continue
@@ -186,42 +188,48 @@ class OpenAICompatibleEmbeddingAdapter:
             headers=headers,
         )
 
+        # Never use the response body in error messages or details: providers
+        # may echo credentials or document text, which are not safe to persist.
+        safe_details = {"status": response.status_code, "model": self._model}
         if response.status_code in {401, 403}:
-            # The provider's own explanation is the only text that tells the
-            # user what to fix, so it travels with the failure unedited.
             raise AppError(
-                _provider_message(response) or "Embedding 服务鉴权失败",
+                "Embedding 服务鉴权失败",
                 code=ErrorCode.PROVIDER_NOT_CONFIGURED,
                 status_code=503,
-                details={
-                    "upstream": _provider_message(response) or "HTTP 401/403"
-                },
+                details=safe_details,
             )
         if response.status_code == 429:
             raise AppError(
-                _provider_message(response) or "Embedding 服务限流",
+                "Embedding 服务限流",
                 code=ErrorCode.PROVIDER_RATE_LIMITED,
                 status_code=429,
-                details={
-                    "upstream": _provider_message(response) or "HTTP 429"
-                },
+                details=safe_details,
             )
         if response.status_code >= 400:
             raise AppError(
-                _provider_message(response)
-                or f"Embedding 服务返回错误（HTTP {response.status_code}）",
+                f"Embedding 服务返回错误（HTTP {response.status_code}）",
                 code=ErrorCode.PROVIDER_UNAVAILABLE,
                 status_code=502,
-                details={
-                    "upstream": _provider_message(response)
-                    or f"HTTP {response.status_code}",
-                    "status": response.status_code,
-                    "model": self._model,
-                },
+                details=safe_details,
             )
 
-        data = response.json().get("data", [])
-        vectors = [item.get("embedding") for item in sorted(data, key=_index_of)]
+        try:
+            data = response.json()["data"]
+            if not isinstance(data, list):
+                raise TypeError("invalid embedding list")
+            vectors = [item.get("embedding") for item in sorted(data, key=_index_of)]
+            if any(not isinstance(vector, list) for vector in vectors):
+                raise TypeError("invalid embedding vector")
+            if any(
+                type(value) not in (int, float) or not math.isfinite(value)
+                for vector in vectors for value in vector
+            ):
+                raise ValueError("invalid embedding value")
+        except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+            raise AppError(
+                "Embedding 服务返回结构不兼容", code=ErrorCode.PROVIDER_UNAVAILABLE,
+                status_code=502, details=safe_details,
+            ) from None
         if len(vectors) != len(texts) or any(not vector for vector in vectors):
             raise AppError(
                 "Embedding 服务返回的向量数量不匹配",
@@ -253,44 +261,12 @@ def _index_of(item: dict) -> int:
     return int(item.get("index", 0))
 
 
-def _with_timeout(factory: HttpClientFactory, seconds: float) -> HttpClientFactory:
-    """Give the embedding call its own read timeout, keeping the caller's factory."""
-
-    def build() -> httpx.Client:
-        client = factory()
-        client.timeout = httpx.Timeout(seconds, connect=10.0)
-        return client
-
-    return build
-
-
 #: Status codes worth a second attempt: rate limiting and provider-side blips.
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 
 def _is_retryable(status_code: int) -> bool:
     return status_code in RETRYABLE_STATUS
-
-
-def _provider_message(response: httpx.Response) -> str | None:
-    """Pull the provider's own error sentence out of an OpenAI-compatible body."""
-    try:
-        body = response.json()
-    except ValueError:
-        return None
-    if not isinstance(body, dict):
-        return None
-    error = body.get("error")
-    if isinstance(error, dict):
-        message = error.get("message")
-        if isinstance(message, str) and message.strip():
-            return message.strip()
-    if isinstance(error, str) and error.strip():
-        return error.strip()
-    message = body.get("message")
-    if isinstance(message, str) and message.strip():
-        return message.strip()
-    return None
 
 
 def _split_batches(

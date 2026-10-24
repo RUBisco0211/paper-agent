@@ -135,7 +135,7 @@ class IngestionPipeline:
                         job_id=str(job_id),
                         stage=stage.value,
                         error_code=str(exc.code),
-                        detail=getattr(exc, "details", None),
+                        detail=_safe_error_details(exc.details),
                     )
                     if stage not in NON_BLOCKING_STAGES:
                         blocking_failure = str(exc.code)
@@ -434,6 +434,17 @@ class IngestionPipeline:
         """PDF 在本地实现下是零拷贝；S3 实现会下载到临时文件。"""
         with self._storage.materialize(paper_pdf_key(file_hash)) as path:
             yield path
+
+
+def _safe_error_details(details: object) -> dict[str, int]:
+    """Only adapter diagnostics with known numeric meanings may enter logs."""
+    if not isinstance(details, dict):
+        return {}
+    allowed = {
+        "status", "expected", "returned", "expected_dimensions", "actual_dimensions",
+    }
+    return {key: value for key, value in details.items()
+            if key in allowed and type(value) is int}
 
 
 def _preferred_identifier(identifiers: Sequence[Identifier]) -> Identifier:

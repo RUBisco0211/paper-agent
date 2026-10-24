@@ -30,10 +30,17 @@ function renderWith(savedKey: string | null) {
 }
 
 describe("RetrievalSection", () => {
+  it("names the provider and offers key setup without describing storage internals", async () => {
+    renderWith(null)
+    expect(await screen.findByLabelText("SiliconFlow API Key")).toBeTruthy()
+    expect(screen.getByRole("link", { name: "获取 SiliconFlow API Key" }).getAttribute("href"))
+      .toBe("https://cloud.siliconflow.cn/account/ak")
+    expect(screen.queryByText(/转成向量|文献片段比对|密钥保存在/)).toBeNull()
+  })
   it("explains that ingestion vectors are paid by the site and searches by the user", async () => {
     renderWith(null)
 
-    expect(await screen.findByText(/文献入库时的向量由本站承担/)).toBeTruthy()
+    expect(await screen.findByText(/文献入库由本站承担费用/)).toBeTruthy()
     expect(await screen.findByText("尚未配置")).toBeTruthy()
   })
 
@@ -41,7 +48,7 @@ describe("RetrievalSection", () => {
     renderWith(null)
     api.serviceCredentials.save.mockResolvedValue({ kind: "embedding", label: "", fields: {} })
 
-    fireEvent.change(await screen.findByLabelText("Embedding API Key"), {
+    fireEvent.change(await screen.findByLabelText("SiliconFlow API Key"), {
       target: { value: "sk-user" },
     })
     fireEvent.click(screen.getByRole("button", { name: "保存密钥" }))

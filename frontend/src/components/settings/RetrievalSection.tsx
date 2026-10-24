@@ -61,7 +61,7 @@ export function RetrievalSection() {
           向量检索
         </h2>
         <p className="text-sm text-muted-foreground">
-          检索时用你的密钥把问题转成向量，再与文献片段比对。文献入库时的向量由本站承担，不消耗你的额度。未配置时仍可只用关键词检索，但不会做语义匹配。
+          检索消耗你的 SiliconFlow 额度。文献入库由本站承担费用，不消耗你的额度。未配置时仅使用关键词检索。
         </p>
       </section>
 
@@ -103,7 +103,7 @@ export function RetrievalSection() {
           }}
         >
           <label htmlFor="embedding-key" className="block text-sm">
-            Embedding API Key
+            SiliconFlow API Key
           </label>
           <Input
             id="embedding-key"
@@ -115,9 +115,15 @@ export function RetrievalSection() {
               setSuccess(false)
             }}
           />
-          <p className="text-xs text-muted-foreground">
-            密钥保存在你自己的账户下，仅用于把你的检索问题转成向量。
-          </p>
+          <Button asChild variant="link">
+            <a
+              href="https://cloud.siliconflow.cn/account/ak"
+              target="_blank"
+              rel="noreferrer"
+            >
+              获取 SiliconFlow API Key
+            </a>
+          </Button>
           <Button type="submit" disabled={save.isPending || !key.trim()}>
             {save.isPending ? "保存中…" : "保存密钥"}
           </Button>

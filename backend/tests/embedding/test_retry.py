@@ -3,6 +3,7 @@
 import json
 
 import httpx
+import pytest
 
 from app.literature_support.embedding import OpenAICompatibleEmbeddingAdapter
 from app.literature_support.embedding.base import EmbeddingProfile
@@ -120,3 +121,42 @@ def test_a_refused_connection_is_not_retried() -> None:
         raise AssertionError("the service being down is not a transient blip")
 
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("failure_kind", ["429", "503", "timeout"])
+@pytest.mark.parametrize("budget", [0, 2])
+def test_adapter_stops_without_extra_wait_when_retry_budget_is_exhausted(
+    failure_kind, budget,
+):
+    calls = []
+    waits = []
+
+    def handler(request):
+        calls.append(request)
+        if failure_kind == "timeout":
+            raise httpx.ReadTimeout("temporary timeout", request=request)
+        return httpx.Response(int(failure_kind))
+
+    with pytest.raises(AppError):
+        _adapter(handler, max_retries=budget, backoffs=waits).embed_query("attention")
+    assert len(calls) == budget + 1
+    assert waits == [0.5 * 2 ** attempt for attempt in range(budget)]
+
+
+@pytest.mark.parametrize("failure_kind", ["429", "503", "timeout"])
+def test_adapter_returns_vector_when_last_allowed_attempt_succeeds(failure_kind):
+    calls = []
+    waits = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 3:
+            return _ok_response(["attention"])
+        if failure_kind == "timeout":
+            raise httpx.ReadTimeout("temporary timeout", request=request)
+        return httpx.Response(int(failure_kind))
+
+    result = _adapter(handler, max_retries=2, backoffs=waits).embed_query("attention")
+    assert result == [0.1] * 3
+    assert len(calls) == 3
+    assert waits == [0.5, 1.0]
