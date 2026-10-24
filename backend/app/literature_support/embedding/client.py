@@ -6,6 +6,7 @@
 """
 
 import math
+import struct
 import time
 from collections.abc import Callable, Sequence
 
@@ -217,15 +218,22 @@ class OpenAICompatibleEmbeddingAdapter:
             data = response.json()["data"]
             if not isinstance(data, list):
                 raise TypeError("invalid embedding list")
+            indices = [_index_of(item) for item in data]
+            if sorted(indices) != list(range(len(texts))):
+                raise ValueError("invalid embedding indices")
             vectors = [item.get("embedding") for item in sorted(data, key=_index_of)]
             if any(not isinstance(vector, list) for vector in vectors):
                 raise TypeError("invalid embedding vector")
             if any(
-                type(value) not in (int, float) or not math.isfinite(value)
+                type(value) not in (int, float)
+                or not math.isfinite(struct.unpack("f", struct.pack("f", value))[0])
                 for vector in vectors for value in vector
             ):
                 raise ValueError("invalid embedding value")
-        except (ValueError, KeyError, TypeError, AttributeError, OverflowError):
+        except (
+            ValueError, KeyError, TypeError, AttributeError,
+            OverflowError, struct.error,
+        ):
             raise AppError(
                 "Embedding 服务返回结构不兼容", code=ErrorCode.PROVIDER_UNAVAILABLE,
                 status_code=502, details=safe_details,
@@ -258,7 +266,10 @@ class OpenAICompatibleEmbeddingAdapter:
 
 
 def _index_of(item: dict) -> int:
-    return int(item.get("index", 0))
+    index = item["index"]
+    if type(index) is not int:
+        raise ValueError("invalid embedding index type")
+    return index
 
 
 #: Status codes worth a second attempt: rate limiting and provider-side blips.
