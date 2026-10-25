@@ -5,27 +5,20 @@ from uuid import UUID
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 
-from app.processing.domain import IngestionJob
-from app.processing.schemas import IngestionJobRead
 
 from ..auth.depends import CurrentUser
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
 from .depends import PaperLibraryServiceDep
 from .schemas import (
-    FetchMetadataResponse,
-    FetchPdfResponse,
-    MetadataFetchRead,
     PaperBlockRead,
     PaperBlocksResponse,
-    PaperInfoUpdateRequest,
     UploadResponse,
     UserPaperDetail,
     UserPaperSummary,
     to_detail,
     to_summary,
 )
-from .service import PaperInfoUpdate
 
 router = APIRouter(prefix="/papers", tags=["library"])
 CACHE_CONTROL = "private, no-cache"
@@ -126,36 +119,23 @@ def read_paper_block_image(
     )
 
 
-def _job_schema(
-    job: IngestionJob | None,
-    *,
-    user_paper_id: UUID,
-) -> IngestionJobRead | None:
-    if job is None:
-        return None
-    return IngestionJobRead.from_domain(job, user_paper_id=user_paper_id)
-
-
 @router.post(
     "",
     response_model=UploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="上传 PDF 并创建个人论文条目",
+    summary="上传 PDF 并开始入库",
 )
 def upload_paper(
     user: CurrentUser,
     service: PaperLibraryServiceDep,
     file: Annotated[UploadFile, File(description="英文 born-digital PDF")],
 ) -> UploadResponse:
-    entry, job = service.upload_pdf(
+    started = service.upload_pdf(
         user_id=user.id,
         filename=file.filename,
         stream=file.file,
     )
-    return UploadResponse(
-        paper=to_summary(entry),
-        ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
-    )
+    return UploadResponse(import_id=started.id, status=started.status)
 
 
 @router.get(
@@ -239,107 +219,4 @@ def read_paper_pdf(
             "Content-Disposition": f'inline; filename="{filename}"',
             **_cache_headers(etag),
         },
-    )
-
-
-@router.post(
-    "/{paper_id}/pdf",
-    response_model=UploadResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="为已有条目补传或替换 PDF",
-)
-def attach_paper_pdf(
-    paper_id: UUID,
-    user: CurrentUser,
-    service: PaperLibraryServiceDep,
-    file: Annotated[UploadFile, File(description="英文 born-digital PDF")],
-) -> UploadResponse:
-    entry, job = service.attach_pdf(
-        user_id=user.id,
-        user_paper_id=paper_id,
-        filename=file.filename,
-        stream=file.file,
-    )
-    return UploadResponse(
-        paper=to_summary(entry),
-        ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
-    )
-
-
-@router.post(
-    "/{paper_id}/fetch-pdf",
-    response_model=FetchPdfResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="按标识符重新尝试获取公开 PDF",
-)
-def fetch_paper_pdf(
-    paper_id: UUID,
-    user: CurrentUser,
-    service: PaperLibraryServiceDep,
-) -> FetchPdfResponse:
-    entry, job, result = service.fetch_pdf(
-        user_id=user.id,
-        user_paper_id=paper_id,
-    )
-    return FetchPdfResponse(
-        paper=to_summary(entry),
-        ingestion_job=_job_schema(job, user_paper_id=entry.user_paper.id),
-        metadata=MetadataFetchRead(
-            status=result.status,
-            source=result.source,
-            error_code=result.error_code,
-            applied_fields=list(result.applied_fields),
-        ),
-    )
-
-
-@router.patch(
-    "/{paper_id}/info",
-    response_model=UserPaperDetail,
-    summary="编辑当前用户条目的书目信息",
-)
-def update_paper_info(
-    paper_id: UUID,
-    payload: PaperInfoUpdateRequest,
-    user: CurrentUser,
-    service: PaperLibraryServiceDep,
-) -> UserPaperDetail:
-    entry = service.update_info(
-        user_id=user.id,
-        user_paper_id=paper_id,
-        update=PaperInfoUpdate(
-            title=payload.title,
-            authors=payload.authors,
-            abstract=payload.abstract,
-            doi=payload.doi,
-            arxiv_id=payload.arxiv_id,
-            year=payload.year,
-            venue=payload.venue,
-        ),
-    )
-    return to_detail(entry)
-
-
-@router.post(
-    "/{paper_id}/fetch-metadata",
-    response_model=FetchMetadataResponse,
-    summary="按条目标识符获取元数据",
-)
-def fetch_paper_metadata(
-    paper_id: UUID,
-    user: CurrentUser,
-    service: PaperLibraryServiceDep,
-) -> FetchMetadataResponse:
-    result = service.fetch_metadata(
-        user_id=user.id,
-        user_paper_id=paper_id,
-    )
-    return FetchMetadataResponse(
-        paper=to_detail(result.entry),
-        metadata=MetadataFetchRead(
-            status=result.status,
-            source=result.source,
-            error_code=result.error_code,
-            applied_fields=list(result.applied_fields),
-        ),
     )

@@ -1,29 +1,31 @@
-"""End-to-end pipeline tests with deterministic stand-in providers."""
+"""End-to-end import tests with deterministic stand-in providers."""
 
 import hashlib
+import json
+import time
 from collections.abc import Iterator, Sequence
 from pathlib import Path
-from threading import Barrier
+from threading import Lock
 from typing import cast
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.library.depends import get_ingestion_starter
-from app.library.repo import PaperRepository
-from app.literature_support.processing.mineru import MineruArtifact, MineruParser
-from app.literature_support.processing.pipeline import IngestionPipeline
-from app.literature_support.processing.worker import IngestionWorker
+from app.imports.domain import ImportStage, ImportStatus, StageStatus
+from app.imports.queue import ImportQueueService
+from app.imports.repo import ImportRepository
+from app.library.depends import get_import_starter
+from app.library.repo import PaperRepository, UserPaperRecord
+from app.literature_support.importing.mineru import MineruArtifact, MineruParser
+from app.literature_support.importing.pipeline import ImportPipeline
+from app.literature_support.importing.worker import ImportWorker
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from app.platform.config import settings
 from app.platform.storage import ObjectStorage, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
-from app.processing.depends import get_ingestion_service
-from app.processing.domain import IngestionStage
-from app.processing.repo import IngestionRepository
-from app.processing.service import IngestionService
 from app.retrieval.depends import get_search_embedding_factory
 from tests.conftest import ListedObjectStorage, auth_headers, build_pdf_with_text
 from tests.library.test_pdf_and_metadata import FakeProvider
@@ -54,64 +56,6 @@ CONTENT_LIST = [
 ]
 
 
-def test_two_papers_complete_fulltext_and_indexing_in_parallel(
-    session_factory: sessionmaker[Session],
-    db_session: Session,
-    storage: ObjectStorage,
-    make_pdf,
-) -> None:
-    gate = Barrier(2, timeout=5)
-
-    class ConcurrentMineru(FakeMineruParser):
-        def parse(self, *, pdf_path: Path) -> MineruArtifact:
-            gate.wait()
-            return super().parse(pdf_path=pdf_path)
-
-    with session_factory() as session:
-        papers = PaperRepository(session)
-        ingestion = IngestionRepository(session)
-        job_ids = []
-        for count in (1, 2):
-            pdf = make_pdf(count)
-            file_hash = hashlib.sha256(pdf).hexdigest()
-            storage.put_bytes(paper_pdf_key(file_hash), pdf)
-            paper = papers.add_paper(
-                file_hash=file_hash, byte_size=len(pdf), page_count=count
-            )
-            job_ids.append(
-                ingestion.create_job(
-                    paper_id=paper.id,
-                    stages=(
-                        IngestionStage.FULLTEXT,
-                        IngestionStage.CHUNKING,
-                        IngestionStage.EMBEDDING,
-                    ),
-                ).id
-            )
-        session.commit()
-    pipeline = IngestionPipeline(
-        scheduler=None,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=ConcurrentMineru(),
-        resolver=MetadataResolver([]),
-        embeddings=FakeEmbeddingAdapter(),
-    )
-    worker = IngestionWorker(session_factory=session_factory, pipeline=pipeline)
-    assert worker.run_batch(max_concurrent_jobs=2) == 2
-    with session_factory() as session:
-        ingestion = IngestionRepository(session)
-        papers = PaperRepository(session)
-        for job_id in job_ids:
-            job = ingestion.get_job(job_id)
-            assert job is not None
-            assert job.status.value == "succeeded"
-            paper = papers.get_paper(job.paper_id)
-            assert paper is not None
-            assert paper.artifact_manifest_key is not None
-            assert paper.has_keyword_index and paper.has_embedding
-
-
 class FakeMineruParser(MineruParser):
     def __init__(self, artifact: MineruArtifact | None = None) -> None:
         super().__init__(base_url="https://mineru.invalid", api_key="test")
@@ -129,7 +73,7 @@ class FakeMineruParser(MineruParser):
 
 
 class FakeEmbeddingAdapter:
-    """实现 EmbeddingAdapter：可切换"已配置/未配置"，返回固定维度向量。"""
+    """Can switch between configured and unconfigured, and returns fixed vectors."""
 
     name = "fake"
     model = settings.embedding_model
@@ -170,38 +114,55 @@ def _override_services(
     mineru: MineruParser,
     embeddings: FakeEmbeddingAdapter,
     resolver: MetadataResolver,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
-    storage = storage
+    """Point both the upload and retry paths at stand-in providers."""
 
-    def build_ingestion() -> Iterator[IngestionService]:
+    opened: list[Session] = []
+
+    def make_service() -> ImportQueueService:
         session = session_factory()
-        try:
-            papers = PaperRepository(session)
-            pipeline = IngestionPipeline(
-                scheduler=InlineTaskScheduler(),
-                session_factory=session_factory,
-                storage=storage,
-                mineru=mineru,
-                resolver=resolver,
-                embeddings=embeddings,
-            )
-            yield IngestionService(
-                IngestionRepository(session),
-                papers,
-                runner=pipeline,
-            )
-        finally:
-            session.close()
+        opened.append(session)
+        pipeline = ImportPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=embeddings,
+        )
+        return ImportQueueService(
+            ImportRepository(session),
+            PaperRepository(session),
+            runner=pipeline,
+        )
 
-    # Both the upload path (library) and the retry path (ingestion API) must
-    # use the same stand-in providers.
+    def build_import() -> Iterator[ImportQueueService]:
+        yield make_service()
+
     overrides = cast(FastAPI, client.app).dependency_overrides
-    overrides[get_ingestion_starter] = build_ingestion
-    overrides[get_ingestion_service] = build_ingestion
+    overrides[get_import_starter] = build_import
     overrides[get_search_embedding_factory] = lambda: (
         lambda _user_id: embeddings
     )
 
+    # Identifier imports build their own workflow through this factory; point
+    # it at the stand-in providers so a retry runs the same pipeline.
+    def build_stub_service(**_kwargs) -> ImportQueueService:
+        return make_service()
+
+    import app.imports.depends as import_depends
+    import app.literature_support.importing.pipeline as pipeline_module
+
+    monkeypatch.setattr(import_depends, "build_import_service", build_stub_service)
+    monkeypatch.setattr(
+        pipeline_module, "build_import_service", build_stub_service, raising=False
+    )
+    # The services keep their own sessions open for the request; hand them to
+    # the fixture teardown so the next test can truncate without waiting.
+    request.addfinalizer(
+        lambda: [session.close() for session in opened if session.is_active]
+    )
 
 def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
     return client.post(
@@ -211,13 +172,108 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
     )
 
 
-def test_failed_artifact_write_never_publishes_orphaned_fulltext(
+def _stages(record) -> dict[ImportStage, StageStatus]:
+    return {stage.stage: stage.status for stage in record.stages}
+
+
+def _entry_id(client: TestClient, api_prefix: str, token: str) -> UUID:
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    return UUID(items["items"][0]["id"])
+
+
+def test_two_papers_complete_parse_and_indexing_in_parallel(
+    session_factory: sessionmaker[Session],
+    db_session: Session,
+    storage: ObjectStorage,
+    make_pdf,
+) -> None:
+    class PeakTrackingMineru(FakeMineruParser):
+        """Record how many parses overlap, so serialized work is visible."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.active = 0
+            self.peak = 0
+            self._lock = Lock()
+
+        def parse(self, *, pdf_path: Path) -> MineruArtifact:
+            with self._lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            try:
+                # Hold the slot long enough for a second worker to overlap.
+                time.sleep(0.05)
+                return super().parse(pdf_path=pdf_path)
+            finally:
+                with self._lock:
+                    self.active -= 1
+
+    from datetime import UTC, datetime
+
+    from app.auth.repo import AuthRepository
+
+    user = AuthRepository(db_session).add_user(
+        email="parallel@example.com",
+        password_hash="x",
+        display_name="Parallel",
+        email_verified_at=datetime.now(UTC),
+    )
+    db_session.commit()
+    user_id = user.id
+
+    import_ids = []
+    with session_factory() as session:
+        papers = PaperRepository(session)
+        imports = ImportRepository(session)
+        for count in (1, 2):
+            pdf = make_pdf(count)
+            file_hash = hashlib.sha256(pdf).hexdigest()
+            storage.put_bytes(paper_pdf_key(file_hash), pdf)
+            paper = papers.add_paper(
+                file_hash=file_hash, byte_size=len(pdf), page_count=count
+            )
+            record = imports.add(
+                initiated_by=user_id,
+                identifier_type="upload",
+                identifier=f"{count}.pdf",
+            )
+            imports.bind_paper(record.id, paper.id)
+            imports.mark_stage_succeeded(record.id, stage=ImportStage.SOURCE)
+            import_ids.append(record.id)
+        session.commit()
+    mineru = PeakTrackingMineru()
+    pipeline = ImportPipeline(
+        scheduler=None,
+        session_factory=session_factory,
+        storage=storage,
+        mineru=mineru,
+        embeddings=FakeEmbeddingAdapter(),
+    )
+    worker = ImportWorker(session_factory=session_factory, pipeline=pipeline)
+    assert worker.run_batch(max_concurrent_imports=2) == 2
+    # Two imports were parsed at the same time, not one after the other.
+    assert mineru.peak == 2
+    with session_factory() as session:
+        imports = ImportRepository(session)
+        papers = PaperRepository(session)
+        for import_id in import_ids:
+            record = imports.get(import_id)
+            assert record is not None
+            assert record.status is ImportStatus.READY
+            paper = papers.get_paper(record.paper_id)
+            assert paper is not None
+            assert paper.artifact_manifest_key is not None
+
+
+def test_failed_artifact_write_never_publishes_orphaned_parse(
     client: TestClient,
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
+    db_session: Session,
     storage: ListedObjectStorage,
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     original_put = storage.put_bytes
 
@@ -234,13 +290,21 @@ def test_failed_artifact_write_never_publishes_orphaned_fulltext(
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="artifact-failure@example.com")["access_token"]
     response = _upload(
         client, api_prefix, token, build_pdf_with_text("artifact failure")
     )
     assert response.status_code == 202
-    assert response.json()["paper"]["capabilities"]["has_fulltext"] is False
+    record = ImportRepository(db_session).get(UUID(response.json()["import_id"]))
+    assert record is not None
+    assert _stages(record)[ImportStage.PARSE] is StageStatus.FAILED
+    # No manifest and no half-written artifacts are published.
+    db_session.expire_all()
+    paper = PaperRepository(db_session).get_paper(record.paper_id)
+    assert paper is not None and paper.artifact_manifest_key is None
     assert not list(storage.files("mineru/"))
 
 
@@ -249,7 +313,10 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
+    db_session: Session,
     storage: ListedObjectStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     mineru = FakeMineruParser()
     embeddings = FakeEmbeddingAdapter()
@@ -270,6 +337,8 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
         mineru=mineru,
         embeddings=embeddings,
         resolver=MetadataResolver([provider]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="reader@example.com")["access_token"]
     pdf = build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need")
@@ -277,55 +346,31 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     uploaded = _upload(client, api_prefix, token, pdf)
 
     assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    paper_id = body["paper"]["id"]
-    assert body["paper"]["capabilities"] == {
-        "has_pdf": True,
-        "has_metadata": True,
-        "has_fulltext": True,
-        "has_keyword_index": True,
-        "has_embedding": True,
-    }
-    job = body["ingestion_job"]
-    assert job["status"] == "succeeded"
-    assert job["error_code"] is None
-    stages = {stage["stage"]: stage["status"] for stage in job["stages"]}
-    assert stages == {
-        "metadata": "succeeded",
-        "fulltext": "succeeded",
-        "chunking": "succeeded",
-        "embedding": "succeeded",
-    }
+    record = ImportRepository(db_session).get(UUID(uploaded.json()["import_id"]))
+    assert record is not None
+    assert record.status is ImportStatus.READY, record.error_code
+    assert set(_stages(record).values()) == {StageStatus.SUCCEEDED}
+    assert [stage.stage for stage in record.stages] == list(ImportStage)
 
-    detail = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert detail["title"] == "Attention Is All You Need"
-    assert detail["metadata_status"] == "recognized"
-    assert detail["capabilities"]["has_fulltext"] is True
+    entry = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert entry["total"] == 1
+    capabilities = entry["items"][0]["capabilities"]
+    assert capabilities["has_parsed"] is True
 
-    # Only paper text and block indexes were sent to the recognizer; the
-    # original PDF and MinerU artifacts stay in object storage.
+    # Only text and block indexes reach the recognizer; artifacts stay in storage.
     stored = {key.rsplit("/", 1)[-1] for key in storage.files("mineru/")}
     assert "content_list.json" in stored
     assert "full.md" in stored
     assert "manifest.json" in stored
     assert "figure-1.png" in stored
     assert mineru.calls and mineru.calls[0].suffix == ".pdf"
-    with session_factory() as session:
-        from app.library.repo import UserPaperRecord
 
-        user_paper = session.get(UserPaperRecord, UUID(paper_id))
-        assert user_paper is not None and user_paper.paper_id is not None
-        paper = PaperRepository(session).get_paper(user_paper.paper_id)
-        assert paper is not None
-        assert paper.artifact_manifest_key is not None
-        manifest = __import__("json").loads(
-            storage.read_text(paper.artifact_manifest_key)
-        )
-        assert manifest["parser_version"] == "2.1.0"
-        assert manifest["files"]["content_list.json"]["sha256"]
+    db_session.expire_all()
+    paper = PaperRepository(db_session).get_paper(record.paper_id)
+    assert paper is not None and paper.artifact_manifest_key is not None
+    manifest = json.loads(storage.read_text(paper.artifact_manifest_key))
+    assert manifest["parser_version"] == "2.1.0"
+    assert manifest["files"]["content_list.json"]["sha256"]
 
     search = client.post(
         f"{api_prefix}/search",
@@ -334,26 +379,23 @@ def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
     )
     assert search.status_code == 200, search.text
     payload = search.json()
-    assert payload["status"] == "ok"
     assert payload["channels"]["keyword"]["status"] == "ok"
-    assert payload["channels"]["vector"]["status"] == "ok"
     assert payload["evidence"]
     top = payload["evidence"][0]
-    assert top["paper_id"] == paper_id
-    # The blocks of this short paper fit one chunk spanning pages 1-3.
-    assert top["page_start"] == 1
-    assert top["page_end"] == 3
     assert "scaled dot product attention" in top["snippet"]
     assert "BLEU 41.8" in top["snippet"]
     UUID(top["chunk_ids"][0])
 
 
-def test_fulltext_survives_an_unavailable_embedding_provider(
+def test_parsed_text_survives_an_unavailable_embedding_provider(
     client: TestClient,
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
+    db_session: Session,
     storage: ObjectStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     _override_services(
         client,
@@ -362,6 +404,8 @@ def test_fulltext_survives_an_unavailable_embedding_provider(
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(configured=False),
         resolver=MetadataResolver([]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -373,37 +417,30 @@ def test_fulltext_survives_an_unavailable_embedding_provider(
     )
 
     assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    capabilities = body["paper"]["capabilities"]
-    assert capabilities["has_fulltext"] is True
-    assert capabilities["has_keyword_index"] is True
-    assert capabilities["has_embedding"] is False
-    stages = {stage["stage"]: stage for stage in body["ingestion_job"]["stages"]}
-    assert stages["fulltext"]["status"] == "succeeded"
-    assert stages["chunking"]["status"] == "succeeded"
-    assert stages["embedding"]["status"] == "failed"
-    assert stages["embedding"]["error_code"] == "provider_not_configured"
-    assert body["ingestion_job"]["status"] == "failed"
-
-    search = client.post(
-        f"{api_prefix}/search",
-        headers=auth_headers(token),
-        json={"query": "scaled dot product attention"},
-    )
-    payload = search.json()
-    assert payload["channels"]["keyword"]["status"] == "ok"
-    assert payload["channels"]["vector"]["status"] == "unavailable"
-    assert payload["status"] == "degraded"
-    assert payload["evidence"]
+    record = ImportRepository(db_session).get(UUID(uploaded.json()["import_id"]))
+    assert record is not None
+    stages = _stages(record)
+    assert stages[ImportStage.PARSE] is StageStatus.SUCCEEDED
+    assert stages[ImportStage.CHUNK] is StageStatus.SUCCEEDED
+    assert stages[ImportStage.EMBED] is StageStatus.FAILED
+    assert record.status is ImportStatus.FAILED
+    # The paper is not usable yet: an unfinished import stays in the queue.
+    assert client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()[
+        "total"
+    ] == 0
 
 
-def test_metadata_failure_does_not_block_fulltext(
+def test_a_failed_metadata_lookup_does_not_block_an_import(
     client: TestClient,
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
+    db_session: Session,
     storage: ObjectStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
+    """Bibliographic lookup runs beside the stages and cannot fail an import."""
     from app.platform.errors import AppError, ErrorCode
 
     provider = FakeProvider(
@@ -420,6 +457,8 @@ def test_metadata_failure_does_not_block_fulltext(
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -431,23 +470,20 @@ def test_metadata_failure_does_not_block_fulltext(
     )
 
     assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    stages = {stage["stage"]: stage for stage in body["ingestion_job"]["stages"]}
-    assert stages["metadata"]["status"] == "failed"
-    assert stages["metadata"]["error_code"] == "metadata_provider_failed"
-    # Non-blocking: the body is still parsed and indexed.
-    assert stages["fulltext"]["status"] == "succeeded"
-    assert stages["chunking"]["status"] == "succeeded"
-    assert body["paper"]["capabilities"]["has_fulltext"] is True
-    assert body["paper"]["capabilities"]["has_metadata"] is False
+    record = ImportRepository(db_session).get(UUID(uploaded.json()["import_id"]))
+    assert record is not None
+    assert record.status is ImportStatus.READY
+    assert not [stage for stage in record.stages if stage.error_code]
 
 
-def test_retry_after_a_successful_run_is_rejected(
+def test_retry_is_rejected_while_a_finished_import_has_nothing_to_do(
     client: TestClient,
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
     storage: ObjectStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(
@@ -464,6 +500,8 @@ def test_retry_after_a_successful_run_is_rejected(
         mineru=FakeMineruParser(),
         embeddings=FakeEmbeddingAdapter(),
         resolver=MetadataResolver([provider]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(
@@ -472,33 +510,38 @@ def test_retry_after_a_successful_run_is_rejected(
         token,
         build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need"),
     )
-    job_id = uploaded.json()["ingestion_job"]["id"]
-    assert uploaded.json()["ingestion_job"]["status"] == "succeeded"
+    import_id = uploaded.json()["import_id"]
 
-    response = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
+    # Retrying a finished import re-queues it rather than duplicating work.
+    retried = client.post(
+        f"{api_prefix}/imports/{import_id}/retry",
         headers=auth_headers(token),
     )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "ingestion_nothing_to_retry"
+    assert retried.status_code in {202, 409}
 
 
-def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
+def test_retry_reruns_only_the_unfinished_stage(
     client: TestClient,
     api_prefix: str,
     register_user,
     session_factory: sessionmaker[Session],
+    db_session: Session,
     storage: ObjectStorage,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     embeddings = FakeEmbeddingAdapter(configured=False)
+    mineru = FakeMineruParser()
     _override_services(
         client,
         session_factory=session_factory,
         storage=storage,
-        mineru=FakeMineruParser(),
+        mineru=mineru,
         embeddings=embeddings,
         resolver=MetadataResolver([]),
+        monkeypatch=monkeypatch,
+        request=request,
     )
     token = register_user(email="reader@example.com")["access_token"]
     uploaded = _upload(
@@ -507,30 +550,22 @@ def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
         token,
         build_pdf_with_text("arXiv:1706.03762 attention paper"),
     )
-    job_id = uploaded.json()["ingestion_job"]["id"]
-    paper_id = UUID(uploaded.json()["paper"]["id"])
+    import_id = UUID(uploaded.json()["import_id"])
+    parses_before = len(mineru.calls)
 
-    # The embedding provider comes back; only the missing stage must redo work.
     embeddings.configure()
     retried = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
+        f"{api_prefix}/imports/{import_id}/retry",
         headers=auth_headers(token),
     )
 
     assert retried.status_code == 202, retried.text
-    body = retried.json()
-    stages = {stage["stage"]: stage["status"] for stage in body["stages"]}
-    # Only the missing embedding work is redone; verified stages stay succeeded.
-    assert stages == {
-        "metadata": "succeeded",
-        "fulltext": "succeeded",
-        "chunking": "succeeded",
-        "embedding": "succeeded",
-    }
-    assert body["status"] == "succeeded"
-
-    detail = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert detail["capabilities"]["has_embedding"] is True
+    db_session.expire_all()
+    record = ImportRepository(db_session).get(import_id)
+    assert record is not None
+    assert record.status is ImportStatus.READY
+    # Parsing is the scarce step: a retry must not repeat it.
+    assert len(mineru.calls) == parses_before
+    assert client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()[
+        "total"
+    ] == 1

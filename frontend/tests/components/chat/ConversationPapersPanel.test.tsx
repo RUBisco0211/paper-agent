@@ -18,8 +18,8 @@ vi.mock("@/components/providers/ApiProvider", () => ({
             id: "global-paper", title: "全局测试文献", authors: [], year: null,
             venue: null, source: "upload", added_at: "2026-10-01T00:00:00Z",
             capabilities: {
-              has_pdf: true, has_metadata: true, has_fulltext: true,
-              has_keyword_index: true, has_embedding: true,
+              has_source: true, has_metadata: true, has_parsed: true,
+              has_index: true, has_embedding: true,
             },
             processing: { job_id: null, status: null, current_stage: null, error_code: null },
           }],
@@ -32,8 +32,8 @@ vi.mock("@/components/providers/ApiProvider", () => ({
             id: "paper-1", title: "测试文献", authors: [], year: null,
             venue: null, source: "upload", added_at: "2026-10-01T00:00:00Z",
             capabilities: {
-              has_pdf: true, has_metadata: true, has_fulltext: true,
-              has_keyword_index: true, has_embedding: true,
+              has_source: true, has_metadata: true, has_parsed: true,
+              has_index: true, has_embedding: true,
             },
             processing: { job_id: null, status: null, current_stage: null, error_code: null },
           }],

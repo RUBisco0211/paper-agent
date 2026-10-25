@@ -343,7 +343,7 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   echo
 
   step "启动文献解析 worker"
-  uv run python -m app.literature_support.processing.worker >"$LOG_DIR/worker.log" 2>&1 &
+  uv run python -m app.literature_support.importing.worker >"$LOG_DIR/worker.log" 2>&1 &
   WORKER_PID=$!
   sleep 0.5
   if ! kill -0 "$WORKER_PID" 2>/dev/null; then

@@ -30,22 +30,22 @@ import { queryKeys } from "@/app/query"
 
 const STATUS_TEXT: Record<PaperImport["status"], string> = {
   queued: "排队中…",
-  resolving: "查询元数据…",
-  metadata_ready: "元数据已入库，正在获取全文…",
-  ready: "元数据与全文都已就绪",
-  pdf_unavailable: "元数据已入库，但没有可下载的全文",
-  failed: "导入失败",
+  running: "正在入库…",
+  ready: "已入库",
+  source_unavailable: "没有找到可用的源文件",
+  failed: "入库失败",
 }
 
 const ERROR_TEXT: Record<string, string> = {
   metadata_not_found: "没有查询到该标识符对应的文献",
   metadata_provider_failed: "元数据服务暂时不可用，可稍后重试",
   provider_rate_limited: "来源限流，请稍后重试",
-  paper_pdf_not_available: "来源没有提供公开可用的 PDF，可手动上传",
+  paper_pdf_not_available: "来源没有提供公开可用的 PDF",
+  import_source_unavailable: "没有找到可用的源文件",
   identifier_invalid: "只支持 DOI 或 arXiv 标识符及其规范链接",
 }
 
-/** DOI/arXiv import: metadata first, full text when the source allows it. */
+/** DOI/arXiv import: fetch the source file, then parse it. */
 export function ImportDialog({
   projectId,
   onImported,

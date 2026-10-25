@@ -19,27 +19,33 @@ from app.literature_support.scholar.identifiers import (
     parse_identifier,
 )
 from app.literature_support.scholar.metadata import MetadataResolver
-from app.literature_support.scholar.pdf_fetch import PdfFetcher
+from app.literature_support.scholar.enrichment import MetadataEnricher
+from app.literature_support.scholar.pdf_fetch import DownloadedPdf, PdfFetcher
 
-from ..library.domain import PaperSource
 from ..library.repo import PaperRepository
-from ..library.service import PaperLibraryService
+from ..library.service import LibraryEntry, PaperLibraryService
 from ..platform.database import SessionFactory
 from ..platform.errors import (
     AppError,
+    ConflictError,
     ErrorCode,
     ForbiddenError,
     NotFoundError,
     ValidationError,
 )
 from ..platform.security import create_candidate_token, read_candidate_token
-from ..platform.storage import ObjectStorage
+from ..platform.storage import ObjectStorage, paper_pdf_key
 from ..platform.tasks import TaskScheduler
 from ..projects.repo import ProjectRepository
 from ..sessions.repo import SessionBindingRepository
 from ..sessions.service import SessionBindingService
-from .domain import ImportStatus, PaperImport
-from .ports import IngestionStarterFactory, PaperDiscoveryAdapter, PdfSourceLocator
+from .domain import ImportStatus, PaperImport, source_of
+from .ports import (
+    ImportRunner,
+    ImportStarterFactory,
+    PaperDiscoveryAdapter,
+    PdfSourceLocator,
+)
 from .repo import ImportApprovalRecord, ImportRepository
 
 logger = structlog.get_logger(__name__)
@@ -163,7 +169,6 @@ class ImportApprovalService:
                     item = self._importer.start(
                         user_id=user_id,
                         identifier_text=candidate["identifier"],
-                        project_id=binding.project_id,
                     )
                     results.append(
                         {
@@ -219,7 +224,7 @@ class ImportApprovalService:
 
 
 class ImportService:
-    """Starts and reports identifier imports."""
+    """Start identifier imports and report the queue the user sees."""
 
     def __init__(
         self,
@@ -230,7 +235,8 @@ class ImportService:
         pdf_fetcher: PdfFetcher,
         pdf_locator: PdfSourceLocator,
         scheduler: TaskScheduler,
-        ingestion_starter_factory: IngestionStarterFactory,
+        import_starter_factory: ImportStarterFactory,
+        runner: ImportRunner | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
@@ -238,7 +244,8 @@ class ImportService:
         self._pdf_fetcher = pdf_fetcher
         self._pdf_locator = pdf_locator
         self._scheduler = scheduler
-        self._ingestion_starter_factory = ingestion_starter_factory
+        self._import_starter_factory = import_starter_factory
+        self._runner = runner
 
     # API surface -----------------------------------------------------------
     def start(
@@ -246,27 +253,27 @@ class ImportService:
         *,
         user_id: UUID,
         identifier_text: str,
-        project_id: UUID | None = None,
     ) -> PaperImport:
+        """Queue an identifier import; the paper appears once it is usable."""
         identifier = parse_identifier(identifier_text)
         session = self._session_factory()
         try:
-            if project_id is not None:
-                project = ProjectRepository(session).get_project(project_id)
-                if project is None or project.user_id != user_id:
-                    raise NotFoundError(
-                        "项目不存在",
-                        code=ErrorCode.PROJECT_NOT_FOUND,
-                    )
             repository = ImportRepository(session)
-            record = repository.add(
-                user_id=user_id,
+            existing = repository.find_by_identifier(
                 identifier_type=identifier.type.value,
                 identifier=identifier.value,
-                project_id=project_id,
             )
+            if existing is None:
+                import_id = repository.add(
+                    initiated_by=user_id,
+                    identifier_type=identifier.type.value,
+                    identifier=identifier.value,
+                ).id
+            else:
+                import_id = existing.id
+                if existing.status is not ImportStatus.READY:
+                    repository.reset_for_retry(import_id)
             repository.commit()
-            import_id = record.id
         finally:
             session.close()
 
@@ -281,78 +288,106 @@ class ImportService:
         )
         return self.get(user_id=user_id, import_id=import_id)
 
+    def entry_id_for(self, *, record: PaperImport, user_id: UUID) -> UUID | None:
+        """The user's own entry for this import's paper, once it exists."""
+        if record.paper_id is None:
+            return None
+        session = self._session_factory()
+        try:
+            entry = PaperRepository(session).get_user_paper_for_paper(
+                user_id=user_id,
+                paper_id=record.paper_id,
+            )
+            return entry.id if entry is not None else None
+        finally:
+            session.close()
+
+    def retry_import(self, import_id: UUID) -> PaperImport:
+        """Run the unfinished stages again, skipping completed artifacts."""
+        session = self._session_factory()
+        try:
+            importer = self._import_starter_factory(
+                session=session,
+                storage=self._storage,
+                session_factory=self._session_factory,
+                scheduler=self._scheduler,
+            )
+            return importer.retry(import_id)
+        finally:
+            session.close()
+
     def get(self, *, user_id: UUID, import_id: UUID) -> PaperImport:
         session = self._session_factory()
         try:
             record = ImportRepository(session).get(import_id)
         finally:
             session.close()
-        if record is None or record.user_id != user_id:
-            raise NotFoundError("导入任务不存在", code=ErrorCode.IMPORT_NOT_FOUND)
+        # The record is shared by everyone who wanted this paper, but only the
+        # person who started it may read its progress; anyone else gets the
+        # same answer as for an unknown record.
+        if record is None or record.initiated_by != user_id:
+            raise NotFoundError("入库记录不存在", code=ErrorCode.IMPORT_NOT_FOUND)
         return record
 
     def queue(self, *, user_id: UUID, limit: int = 100) -> list[dict]:
+        """Imports this user started, newest first, with their stage progress."""
         with self._session_factory() as session:
             imports = ImportRepository(session).list_for_user(
                 user_id=user_id, limit=limit
             )
-            library = self._build_library_service(session, PaperRepository(session))
-            entries, _ = library.list_entries(user_id=user_id, limit=limit, offset=0)
+            papers = PaperRepository(session)
             items: list[dict] = []
-            entries_by_id = {entry.user_paper.id: entry for entry in entries}
-            imported_papers = {
-                item.user_paper_id for item in imports if item.user_paper_id
-            }
             for item in imports:
-                entry = (
-                    entries_by_id.get(item.user_paper_id)
-                    if item.user_paper_id is not None
+                paper = (
+                    papers.get_paper(item.paper_id)
+                    if item.paper_id is not None
                     else None
                 )
-                job = entry.latest_job if entry else None
                 items.append(
                     {
                         "id": str(item.id),
-                        "kind": "import",
                         "identifier": item.identifier,
-                        "title": entry.user_paper.title if entry else None,
-                        "paper_id": str(item.user_paper_id)
-                        if item.user_paper_id
-                        else None,
-                        "status": job.status.value if job else item.status.value,
+                        "identifier_type": item.identifier_type,
+                        "title": paper.title if paper else None,
+                        "paper_id": str(item.paper_id) if item.paper_id else None,
+                        "status": item.status.value,
                         "stage": (
-                            job.current_stage.value
-                            if job and job.current_stage
-                            else None
+                            item.current_stage.value if item.current_stage else None
                         ),
                         "created_at": item.created_at.isoformat(),
-                        "error_code": job.error_code if job else item.error_code,
+                        "error_code": item.error_code,
+                        "stages": [
+                            {
+                                "stage": stage.stage.value,
+                                "status": stage.status.value,
+                                "attempt": stage.attempt,
+                                "error_code": stage.error_code,
+                                "error_message": stage.error_message,
+                                "progress": stage.progress,
+                                "started_at": (
+                                    stage.started_at.isoformat()
+                                    if stage.started_at
+                                    else None
+                                ),
+                                "finished_at": (
+                                    stage.finished_at.isoformat()
+                                    if stage.finished_at
+                                    else None
+                                ),
+                            }
+                            for stage in item.stages
+                        ],
                     }
                 )
-            for entry in entries:
-                job = entry.latest_job
-                if job is None or entry.user_paper.id in imported_papers:
-                    continue
-                items.append(
-                    {
-                        "id": str(job.id),
-                        "kind": "processing",
-                        "title": entry.user_paper.title,
-                        "paper_id": str(entry.user_paper.id),
-                        "status": job.status.value,
-                        "stage": job.current_stage.value if job.current_stage else None,
-                        "created_at": job.created_at.isoformat(),
-                        "error_code": job.error_code,
-                    }
-                )
-            items.sort(key=lambda item: item["created_at"], reverse=True)
             return items[:limit]
 
+    # Work ------------------------------------------------------------------
     # Work ------------------------------------------------------------------
     async def _run(self, import_id: UUID) -> None:
         await asyncio.to_thread(self._run_sync, import_id)
 
     def _run_sync(self, import_id: UUID) -> None:
+        """Acquire the source file, then hand the rest to the stage pipeline."""
         session = self._session_factory()
         repository: ImportRepository | None = None
         try:
@@ -363,7 +398,7 @@ class ImportService:
             try:
                 identifier = parse_identifier(record.identifier)
             except AppError as exc:
-                repository.mark_status(
+                repository.finish(
                     import_id,
                     status=ImportStatus.FAILED,
                     error_code=str(exc.code),
@@ -371,101 +406,105 @@ class ImportService:
                 repository.commit()
                 return
 
-            repository.mark_status(import_id, status=ImportStatus.RESOLVING)
-            repository.commit()
-
-            outcome = self._resolver.resolve(identifier)
-            if outcome.metadata is None:
-                repository.mark_status(
-                    import_id,
-                    status=ImportStatus.FAILED,
-                    error_code=str(
-                        outcome.error_code or ErrorCode.IDENTIFIER_NOT_RESOLVED
-                    ),
-                    metadata_source=outcome.source,
-                )
-                repository.commit()
-                logger.info(
-                    "service.import.metadata_failed",
-                    import_id=str(import_id),
-                    error_code=str(outcome.error_code),
-                )
-                return
-
+            # The source file decides whether this paper can exist at all: an
+            # entry always points at a stored file, so a paper row is only
+            # created once a download succeeds.
             papers = PaperRepository(session)
-            user_paper = self._upsert_entry(
-                papers,
-                user_id=record.user_id,
-                identifier=identifier,
-                outcome=outcome,
-            )
-            repository.mark_status(
-                import_id,
-                status=ImportStatus.METADATA_READY,
-                metadata_source=outcome.source,
-                user_paper_id=user_paper.id,
-            )
-            if record.project_id is not None:
-                ProjectRepository(session).add_papers(
-                    project_id=record.project_id,
-                    user_paper_ids=[user_paper.id],
-                )
-            repository.commit()
-
             library = self._build_library_service(session, papers)
             attempted: set[str] = set()
             last_error = ErrorCode.PAPER_PDF_NOT_AVAILABLE
-            primary_urls = (
-                [outcome.metadata.pdf_url] if outcome.metadata.pdf_url else []
-            )
-            downloaded, error = self._try_pdf_urls(
-                library,
-                urls=primary_urls,
-                attempted=attempted,
-                user_id=record.user_id,
-                user_paper_id=user_paper.id,
-                filename=outcome.metadata.title or f"{identifier.value}.pdf",
-                repository=repository,
-            )
-            if error is not None:
-                last_error = error
+            source_error: str | None = None
 
-            if not downloaded and identifier.type is IdentifierType.DOI:
-                try:
-                    fallback_urls = self._pdf_locator.find(identifier.value)
-                except AppError as exc:
-                    fallback_urls = []
-                    if not attempted:
-                        last_error = exc.code
-                downloaded, error = self._try_pdf_urls(
-                    library,
-                    urls=fallback_urls,
-                    attempted=attempted,
-                    user_id=record.user_id,
-                    user_paper_id=user_paper.id,
-                    filename=outcome.metadata.title or f"{identifier.value}.pdf",
-                    repository=repository,
-                )
-                if error is not None:
-                    last_error = error
-
-            if not downloaded:
+            paper_id = self._reuse_stored_paper(papers, identifier)
+            if paper_id is not None:
                 repository.expire_all()
-                self._finish(
-                    repository,
+                repository.bind_paper(import_id, paper_id)
+                self._open_entry(papers, record.initiated_by, paper_id, identifier)
+                repository.commit()
+                logger.info(
+                    "service.import.reused_stored_file",
+                    import_id=str(import_id),
+                    paper_id=str(paper_id),
+                )
+                self._resume_stages(import_id)
+                return
+
+            with tempfile.TemporaryDirectory(
+                prefix="paper-agent-import-"
+            ) as directory:
+                staging = Path(directory) / "download.pdf"
+                stored = self._download_first(
+                    urls=self._candidate_urls(identifier),
+                    attempted=attempted,
+                    destination=staging,
+                )
+                if stored is None and identifier.type is IdentifierType.DOI:
+                    try:
+                        fallback = self._pdf_locator.find(identifier.value)
+                    except AppError as exc:
+                        fallback = []
+                        if not attempted:
+                            last_error = exc.code
+                    stored = self._download_first(
+                        urls=fallback,
+                        attempted=attempted,
+                        destination=staging,
+                    )
+
+                if stored is None:
+                    source_error = str(last_error)
+                else:
+                    with stored.path.open("rb") as handle:
+                        paper = library.adopt_source(
+                            stream=handle,
+                            filename=f"{identifier.value}.pdf",
+                        )
+                        paper_id = paper.id
+                        # The identifier is part of the paper's identity, not
+                        # just the request that fetched it.
+                        papers.set_paper_metadata(
+                            paper.id,
+                            bibliographic=paper.bibliographic,
+                            metadata_sources=paper.metadata_sources,
+                            doi=(
+                                identifier.value
+                                if identifier.type is IdentifierType.DOI
+                                else None
+                            ),
+                            arxiv_id=(
+                                identifier.full_value
+                                if identifier.type is IdentifierType.ARXIV
+                                else None
+                            ),
+                        )
+                        papers.commit()
+
+            if source_error is not None:
+                repository.expire_all()
+                repository.finish(
                     import_id,
-                    status=ImportStatus.PDF_UNAVAILABLE,
-                    error_code=str(last_error),
+                    status=ImportStatus.SOURCE_UNAVAILABLE,
+                    error_code=source_error,
+                )
+                repository.commit()
+                logger.info(
+                    "service.import.source_unavailable",
+                    import_id=str(import_id),
+                    error_code=source_error,
                 )
                 return
 
             repository.expire_all()
-            self._finish(repository, import_id, status=ImportStatus.READY)
+            repository.bind_paper(import_id, paper_id)
+            self._open_entry(papers, record.initiated_by, paper_id, identifier)
+            repository.commit()
             logger.info(
-                "service.import.completed",
+                "service.import.bound",
                 import_id=str(import_id),
-                user_paper_id=str(user_paper.id),
+                paper_id=str(paper_id),
             )
+
+            self._resume_stages(import_id)
         except Exception as exc:
             logger.exception(
                 "service.import.crashed",
@@ -475,7 +514,7 @@ class ImportService:
             if repository is None:
                 raise
             try:
-                repository.mark_status(
+                repository.finish(
                     import_id,
                     status=ImportStatus.FAILED,
                     error_code=str(ErrorCode.INTERNAL_ERROR),
@@ -487,154 +526,105 @@ class ImportService:
             session.close()
 
     # Internals -------------------------------------------------------------
-    def _try_pdf_urls(
+    def _download_first(
         self,
-        library: PaperLibraryService,
         *,
         urls: list[str],
         attempted: set[str],
-        user_id: UUID,
-        user_paper_id: UUID,
-        filename: str,
-        repository: ImportRepository,
-    ) -> tuple[bool, str | None]:
-        last_error: str | None = None
+        destination: Path,
+    ) -> DownloadedPdf | None:
+        """Return the first source file that downloads, or nothing."""
         for url in urls:
             if url in attempted:
                 continue
             attempted.add(url)
             try:
-                self._attach_pdf_from_url(
-                    library,
-                    url=url,
-                    user_id=user_id,
-                    user_paper_id=user_paper_id,
-                    filename=filename,
-                )
+                return self._pdf_fetcher.download(url, destination=destination)
             except AppError as exc:
-                last_error = exc.code
-                repository.expire_all()
-            else:
-                return True, None
-        return False, last_error
-
-    def _attach_pdf_from_url(
-        self,
-        library: PaperLibraryService,
-        *,
-        url: str,
-        user_id: UUID,
-        user_paper_id: UUID,
-        filename: str,
-    ) -> None:
-        with tempfile.TemporaryDirectory(prefix="paper-agent-import-") as directory:
-            destination = Path(directory) / "download.pdf"
-            downloaded = self._pdf_fetcher.download(url, destination=destination)
-            with downloaded.path.open("rb") as handle:
-                library.attach_pdf(
-                    user_id=user_id,
-                    user_paper_id=user_paper_id,
-                    filename=filename,
-                    stream=handle,
+                logger.info(
+                    "service.import.pdf_source_failed",
+                    error_code=str(exc.code),
                 )
+        return None
 
-    def _upsert_entry(
+    def _open_entry(
         self,
         papers: PaperRepository,
-        *,
         user_id: UUID,
+        paper_id: UUID,
         identifier: Identifier,
-        outcome,
-    ):
-        """Reuse the user's entry for the same identifier, or create one."""
-        metadata = outcome.metadata
-        doi = metadata.doi or (
-            identifier.value if identifier.type is IdentifierType.DOI else None
-        )
-        arxiv_id = metadata.arxiv_id or (
-            identifier.value if identifier.type is IdentifierType.ARXIV else None
-        )
-        existing = papers.find_user_paper_by_identifier(
+    ) -> None:
+        """The entry exists from now on, but stays out of the library for now."""
+        papers.link_paper(
             user_id=user_id,
-            doi=doi,
-            arxiv_id=arxiv_id,
+            paper_id=paper_id,
+            source=source_of(identifier.type.value),
         )
-        if existing is not None:
-            updated = papers.update_user_paper_metadata(
-                existing.id,
-                title=existing.title or metadata.title,
-                authors=existing.authors or metadata.authors,
-                abstract=existing.abstract or metadata.abstract,
-                doi=existing.doi or doi,
-                arxiv_id=existing.arxiv_id or arxiv_id,
-                year=existing.year or metadata.year,
-                venue=existing.venue or metadata.venue,
-                bibliographic=metadata.bibliographic(),
-                metadata_status=metadata.metadata_status(),
-                metadata_sources=existing.metadata_sources
-                or [
-                    {
-                        "field": identifier.type.value,
-                        "source": outcome.source,
-                        "value": identifier.value,
-                    },
-                ],
-            )
-            assert updated is not None
-            logger.info(
-                "service.import.entry_reused",
-                user_paper_id=str(existing.id),
-            )
-            return updated
+        papers.commit()
 
-        return papers.add_user_paper(
-            user_id=user_id,
-            paper_id=None,
-            title=metadata.title,
-            source=(
-                PaperSource.DOI
-                if identifier.type is IdentifierType.DOI
-                else PaperSource.ARXIV
-            ),
-            doi=doi,
-            arxiv_id=arxiv_id,
-            authors=metadata.authors,
-            abstract=metadata.abstract,
-            year=metadata.year,
-            venue=metadata.venue,
-            bibliographic=metadata.bibliographic(),
-            metadata_status=metadata.metadata_status(),
-            metadata_sources=[
-                {
-                    "field": identifier.type.value,
-                    "source": outcome.source,
-                    "value": identifier.value,
-                },
-            ],
+    def _reuse_stored_paper(
+        self,
+        papers: PaperRepository,
+        identifier: Identifier,
+    ) -> UUID | None:
+        """An arXiv id with a version names exactly one file, already stored."""
+        if identifier.type is not IdentifierType.ARXIV or not identifier.version:
+            return None
+        paper = papers.get_paper_by_arxiv_id(identifier.full_value)
+        if paper is None:
+            return None
+        if not self._storage.exists(paper_pdf_key(paper.file_hash)):
+            return None
+        return paper.id
+
+    def _resume_stages(self, import_id: UUID) -> None:
+        """Run the remaining stages; the import is ready only when they finish."""
+        if self._runner is not None:
+            self._runner.submit_stages(import_id)
+            return
+        session = self._session_factory()
+        try:
+            repository = ImportRepository(session)
+            repository.finish(import_id, status=ImportStatus.READY)
+            repository.commit()
+        finally:
+            session.close()
+
+    def _candidate_urls(self, identifier: Identifier) -> list[str]:
+        """Where a source file might live for this identifier, best first."""
+        outcome = self._resolver.resolve(identifier)
+        urls = (
+            [outcome.metadata.pdf_url]
+            if outcome.metadata is not None and outcome.metadata.pdf_url
+            else []
         )
+        if identifier.type is IdentifierType.ARXIV:
+            # arXiv always serves the PDF under a stable path, so it is the
+            # fallback when the provider announces nothing usable.
+            urls.append(_arxiv_pdf_url(identifier.value))
+        return urls
 
     def _build_library_service(self, session, papers: PaperRepository):
-        ingestion = self._ingestion_starter_factory(
+        importer = self._import_starter_factory(
             session=session,
             storage=self._storage,
             session_factory=self._session_factory,
             scheduler=self._scheduler,
         )
+        enrichment = MetadataEnricher(
+            storage=self._storage,
+            resolver=self._resolver,
+            session_factory=self._session_factory,
+        )
         return PaperLibraryService(
             papers,
-            ingestion,
+            importer,
+            enrichment,
             self._storage,
-            self._resolver,
-            self._pdf_fetcher,
         )
 
-    def _finish(
-        self,
-        repository: ImportRepository,
-        import_id: UUID,
-        *,
-        status: ImportStatus,
-        error_code: str | None = None,
-    ) -> None:
-        repository.mark_status(import_id, status=status, error_code=error_code)
-        repository.commit()
+
+def _arxiv_pdf_url(arxiv_id: str) -> str:
+    from app.platform.config import settings
+
+    return f"{settings.arxiv_pdf_url.rstrip('/')}/{arxiv_id}"

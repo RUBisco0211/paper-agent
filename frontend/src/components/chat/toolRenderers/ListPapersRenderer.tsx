@@ -36,7 +36,7 @@ function PaperCard({
   const title = paper.title || "未命名文献"
   const authors = paper.authors?.length ? paper.authors.join("、") : null
   const meta = [paper.venue, paper.year].filter(Boolean).join(" · ")
-  const state = paper.has_fulltext ? "可检索" : "待补全文"
+  const state = paper.has_parsed ? "可检索" : "待补全文"
   const className =
     "block w-full rounded-lg border bg-background p-3 text-left text-sm transition-colors hover:bg-accent"
   const body = (

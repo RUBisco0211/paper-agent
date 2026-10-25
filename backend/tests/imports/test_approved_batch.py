@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -10,7 +10,7 @@ from tests.conftest import auth_headers
 
 
 def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     owner = register_user(email="approved-batch-owner@example.com")
     session_id = str(uuid4())
@@ -72,7 +72,7 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
 
 
 def test_another_user_cannot_approve_a_discovered_candidate(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="approved-batch-owner-2@example.com")
     stranger = register_user(email="approved-batch-stranger@example.com")
@@ -103,7 +103,7 @@ def test_another_user_cannot_approve_a_discovered_candidate(
 
 
 def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="approved-semantic-scholar@example.com")
     session_id = str(uuid4())
@@ -127,13 +127,13 @@ def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(
 
 
 def test_import_queue_contains_only_the_current_users_imports(
-    client: TestClient, api_prefix: str, register_user, db_session
+    client: TestClient, api_prefix: str, register_user, db_session, completed_imports
 ) -> None:
     owner = register_user(email="queue-owner@example.com")
     stranger = register_user(email="queue-stranger@example.com")
     db_session.add_all([
         PaperImportRecord(
-            user_id=user["user"]["id"], identifier_type="doi",
+            initiated_by=UUID(user["user"]["id"]), identifier_type="doi",
             identifier=identifier, status="queued",
         )
         for user, identifier in (
@@ -152,7 +152,7 @@ def test_import_queue_contains_only_the_current_users_imports(
 
 
 def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     owner = register_user(email="approved-real-import@example.com")
     session_id = str(uuid4())

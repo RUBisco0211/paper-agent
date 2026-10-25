@@ -37,6 +37,24 @@ def get_pdf_locator() -> PdfSourceLocator:
 PdfSourceLocatorDep = Annotated[PdfSourceLocator, Depends(get_pdf_locator)]
 
 
+def build_import_service(**kwargs):
+    """Factory for the import workflow, shared by every entry point."""
+    from app.literature_support.importing.pipeline import (
+        build_import_service as build,
+    )
+
+    return build(**kwargs)
+
+
+def build_stage_runner(**kwargs):
+    """The pipeline that runs an import's stages, without the queue around it."""
+    from app.literature_support.importing.pipeline import (
+        build_import_pipeline,
+    )
+
+    return build_import_pipeline(**kwargs)
+
+
 def get_import_service(
     session: SessionDep,
     storage: StorageDep,
@@ -46,9 +64,7 @@ def get_import_service(
     pdf_fetcher: PdfFetcherDep,
     pdf_locator: PdfSourceLocatorDep,
 ) -> ImportService:
-    """Wire identifier imports to the shared processing factory."""
-    from app.literature_support.processing.pipeline import build_ingestion_service
-
+    """Wire identifier imports to the shared import workflow."""
     return ImportService(
         session_factory=session_factory,
         storage=storage,
@@ -56,7 +72,13 @@ def get_import_service(
         pdf_fetcher=pdf_fetcher,
         pdf_locator=pdf_locator,
         scheduler=scheduler,
-        ingestion_starter_factory=build_ingestion_service,
+        import_starter_factory=build_import_service,
+        runner=build_stage_runner(
+            session=session,
+            storage=storage,
+            session_factory=session_factory,
+            scheduler=scheduler,
+        ),
     )
 
 

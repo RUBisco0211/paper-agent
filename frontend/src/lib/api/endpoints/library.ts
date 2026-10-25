@@ -1,11 +1,7 @@
 import type { ApiClient } from "../client"
 import { ApiError } from "../errors"
 import type {
-  FetchPdfResponse,
-  IngestionJob,
-  FetchMetadataResponse,
   Page,
-  PaperInfoInput,
   PaperListParams,
   PaperBlocksResponse,
   PaperBlock,
@@ -61,43 +57,6 @@ export function libraryEndpoints(client: ApiClient) {
 
     pdfUrl: (paperId: Uuid) => `${client.base}${PAPERS}/${paperId}/pdf`,
 
-    /** Attach or replace the full text of an existing entry. */
-    attachPdf: (paperId: Uuid, file: File) => {
-      const form = new FormData()
-      form.append("file", file)
-      return client.request<UploadResponse>(`${PAPERS}/${paperId}/pdf`, {
-        method: "POST",
-        body: form,
-      })
-    },
-
-    /** Re-attempt the download announced by the paper's identifier. */
-    fetchPdf: (paperId: Uuid) =>
-      client.request<FetchPdfResponse>(`${PAPERS}/${paperId}/fetch-pdf`, {
-        method: "POST",
-      }),
-
-    /** 编辑条目书目信息（界面「编辑信息」）。 */
-    updateInfo: (paperId: Uuid, input: PaperInfoInput) =>
-      client.request<UserPaperDetail>(`${PAPERS}/${paperId}/info`, {
-        method: "PATCH",
-        json: input,
-      }),
-
-    /** 按条目标识符在线获取元数据（界面「获取元数据」）。 */
-    fetchMetadata: (paperId: Uuid) =>
-      client.request<FetchMetadataResponse>(
-        `${PAPERS}/${paperId}/fetch-metadata`,
-        { method: "POST" },
-      ),
-
-    ingestionJob: (jobId: Uuid) =>
-      client.request<IngestionJob>(`/v1/ingestion-jobs/${jobId}`),
-
-    retryIngestionJob: (jobId: Uuid) =>
-      client.request<IngestionJob>(`/v1/ingestion-jobs/${jobId}/retry`, {
-        method: "POST",
-      }),
   }
 }
 

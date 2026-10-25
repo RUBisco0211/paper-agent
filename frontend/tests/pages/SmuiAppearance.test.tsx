@@ -33,15 +33,34 @@ vi.mock("@/components/ui/MessageScroller", () => ({
   useMessageScrollerVisibility: () => ({ currentAnchorId: null, visibleMessageIds: [] }),
 }))
 
+const STATUS_TEXT: Record<string, string> = {
+  running: "待执行",
+  ready: "已完成",
+  failed: "失败",
+  source_unavailable: "缺少原文",
+}
+
 it.each([
-  ["metadata", "text-info"], ["fulltext", "text-info"],
-  ["chunking", "text-info"], ["embedding", "text-info"],
-  ["ready", "text-success"], ["succeeded", "text-success"],
-  ["pdf_unavailable", "text-warning"],
-])("the import queue uses %s semantic color when that stage is displayed", (stage, color) => {
-  queue.items = [{ id: "job-1", kind: "import", title: "测试文献", status: stage, created_at: "2026-10-09T00:00:00Z" }]
-  render(<ImportQueuePanel />)
-  const label = screen.getByText("测试文献").parentElement!.lastElementChild!
+  ["running", "text-muted-foreground"],
+  ["ready", "text-success"],
+  ["failed", "text-destructive"],
+  ["source_unavailable", "text-warning"],
+])("the import queue tones the %s state with semantic colors", (status, color) => {
+  queue.items = [{
+    id: "import-1",
+    identifier: "10.1234/example",
+    identifier_type: "doi",
+    title: "测试文献",
+    status,
+    created_at: "2026-10-09T00:00:00Z",
+    stages: [],
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  const label = screen.getByText(STATUS_TEXT[status])
   expect(label.classList.contains(color)).toBe(true)
 })
 

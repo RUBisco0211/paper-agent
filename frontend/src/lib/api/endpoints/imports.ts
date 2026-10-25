@@ -16,6 +16,11 @@ export function importEndpoints(client: ApiClient) {
     list: (params: { limit?: number } = {}) =>
       client.request<Page<PaperImport>>("/v1/imports", { query: { ...params } }),
     queue: () => client.request<{ items: ImportQueueItem[] }>("/v1/imports/queue"),
+    /** Re-run the stages that did not finish; completed artifacts are reused. */
+    retry: (importId: Uuid) =>
+      client.request<PaperImport>(`/v1/imports/${importId}/retry`, {
+        method: "POST",
+      }),
     approve: (sessionId: Uuid, candidateTokens: string[]) =>
       client.request<{ id: Uuid; count: number }>("/v1/imports/approvals", {
         method: "POST", json: { session_id: sessionId, candidate_tokens: candidateTokens },

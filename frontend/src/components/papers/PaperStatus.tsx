@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/Badge"
-import type { Capabilities, ProcessingState } from "@/lib/api"
+import type { Capabilities, ImportStatus } from "@/lib/api"
 
 type Status = "done" | "failed" | "pending" | "idle"
 
@@ -9,19 +9,19 @@ type Status = "done" | "failed" | "pending" | "idle"
  * 具体缺什么由详情面板按需说明，不在列表里堆术语。
  */
 export function paperStatus(
-  capabilities: Pick<Capabilities, "has_pdf" | "has_fulltext">,
-  processing: ProcessingState,
+  capabilities: Pick<Capabilities, "has_source" | "has_parsed">,
+  importStatus?: ImportStatus | null,
 ): Status {
-  if (processing.status === "failed") {
+  if (importStatus === "failed") {
     return "failed"
   }
-  if (processing.status === "queued" || processing.status === "running") {
+  if (importStatus === "queued" || importStatus === "running") {
     return "pending"
   }
-  if (!capabilities.has_pdf) {
+  if (!capabilities.has_source) {
     return "idle"
   }
-  if (capabilities.has_fulltext) {
+  if (capabilities.has_parsed) {
     return "done"
   }
   return "pending"
@@ -43,11 +43,11 @@ const VARIANT = {
 
 export function PaperStatusBadge({
   capabilities,
-  processing,
+  importStatus,
 }: {
-  capabilities: Pick<Capabilities, "has_pdf" | "has_fulltext">
-  processing: ProcessingState
+  capabilities: Pick<Capabilities, "has_source" | "has_parsed">
+  importStatus?: ImportStatus | null
 }) {
-  const status = paperStatus(capabilities, processing)
+  const status = paperStatus(capabilities, importStatus)
   return <Badge variant={VARIANT[status]}>{LABEL[status]}</Badge>
 }

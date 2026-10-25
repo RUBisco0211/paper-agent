@@ -1,8 +1,8 @@
-"""Sequential execution of the ingestion stages for one job.
+"""Run one import's stages in order: source → parse → chunk → embed.
 
-Stage order is metadata → fulltext → chunking → embedding. Stage outputs are
-persisted as they are produced, so a later failure never hides an earlier
-capability. Only blocking stages stop the job; metadata is best effort.
+Each stage writes its own artifact before the next begins, so a later failure
+never hides an earlier result and a retry skips what already succeeded.
+Bibliographic lookup is not a stage: it runs beside this flow.
 """
 
 import asyncio
@@ -10,26 +10,18 @@ import hashlib
 import json
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
 import structlog
 from sqlalchemy.orm import Session
 
-from app.library.domain import MetadataStatus
+from app.library.domain import PaperSource
 from app.library.repo import PaperRepository
 from app.literature_support.embedding import build_embedding_adapter
-from app.literature_support.processing.blocks import build_block_index
-from app.literature_support.processing.chunks import build_chunks
-from app.literature_support.processing.mineru import MineruParser
-from app.literature_support.processing.text import detect_identifiers
-from app.literature_support.scholar.identifiers import Identifier, IdentifierType
-from app.literature_support.scholar.merge import merge_provider_metadata, merge_sources
-from app.literature_support.scholar.metadata import (
-    MetadataResolver,
-    build_default_resolver,
-)
+from app.literature_support.importing.blocks import build_block_index
+from app.literature_support.importing.chunks import build_chunks
+from app.literature_support.importing.mineru import MineruParser
 from app.platform.config import settings
 from app.platform.database import SessionFactory
 from app.platform.errors import AppError, ErrorCode
@@ -40,22 +32,28 @@ from app.platform.storage import (
     paper_pdf_key,
 )
 from app.platform.tasks import TaskScheduler
-from app.processing.domain import STAGE_ORDER, IngestionJob, IngestionStage, StageStatus
-from app.processing.repo import IngestionRepository
-from app.processing.service import IngestionService
+from app.imports.domain import (
+    STAGE_ORDER,
+    ImportStage,
+    ImportStatus,
+    PaperImport,
+    StageStatus,
+    source_of,
+)
+from app.imports.queue import ImportQueueService
+from app.imports.repo import ImportRepository
 from app.retrieval.ports import EmbeddingAdapter
 from app.retrieval.repo import ChunkRepository
 
 logger = structlog.get_logger(__name__)
 
-NON_BLOCKING_STAGES = {IngestionStage.METADATA}
 CONTENT_LIST_OBJECT = "content_list.json"
 BLOCKS_INDEX_OBJECT = "blocks_index.json"
 MARKDOWN_OBJECT = "full.md"
 
 
-class IngestionPipeline:
-    """Runs one job's stages; safe to call more than once per job."""
+class ImportPipeline:
+    """Runs one import's stages; safe to call more than once per import."""
 
     def __init__(
         self,
@@ -64,7 +62,6 @@ class IngestionPipeline:
         session_factory: SessionFactory,
         storage: ObjectStorage,
         mineru: MineruParser,
-        resolver: MetadataResolver,
         embeddings: EmbeddingAdapter,
         target_tokens: int | None = None,
         max_chars: int | None = None,
@@ -73,46 +70,64 @@ class IngestionPipeline:
         self._session_factory = session_factory
         self._storage = storage
         self._mineru = mineru
-        self._resolver = resolver
         self._embeddings = embeddings
         self._target_tokens = target_tokens or settings.chunk_token_num
         self._max_chars = max_chars or settings.chunk_max_chars
 
-    def submit(self, job_id: UUID) -> None:
+    def submit(self, import_id: UUID) -> None:
+        self._schedule(import_id)
+
+    def submit_stages(self, import_id: UUID) -> None:
+        """Run whatever stages are still pending; the source file is in place."""
+        self._schedule(import_id)
+
+    def _schedule(self, import_id: UUID) -> None:
         if self._scheduler is None:
             return
         self._scheduler.submit(
-            lambda: self._run(job_id),
-            name=f"ingestion:{job_id}",
+            lambda: self._run(import_id),
+            name=f"import:{import_id}",
         )
 
-    async def _run(self, job_id: UUID) -> None:
+    async def _run(self, import_id: UUID) -> None:
         # Database access is synchronous, so the work runs in a worker thread
         # and never blocks the event loop.
-        await asyncio.to_thread(self.run_sync, job_id)
+        await asyncio.to_thread(self.run_sync, import_id)
 
-    def run_sync(self, job_id: UUID) -> None:
+    def run_sync(self, import_id: UUID) -> None:
         session = self._session_factory()
         try:
-            repository = IngestionRepository(session)
+            repository = ImportRepository(session)
             papers = PaperRepository(session)
             chunks = ChunkRepository(session)
 
-            job = repository.get_job(job_id)
-            if job is None:
-                return
-            paper = papers.get_paper(job.paper_id)
-            if paper is None:
-                repository.finish_job(job_id, error_code=str(ErrorCode.PAPER_NOT_FOUND))
-                session.commit()
+            record = repository.get(import_id)
+            if record is None:
                 return
 
-            blocking_failure: str | None = None
+            failure: str | None = None
             for stage in STAGE_ORDER:
-                stage_state = job.stage(stage)
-                if stage_state is None or stage_state.status is not StageStatus.PENDING:
+                state = record.stage(stage)
+                if state is None or state.status is not StageStatus.PENDING:
                     continue
-                repository.mark_running(job_id, stage=stage)
+                if stage is ImportStage.SOURCE:
+                    # The source file is already stored when an import reaches
+                    # the pipeline: uploads supply it, identifiers resolved it.
+                    repository.mark_stage_succeeded(
+                        import_id, stage=stage, progress={"stored": True}
+                    )
+                    session.commit()
+                    continue
+                if record.paper_id is None:
+                    repository.finish(
+                        import_id,
+                        status=ImportStatus.FAILED,
+                        error_code=str(ErrorCode.PAPER_NOT_FOUND),
+                    )
+                    session.commit()
+                    return
+
+                repository.mark_stage_running(import_id, stage=stage)
                 session.commit()
                 try:
                     progress = self._run_stage(
@@ -120,186 +135,128 @@ class IngestionPipeline:
                         repository=repository,
                         papers=papers,
                         chunks=chunks,
-                        job=job,
+                        record=record,
                     )
                 except AppError as exc:
                     repository.mark_stage_failed(
-                        job_id,
+                        import_id,
                         stage=stage,
                         error_code=str(exc.code),
                         error_message=exc.message,
                     )
                     session.commit()
                     logger.info(
-                        "pipeline.stage_failed",
-                        job_id=str(job_id),
+                        "import.stage_failed",
+                        import_id=str(import_id),
                         stage=stage.value,
                         error_code=str(exc.code),
                         detail=_safe_error_details(exc.details),
                     )
-                    if stage not in NON_BLOCKING_STAGES:
-                        blocking_failure = str(exc.code)
-                        break
+                    failure = str(exc.code)
+                    break
                 except Exception as exc:  # unexpected: stop and record it
                     repository.mark_stage_failed(
-                        job_id,
+                        import_id,
                         stage=stage,
                         error_code=str(ErrorCode.INTERNAL_ERROR),
                         error_message=type(exc).__name__,
                     )
                     session.commit()
                     logger.exception(
-                        "pipeline.stage_crashed",
-                        job_id=str(job_id),
+                        "import.stage_crashed",
+                        import_id=str(import_id),
                         stage=stage.value,
                         error_type=type(exc).__name__,
                     )
-                    blocking_failure = str(ErrorCode.INTERNAL_ERROR)
+                    failure = str(ErrorCode.INTERNAL_ERROR)
                     break
                 else:
                     repository.mark_stage_succeeded(
-                        job_id,
-                        stage=stage,
-                        progress=progress,
+                        import_id, stage=stage, progress=progress
                     )
                     session.commit()
 
-            repository.finish_job(job_id, error_code=blocking_failure)
-            session.commit()
+            if failure is None:
+                repository.finish(import_id, status=ImportStatus.READY)
+                session.commit()
+                # Every stage finished: the entry may now appear in the library.
+                self._reveal_entry(papers, record, session)
+            else:
+                repository.finish(
+                    import_id, status=ImportStatus.FAILED, error_code=failure
+                )
+                session.commit()
             logger.info(
-                "pipeline.finished",
-                job_id=str(job_id),
-                status="failed" if blocking_failure else "succeeded",
-                error_code=blocking_failure,
+                "import.finished",
+                import_id=str(import_id),
+                status="failed" if failure else "ready",
+                error_code=failure,
             )
         finally:
             session.close()
 
+    def _reveal_entry(
+        self,
+        papers: PaperRepository,
+        record: PaperImport,
+        session: Session,
+    ) -> None:
+        """Make the requester's entry visible now that the paper is usable."""
+        if record.paper_id is None:
+            return
+        papers.link_paper(
+            user_id=record.initiated_by,
+            paper_id=record.paper_id,
+            source=source_of(record.identifier_type),
+        )
+        papers.mark_entry_ready(
+            user_id=record.initiated_by,
+            paper_id=record.paper_id,
+        )
+        session.commit()
+        logger.info(
+            "import.linked",
+            import_id=str(record.id),
+            user_id=str(record.initiated_by),
+        )
+
+
     # Stages ----------------------------------------------------------------
     def _run_stage(
         self,
-        stage: IngestionStage,
+        stage: ImportStage,
         *,
-        repository: IngestionRepository,
+        repository: ImportRepository,
         papers: PaperRepository,
         chunks: ChunkRepository,
-        job: IngestionJob,
+        record: PaperImport,
     ) -> dict | None:
-        paper = papers.get_paper(job.paper_id)
+        paper = papers.get_paper(record.paper_id)
         if paper is None:
             raise AppError(
                 "论文不存在", code=ErrorCode.PAPER_NOT_FOUND, status_code=404
             )
-        if stage is IngestionStage.METADATA:
-            return self._metadata_stage(papers, paper)
-        if stage is IngestionStage.FULLTEXT:
-            return self._fulltext_stage(papers, paper.id, paper.file_hash, job.id)
-        if stage is IngestionStage.CHUNKING:
+        if stage is ImportStage.PARSE:
+            return self._parse_stage(papers, paper.id, paper.file_hash, record.id)
+        if stage is ImportStage.CHUNK:
             return self._chunking_stage(papers, chunks, paper)
         return self._embedding_stage(papers, chunks, paper.id)
 
-    def _metadata_stage(self, papers: PaperRepository, paper) -> dict:
-        """Lightweight local recognition followed by an exact online lookup."""
-        with self._pdf_file(paper.file_hash) as pdf_path:
-            identifiers = detect_identifiers(pdf_path)
-        if not identifiers:
-            papers.set_paper_metadata(
-                paper.id,
-                bibliographic=paper.bibliographic,
-                metadata_status=MetadataStatus.UNRECOGNIZED,
-                metadata_sources=paper.metadata_sources,
-            )
-            return {"outcome": MetadataStatus.UNRECOGNIZED.value, "identifiers": 0}
-
-        identifier = _preferred_identifier(identifiers)
-        outcome = self._resolver.resolve(identifier)
-        if outcome.metadata is None:
-            papers.set_paper_metadata(
-                paper.id,
-                bibliographic=paper.bibliographic,
-                metadata_status=outcome.status,
-                metadata_sources=[_source_entry(identifier, outcome.source)],
-            )
-            progress = {
-                "outcome": outcome.status.value,
-                "identifier_type": identifier.type.value,
-                "identifier": identifier.value,
-            }
-            if outcome.status is MetadataStatus.PROVIDER_FAILED:
-                # Metadata is best effort: record the failure but keep parsing
-                # the body, which does not depend on bibliographic data.
-                raise AppError(
-                    "元数据在线补全失败，正文处理继续",
-                    code=outcome.error_code or ErrorCode.METADATA_PROVIDER_FAILED,
-                    status_code=502,
-                )
-            return progress
-
-        papers.set_paper_metadata(
-            paper.id,
-            bibliographic=outcome.metadata.bibliographic(),
-            metadata_status=outcome.status,
-            metadata_sources=[_source_entry(identifier, outcome.source)],
-        )
-        self._propagate_metadata(papers, paper.id, outcome.metadata, identifier)
-        return {
-            "outcome": outcome.status.value,
-            "source": outcome.source,
-            "identifier_type": identifier.type.value,
-        }
-
-    def _propagate_metadata(
-        self,
-        papers: PaperRepository,
-        paper_id: UUID,
-        metadata,
-        identifier: Identifier,
-    ) -> None:
-        """Let recognized metadata replace filename placeholders on entries.
-
-        Each entry keeps its own user corrections; async recognition never
-        overwrites a field the user edited.
-        """
-        for entry in papers.entries_for_paper(paper_id):
-            merged = merge_provider_metadata(entry, metadata)
-            doi = merged.doi
-            arxiv_id = merged.arxiv_id
-            if doi is None and identifier.type is IdentifierType.DOI:
-                doi = identifier.value
-            if arxiv_id is None and identifier.type is IdentifierType.ARXIV:
-                arxiv_id = identifier.value
-            papers.update_user_paper_metadata(
-                entry.id,
-                title=merged.title,
-                authors=merged.authors or None,
-                abstract=merged.abstract,
-                doi=doi,
-                arxiv_id=arxiv_id,
-                year=merged.year,
-                venue=merged.venue,
-                metadata_status=metadata.metadata_status(),
-                metadata_sources=merge_sources(
-                    entry.metadata_sources,
-                    list(merged.applied_fields),
-                    source=metadata.source,
-                ),
-            )
-
-    def _fulltext_stage(
+    def _parse_stage(
         self,
         papers: PaperRepository,
         paper_id: UUID,
         file_hash: str,
-        job_id: UUID,
+        import_id: UUID,
     ) -> dict:
-        artifact_prefix = mineru_job_artifact_key(file_hash, str(job_id), "")
+        artifact_prefix = mineru_job_artifact_key(file_hash, str(import_id), "")
         self._storage.delete_prefix(artifact_prefix)
         with self._pdf_file(file_hash) as pdf_path:
             artifact = self._mineru.parse(pdf_path=pdf_path)
         files: dict[str, dict] = {}
 
         def write(relative_path: str, payload: bytes) -> None:
-            key = mineru_job_artifact_key(file_hash, str(job_id), relative_path)
+            key = mineru_job_artifact_key(file_hash, str(import_id), relative_path)
             self._storage.put_bytes(key, payload)
             files[relative_path] = {
                 "key": key,
@@ -307,7 +264,9 @@ class IngestionPipeline:
                 "bytes": len(payload),
             }
 
-        manifest_key = mineru_job_artifact_key(file_hash, str(job_id), "manifest.json")
+        manifest_key = mineru_job_artifact_key(
+            file_hash, str(import_id), "manifest.json"
+        )
         try:
             write(
                 CONTENT_LIST_OBJECT,
@@ -325,7 +284,7 @@ class IngestionPipeline:
                 write(name if name.startswith("images/") else f"images/{name}", payload)
             manifest = {
                 "schema_version": 1,
-                "job_id": str(job_id),
+                "job_id": str(import_id),
                 "file_hash": file_hash,
                 "parser_version": artifact.version,
                 "files": files,
@@ -342,7 +301,7 @@ class IngestionPipeline:
             except Exception as cleanup_error:
                 logger.warning(
                     "pipeline.artifact_cleanup_failed",
-                    job_id=str(job_id),
+                    import_id=str(import_id),
                     error_type=type(cleanup_error).__name__,
                 )
             raise
@@ -366,7 +325,7 @@ class IngestionPipeline:
             if manifest.get("file_hash") != paper.file_hash:
                 raise AppError(
                     "MinerU 产物与论文不匹配",
-                    code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                    code=ErrorCode.IMPORT_ARTIFACT_INVALID,
                     status_code=502,
                 )
             entry = manifest["files"][CONTENT_LIST_OBJECT]
@@ -374,7 +333,7 @@ class IngestionPipeline:
             if hashlib.sha256(raw).hexdigest() != entry["sha256"]:
                 raise AppError(
                     "MinerU 产物校验失败",
-                    code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                    code=ErrorCode.IMPORT_ARTIFACT_INVALID,
                     status_code=502,
                 )
             payload = json.loads(raw)
@@ -392,14 +351,13 @@ class IngestionPipeline:
         if not drafts:
             raise AppError(
                 "MinerU 产物中没有可索引的内容",
-                code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
                 status_code=502,
             )
         for draft in drafts:
             assert draft.chunk_metadata is not None
             draft.chunk_metadata["artifact_manifest_key"] = paper.artifact_manifest_key
         count = chunks.replace_chunks(paper_id=paper.id, drafts=drafts)
-        papers.set_paper_capabilities(paper.id, has_keyword_index=True)
         return {"chunks": count}
 
     def _embedding_stage(
@@ -426,7 +384,6 @@ class IngestionPipeline:
                     embedding=vector,
                     model=embeddings.model,
                 )
-        papers.set_paper_capabilities(paper_id, has_embedding=True)
         return {"embedded": len(pending), "model": embeddings.model}
 
     @contextmanager
@@ -447,33 +404,15 @@ def _safe_error_details(details: object) -> dict[str, int]:
             if key in allowed and type(value) is int}
 
 
-def _preferred_identifier(identifiers: Sequence[Identifier]) -> Identifier:
-    for identifier in identifiers:
-        if identifier.type is IdentifierType.DOI:
-            return identifier
-    return identifiers[0]
-
-
-def _source_entry(identifier: Identifier, source: str | None) -> dict:
-    return {
-        "field": identifier.type.value,
-        "value": identifier.value,
-        "source": source or "local_recognition",
-        "at": datetime.now(UTC).isoformat(),
-    }
-
-
-
-def build_ingestion_service(
+def build_import_pipeline(
     *,
     session: Session,
     storage: ObjectStorage,
     session_factory: SessionFactory,
     scheduler: TaskScheduler,
-) -> IngestionService:
-    """Assemble ingestion services for HTTP requests, imports and agent tools."""
-    papers = PaperRepository(session)
-    pipeline = IngestionPipeline(
+) -> ImportPipeline:
+    """The stage pipeline on its own, for callers that drive a specific import."""
+    return ImportPipeline(
         scheduler=scheduler,
         session_factory=session_factory,
         storage=storage,
@@ -482,9 +421,31 @@ def build_ingestion_service(
             api_key=settings.mineru_api_key,
             timeout_seconds=settings.mineru_timeout_seconds,
         ),
-        resolver=build_default_resolver(),
         embeddings=build_embedding_adapter(),
         target_tokens=settings.chunk_token_num,
         max_chars=settings.chunk_max_chars,
     )
-    return IngestionService(IngestionRepository(session), papers, runner=pipeline)
+
+
+def build_import_service(
+    *,
+    session: Session,
+    storage: ObjectStorage,
+    session_factory: SessionFactory,
+    scheduler: TaskScheduler,
+) -> ImportQueueService:
+    """Assemble the import workflow for HTTP requests, imports and agent tools."""
+    papers = PaperRepository(session)
+    pipeline = build_import_pipeline(
+        session=session,
+        storage=storage,
+        session_factory=session_factory,
+        scheduler=scheduler,
+    )
+    return ImportQueueService(
+        ImportRepository(session),
+        papers,
+        runner=pipeline,
+    )
+
+

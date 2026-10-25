@@ -34,10 +34,21 @@ class Identifier:
     version: str | None = None
 
     @property
+    def full_value(self) -> str:
+        """The identifier as it was given, version included.
+
+        An arXiv id with a version names exactly one file, so the version must
+        survive into storage; without a version it means "the latest".
+        """
+        if self.type is IdentifierType.ARXIV and self.version:
+            return f"{self.value}{self.version}"
+        return self.value
+
+    @property
     def canonical_url(self) -> str:
         if self.type is IdentifierType.DOI:
             return f"https://doi.org/{self.value}"
-        return f"https://arxiv.org/abs/{self.value}"
+        return f"https://arxiv.org/abs/{self.full_value}"
 
 
 def parse_identifier(text: str) -> Identifier:

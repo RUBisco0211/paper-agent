@@ -173,9 +173,9 @@ export function ConversationPapersPanel({
             <span className="flex min-w-0 flex-1 flex-col gap-1">
               <span
                 className="line-clamp-2"
-                title={item.title || item.original_filename || "未命名文献"}
+                title={item.title || "未命名文献"}
               >
-                {item.title || item.original_filename || "未命名文献"}
+                {item.title || "未命名文献"}
               </span>
               {item.authors.length > 0 && (
                 <span

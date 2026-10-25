@@ -1,25 +1,35 @@
 """Ports the library module needs from other domains.
 
-Kept as a protocol so the library never imports the ingestion implementation at
-module scope; wiring happens in ``library.depends``.
+Kept as a protocol so the library never imports the import workflow
+implementation at module scope; wiring happens in ``library.depends``.
 """
 
 from typing import Protocol
 from uuid import UUID
 
-from app.processing.domain import IngestionJob
+from app.imports.domain import PaperImport
 
 
-class IngestionStarter(Protocol):
-    def start_for_paper(self, paper_id: UUID) -> IngestionJob | None: ...
+class MetadataEnricherPort(Protocol):
+    """Fill a paper's bibliographic facts from its stored source file."""
 
-    def get_job(self, job_id: UUID) -> IngestionJob | None: ...
+    def submit(self, paper_id: UUID) -> None: ...
 
-    def retry_job(self, job_id: UUID) -> IngestionJob: ...
 
-    def active_job_for_paper(self, paper_id: UUID) -> IngestionJob | None: ...
+class ImportStarter(Protocol):
+    """Start and inspect the import that brings a paper into the library.
 
-    def latest_jobs_for_papers(
+    An import finishes on its own; the library only records that a paper exists
+    and links the requesting user to it once the import is ready.
+    """
+
+    def start_for_paper(self, paper_id: UUID) -> PaperImport | None: ...
+
+    def get_import(self, import_id: UUID) -> PaperImport | None: ...
+
+    def retry_import(self, import_id: UUID) -> PaperImport: ...
+
+    def latest_imports_for_papers(
         self,
         paper_ids: list[UUID],
-    ) -> dict[UUID, IngestionJob]: ...
+    ) -> dict[UUID, PaperImport]: ...

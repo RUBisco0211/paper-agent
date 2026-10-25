@@ -27,7 +27,7 @@
 | # | 标签 | 决策了什么 | 状态 | 文件 |
 |---|------|-----------|------|------|
 | 0018 | data | 业务数据模型：全局 Paper + User Paper 两层，SHA-256 全局去重 | 当前 | [0018-business-data-model.md](decisions/0018-business-data-model.md) |
-| 0019 | ingest | 摄取四阶段 + 阶段级重试，能力与状态分离 | 当前 | [0019-ingestion-stages.md](decisions/0019-ingestion-stages.md) |
+| 0019 | ingest | 摄取四阶段 + 阶段级重试，能力与状态分离 | 部分失效（0091） | [0019-ingestion-stages.md](decisions/0019-ingestion-stages.md) |
 | 0020 | ingest | Chunk 保留页码与版面定位（自研 KB 的核心理由） | 当前 | [0020-chunk-page-locator.md](decisions/0020-chunk-page-locator.md) |
 | 0021 | product | 文献条目可以没有 PDF；对外用稳定条目 ID | 当前 | [0021-paper-entry-without-pdf.md](decisions/0021-paper-entry-without-pdf.md) |
 | 0022 | security | 账号与登录态：JWT 15 分钟 + Refresh 轮换 + family 撤销；邮箱认证与 Redis 否决片段由 0081 取代 | 当前 | [0022-account-and-auth-session.md](decisions/0022-account-and-auth-session.md) |
@@ -53,9 +53,9 @@
 | 0049 | product, agent, data, frontend | 定时任务范围、频率、独立运行会话、Agent 创建工具及月视图交互；通知与结果快照片段由 0081 局部取代 | 当前 | [0049-global-schedules-and-weekday-frequency.md](decisions/0049-global-schedules-and-weekday-frequency.md) |
 | 0053 | frontend, product | 授权 PDF 用 PDF.js 在页面内渲染并支持引用页定位、翻页与缩放 | 当前 | [0053-embedded-pdf-rendering.md](decisions/0053-embedded-pdf-rendering.md) |
 | 0055 | frontend, product | 所有业务弹窗直接沿用 web_ui Dialog 与 Button 的样式 | 当前 | [0055-web-ui-dialog-standard.md](decisions/0055-web-ui-dialog-standard.md) |
-| 0056 | ingest, storage, citation | 独立 worker 有界并发、启动恢复；生产 S3 与 MinerU 版本化产物 | 当前 | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
+| 0056 | ingest, storage, citation | 独立 worker 有界并发、启动恢复；生产 S3 与 MinerU 版本化产物 | 部分失效（0091） | [0056-concurrent-ingestion-artifacts.md](decisions/0056-concurrent-ingestion-artifacts.md) |
 | 0057 | frontend, library, ingest | 文献在主区域阅读，右侧按 MinerU 原始 block type 导航与定位 | 块点击交互已被 0066 取代 | [0057-paper-reading-mineru-blocks.md](decisions/0057-paper-reading-mineru-blocks.md) |
-| 0058 | frontend, product | 文献处理进度按阶段顺序显示为步骤视图 | 当前 | [0058-ingestion-progress-stepper.md](decisions/0058-ingestion-progress-stepper.md) |
+| 0058 | frontend, product | 文献处理进度按阶段顺序显示为步骤视图 | 部分失效（0091） | [0058-ingestion-progress-stepper.md](decisions/0058-ingestion-progress-stepper.md) |
 | 0059 | frontend, library, product | 文献块显示图片与公式预览，PDF 连续滚动并按可见页绘制 | 当前 | [0059-paper-block-previews-continuous-pdf.md](decisions/0059-paper-block-previews-continuous-pdf.md) |
 | 0060 | frontend, library, product | PDF 叠加可选文本层并提供复制菜单；旧 MinerU 图片路径回退，公式优先渲染源码 | 当前 | [0060-paper-text-selection-and-legacy-previews.md](decisions/0060-paper-text-selection-and-legacy-previews.md) |
 | 0061 | frontend, library | 文献阅读双栏统一工具栏高度，分块侧栏可拖拽，PDF 支持滚轮及键盘快捷操作 | 当前 | [0061-paper-reading-controls.md](decisions/0061-paper-reading-controls.md) |
@@ -79,6 +79,8 @@
 | 0088 | retrieval, security, ingest | 入库向量化平台付费、检索 query 向量用用户自带 Key；无 Key 时降级为纯关键词 | 当前 | [0088-paid-ingestion-byok-search.md](decisions/0088-paid-ingestion-byok-search.md) |
 | 0089 | agent, security | 强制关闭文件 offloader 和目录提示，保留内建压缩；修正无能力工作区隔离与生命周期 | 当前 | [0089-no-file-offloader.md](decisions/0089-no-file-offloader.md) |
 | 0090 | security, retrieval, ingest | 上游错误不进响应/错误记录/日志，请求级只覆盖 read 超时；检索设置明确 SiliconFlow Key | 当前 | [0090-safe-embedding-errors.md](decisions/0090-safe-embedding-errors.md) |
+| 0091 | library, ingest, data | 文献独占书目一份、条目只存归属；文献必带原文；阶段名对应产物（metadata/parse/chunking/embedding） | 当前 | [0091-papers-own-bibliographic-facts.md](decisions/0091-papers-own-bibliographic-facts.md) |
+| 0092 | ingest, data, product | 一次入库=一条 paper_imports、一篇一条；四阶段 source/parse/chunk/embed；元数据不占流程；未完成不进列表 | 当前 | [0092-import-is-one-flow.md](decisions/0092-import-is-one-flow.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

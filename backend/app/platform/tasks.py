@@ -1,4 +1,4 @@
-"""Schedule lightweight API tasks while ingestion runs in a DB-backed worker."""
+"""Schedule lightweight API tasks while imports run in a DB-backed worker."""
 
 import asyncio
 import threading
@@ -41,13 +41,13 @@ class AsyncioTaskScheduler:
 
 
 class ApiTaskScheduler:
-    """Leave ingestion jobs in PostgreSQL while scheduling lightweight API work."""
+    """Leave import work in PostgreSQL while scheduling lightweight API work."""
 
     def __init__(self, background: TaskScheduler) -> None:
         self._background = background
 
     def submit(self, factory: TaskFactory, *, name: str) -> None:
-        if name.startswith("ingestion:"):
+        if name.startswith("import:") or name.startswith("import-stages:"):
             logger.debug("task.queued_for_worker", task_name=name)
             return
         self._background.submit(factory, name=name)

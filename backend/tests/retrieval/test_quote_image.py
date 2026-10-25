@@ -19,7 +19,10 @@ class BindingStub:
 
 class LibraryStub:
     def get_entry(self, **_kwargs):
-        return SimpleNamespace(user_paper=SimpleNamespace(title="图表文献"))
+        return SimpleNamespace(
+            user_paper=SimpleNamespace(),
+            paper=SimpleNamespace(title="图表文献"),
+        )
 
     def artifact_cache_version(self, **_kwargs):
         return "v1"

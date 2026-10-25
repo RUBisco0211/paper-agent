@@ -152,7 +152,7 @@ class MineruParser:
             if state in FAILURE_STATES:
                 raise AppError(
                     f"MinerU 解析失败：{result.get('err_msg') or state}",
-                    code=ErrorCode.INGESTION_STAGE_FAILED,
+                    code=ErrorCode.IMPORT_STAGE_FAILED,
                     status_code=502,
                 )
             if time.monotonic() >= deadline:
@@ -369,6 +369,6 @@ def _provider_unavailable(message: str) -> AppError:
 def _invalid_artifact(message: str) -> AppError:
     return AppError(
         message,
-        code=ErrorCode.INGESTION_ARTIFACT_INVALID,
+        code=ErrorCode.IMPORT_ARTIFACT_INVALID,
         status_code=502,
     )

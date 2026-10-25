@@ -34,7 +34,7 @@ it("shows MinerU block type tabs and locates a block only when its locate button
         total: 1, offset: 0, limit: 50,
       }), { headers: { "Content-Type": "application/json" } })
     }
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(
     <QueryClientProvider client={createQueryClient()}>
@@ -60,7 +60,7 @@ it("adds a paper quote without requiring a comment and permits retry after rejec
   const fetchImpl = vi.fn(async (input: string | URL) => {
     const url = String(input)
     if (url.includes("/blocks")) return new Response(JSON.stringify({ types: ["text"], items: [{ id: 4, type: "text", page: 2, text: "需要核对的段落" }], total: 1, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: false }, artifact_version: "v1", capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: false }, artifact_version: "v1", capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(<QueryClientProvider client={createQueryClient()}><ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
     <MemoryRouter><PaperReadingPage paperId="p1" embedded onQuote={onQuote} onBack={vi.fn()} /></MemoryRouter>
@@ -88,7 +88,7 @@ it("previews images and equations and offers copy actions without a redundant he
       }[type] ?? []
       return new Response(JSON.stringify({ types: ["text", "footnote", "image", "equation"], items, total: 1, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
     }
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(<QueryClientProvider client={createQueryClient()}>
     <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
@@ -119,7 +119,7 @@ it("renders a MinerU display equation without showing its image fallback or raw 
         text: "$$ E = mc^2 $$", formula: "$$ E = mc^2 $$", has_image: true }],
       total: 1, offset: 0, limit: 50,
     }), { headers: { "Content-Type": "application/json" } })
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(<QueryClientProvider client={createQueryClient()}>
     <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
@@ -138,7 +138,7 @@ it("keeps the paper toolbars aligned and lets the block sidebar be resized", asy
   const fetchImpl = vi.fn(async (input: string | URL) => {
     const url = String(input)
     if (url.includes("/blocks")) return new Response(JSON.stringify({ types: ["text"], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(<QueryClientProvider client={createQueryClient()}>
     <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
@@ -167,7 +167,7 @@ it("PaperReadingPage starts PDF loading when metadata is pending", async () => {
     </ApiProvider>
   </QueryClientProvider>)
   expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
-  resolveDetail?.(new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: false } }), { headers: { "Content-Type": "application/json" } }))
+  resolveDetail?.(new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: false } }), { headers: { "Content-Type": "application/json" } }))
 })
 
 it("PaperReadingPage opens a zoomable preview when a chart has an image", async () => {
@@ -178,7 +178,7 @@ it("PaperReadingPage opens a zoomable preview when a chart has an image", async 
     if (url.includes("/blocks")) return new Response(JSON.stringify({
       types: ["chart"], items: [{ id: 5, type: "chart", page: 2, text: "统计图", has_image: true }], total: 1, offset: 0, limit: 50,
     }), { headers: { "Content-Type": "application/json" } })
-    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_fulltext: true } }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
   })
   render(<QueryClientProvider client={createQueryClient()}>
     <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>

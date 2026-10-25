@@ -2,7 +2,7 @@
 
 - DATE: 2026-10-05
 - TAGS: ingest, data
-- STATUS: 当前
+- STATUS: 部分失效（能力标志与阶段名的表述由 0091 取代）
 - SUPERSEDES: `docs/archive/prototype.md` §6（已删除）
 
 ## DECISION

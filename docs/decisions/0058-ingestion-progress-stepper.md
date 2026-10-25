@@ -2,8 +2,9 @@
 
 - DATE: 2026-10-07
 - TAGS: frontend, product
-- STATUS: 当前
+- STATUS: 部分失效
 - SUPERSEDES: —
+- 部分失效：阶段命名由 0091 取代，步骤视图本身仍有效
 
 ## DECISION
 

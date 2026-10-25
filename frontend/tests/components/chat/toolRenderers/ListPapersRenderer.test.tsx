@@ -43,7 +43,7 @@ const ready = {
   authors: ["Ashish Vaswani"],
   year: 2017,
   venue: "NeurIPS",
-  has_fulltext: true,
+  has_parsed: true,
 }
 
 describe("list_papers tool", () => {
@@ -79,7 +79,7 @@ describe("list_papers tool", () => {
     let opened: unknown = null
     openers.available = true
     openers.handle.mockImplementation((reference: unknown) => { opened = reference })
-    renderBody([{ ...ready, has_fulltext: false }])
+    renderBody([{ ...ready, has_parsed: false }])
 
     const button = screen.getByRole("button", { name: /Attention Is All You Need/ })
     expect(button.textContent).toContain("待补全文")

@@ -96,19 +96,24 @@ export type MetadataStatus =
   | "user_provided"
 
 export interface Capabilities {
-  has_pdf: boolean
+  has_source: boolean
   has_metadata: boolean
-  has_fulltext: boolean
-  has_keyword_index: boolean
+  has_parsed: boolean
+  has_index: boolean
   has_embedding: boolean
 }
 
-export type IngestionStage = "metadata" | "fulltext" | "chunking" | "embedding"
-export type IngestionStatus = "queued" | "running" | "succeeded" | "failed"
+export type ImportStage = "source" | "parse" | "chunk" | "embed"
+export type ImportStatus =
+  | "queued"
+  | "running"
+  | "ready"
+  | "failed"
+  | "source_unavailable"
 export type StageStatus = "pending" | "running" | "succeeded" | "failed"
 
-export interface IngestionStageState {
-  stage: IngestionStage
+export interface ImportStageState {
+  stage: ImportStage
   status: StageStatus
   attempt: number
   error_code?: string | null
@@ -116,25 +121,6 @@ export interface IngestionStageState {
   progress?: Record<string, unknown> | null
   started_at?: string | null
   finished_at?: string | null
-}
-
-export interface IngestionJob {
-  id: Uuid
-  paper_id: Uuid
-  status: IngestionStatus
-  current_stage?: IngestionStage | null
-  error_code?: string | null
-  created_at: string
-  started_at?: string | null
-  finished_at?: string | null
-  stages: IngestionStageState[]
-}
-
-export interface ProcessingState {
-  job_id?: Uuid | null
-  status?: IngestionStatus | null
-  current_stage?: IngestionStage | null
-  error_code?: string | null
 }
 
 export interface UserPaperSummary {
@@ -146,15 +132,13 @@ export interface UserPaperSummary {
   doi?: string | null
   arxiv_id?: string | null
   source: PaperSource
-  original_filename?: string | null
   added_at: string
   capabilities: Capabilities
-  processing: ProcessingState
+  import_status?: ImportStatus | null
 }
 
 export interface UserPaperDetail extends UserPaperSummary {
   abstract?: string | null
-  metadata_status: MetadataStatus
   metadata?: Record<string, unknown> | null
   metadata_sources?: Array<Record<string, unknown>> | null
   pdf: {
@@ -187,18 +171,8 @@ export interface PaperBlocksResponse {
 }
 
 export interface UploadResponse {
-  paper: UserPaperSummary
-  ingestion_job?: IngestionJob | null
-}
-
-export interface PaperInfoInput {
-  title?: string
-  authors?: string[]
-  abstract?: string
-  doi?: string
-  arxiv_id?: string
-  year?: number
-  venue?: string
+  import_id: Uuid
+  status: ImportStatus
 }
 
 export interface MetadataFetchResult {
@@ -206,15 +180,6 @@ export interface MetadataFetchResult {
   source?: string | null
   error_code?: string | null
   applied_fields: string[]
-}
-
-export interface FetchPdfResponse extends UploadResponse {
-  metadata: MetadataFetchResult
-}
-
-export interface FetchMetadataResponse {
-  paper: UserPaperDetail
-  metadata: MetadataFetchResult
 }
 
 export interface PaperListParams {
@@ -403,26 +368,17 @@ export interface SearchInput {
 }
 
 // --- Imports --------------------------------------------------------------
-export type ImportStatus =
-  | "queued"
-  | "resolving"
-  | "metadata_ready"
-  | "pdf_unavailable"
-  | "ready"
-  | "failed"
-
 export interface PaperImport {
   id: Uuid
   status: ImportStatus
-  identifier_type: "doi" | "arxiv"
+  identifier_type: "doi" | "arxiv" | "upload"
   identifier: string
   paper_id?: Uuid | null
-  project_id?: Uuid | null
-  metadata_source?: string | null
   error_code?: string | null
   created_at: string
-  updated_at: string
+  started_at?: string | null
   finished_at?: string | null
+  stages: ImportStageState[]
 }
 
 export interface ImportApprovalPreview {
@@ -435,14 +391,15 @@ export interface ImportApprovalPreview {
 
 export interface ImportQueueItem {
   id: Uuid
-  kind: "import" | "processing"
-  identifier?: string | null
+  identifier: string
+  identifier_type: "doi" | "arxiv" | "upload"
   title?: string | null
   paper_id?: Uuid | null
   status: string
-  stage?: IngestionStage | null
+  stage?: ImportStage | null
   created_at: string
   error_code?: string | null
+  stages: ImportStageState[]
 }
 
 
@@ -454,10 +411,3 @@ export const PAPER_SOURCE_LABEL: Record<PaperSource, string> = {
   manual: "手动录入",
 }
 
-export const METADATA_STATUS_LABEL: Record<MetadataStatus, string> = {
-  recognized: "已识别",
-  partial: "部分识别",
-  unrecognized: "未识别",
-  provider_failed: "元数据服务失败",
-  user_provided: "已手动修正",
-}

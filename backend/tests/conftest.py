@@ -321,6 +321,127 @@ def client(
     app.dependency_overrides.clear()
 
 
+MINIMAL_CONTENT_LIST = [
+    {
+        "type": "text",
+        "text": "The encoder stacks self attention layers over the input tokens.",
+        "page_idx": 0,
+    },
+]
+
+
+class StubMineruParser:
+    """Stand-in parser so an upload can finish without the MinerU service."""
+
+    def __init__(self, content_list: list[dict] | None = None) -> None:
+        self.content_list = content_list or MINIMAL_CONTENT_LIST
+        self.calls = 0
+
+    def parse(self, *, pdf_path: Path):
+        from app.literature_support.importing.mineru import MineruArtifact
+
+        self.calls += 1
+        return MineruArtifact(
+            content_list=self.content_list,
+            markdown="# Parsed",
+            images={},
+            version="stub",
+        )
+
+
+class StubEmbeddingAdapter:
+    """Stand-in embedding provider returning fixed vectors."""
+
+    name = "stub"
+    is_configured = True
+
+    def __init__(self) -> None:
+        self.model = settings.embedding_model
+        self.documents: list[str] = []
+
+    @property
+    def dimensions(self) -> int:
+        return settings.embedding_dimensions
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.documents.extend(texts)
+        return [[0.1] * self.dimensions for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [0.1] * self.dimensions
+
+
+@pytest.fixture
+def completed_imports(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    storage: ObjectStorage,
+    monkeypatch,
+) -> StubMineruParser:
+    """Make imports finish their stages inline with stand-in providers.
+
+    Uploads only reach the library once every stage succeeds, so most API tests
+    need a working pipeline without the real MinerU and embedding services.
+    """
+    from app.imports.queue import ImportQueueService
+    from app.imports.repo import ImportRepository
+    from app.library.depends import get_import_starter
+    from app.library.repo import PaperRepository
+    from app.literature_support.importing.pipeline import ImportPipeline
+    from app.platform.tasks import InlineTaskScheduler
+
+    mineru = StubMineruParser()
+    embeddings = StubEmbeddingAdapter()
+
+    def build() -> Iterator[ImportQueueService]:
+        session = session_factory()
+        try:
+            pipeline = ImportPipeline(
+                scheduler=InlineTaskScheduler(),
+                session_factory=session_factory,
+                storage=storage,
+                mineru=mineru,
+                embeddings=embeddings,
+            )
+            yield ImportQueueService(
+                ImportRepository(session),
+                PaperRepository(session),
+                runner=pipeline,
+            )
+        finally:
+            session.close()
+
+    client.app.dependency_overrides[get_import_starter] = build
+
+    # Identifier imports drive their stages through this factory; point it at
+    # the same stand-ins so a downloaded file finishes without MinerU.
+    from app.imports import depends as import_depends
+
+    def build_pipeline(**_kwargs):
+        return ImportPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=embeddings,
+        )
+
+    monkeypatch.setattr(import_depends, "build_stage_runner", build_pipeline)
+    monkeypatch.setattr(
+        import_depends, "build_import_service", lambda **_kwargs: next(build())
+    )
+    return mineru
+
+
+@pytest.fixture(autouse=True)
+def stop_metadata_pool() -> Iterator[None]:
+    """Region: background metadata lookups must not outlive a test."""
+    yield
+    from app.literature_support.scholar.enrichment import shutdown_pool
+
+    shutdown_pool()
+
+
 @pytest.fixture
 def api_prefix() -> str:
     return settings.api_prefix

@@ -20,6 +20,14 @@ from .schemas import (
 )
 
 router = APIRouter(prefix="/imports", tags=["imports"])
+
+
+def _read(record, service, user_id: UUID) -> ImportRead:
+    """Project one import, resolving the user's entry once it is ready."""
+    return ImportRead.from_domain(
+        record,
+        user_paper_id=service.entry_id_for(record=record, user_id=user_id),
+    )
 internal_router = APIRouter(tags=["imports"])
 
 
@@ -103,9 +111,24 @@ def start_import(
     record = service.start(
         user_id=user.id,
         identifier_text=payload.identifier,
-        project_id=payload.project_id,
     )
-    return ImportRead.from_domain(record)
+    return _read(record, service, user.id)
+
+
+@router.post(
+    "/{import_id}/retry",
+    response_model=ImportRead,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="重试未完成的入库",
+)
+def retry_import(
+    import_id: UUID,
+    user: CurrentUser,
+    service: ImportServiceDep,
+) -> ImportRead:
+    """Re-run what did not finish; stages whose output exists are skipped."""
+    service.get(user_id=user.id, import_id=import_id)
+    return _read(service.retry_import(import_id), service, user.id)
 
 
 @router.get(
@@ -118,6 +141,5 @@ def read_import(
     user: CurrentUser,
     service: ImportServiceDep,
 ) -> ImportRead:
-    return ImportRead.from_domain(
-        service.get(user_id=user.id, import_id=import_id),
-    )
+    record = service.get(user_id=user.id, import_id=import_id)
+    return _read(record, service, user.id)

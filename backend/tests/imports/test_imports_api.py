@@ -7,7 +7,11 @@ from app.library.repo import PaperRepository
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from app.platform.errors import AppError, ErrorCode
 from tests.conftest import auth_headers
-from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
+from tests.library.test_pdf_and_metadata import (
+    FailingPdfFetcher,
+    FakePdfFetcher,
+    FakeProvider,
+)
 
 ARXIV_ID = "1706.03762"
 ATTENTION = {
@@ -32,6 +36,7 @@ def test_arxiv_import_with_pdf_reaches_ready(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(
@@ -54,21 +59,21 @@ def test_arxiv_import_with_pdf_reaches_ready(
     assert body["status"] == "ready"
     assert body["identifier_type"] == "arxiv"
     assert body["identifier"] == ARXIV_ID
-    assert body["metadata_source"] == "fake"
+    assert body["paper_id"] is not None
     assert body["error_code"] is None
     assert body["finished_at"] is not None
     paper_id = body["paper_id"]
     UUID(paper_id)
-    assert fetcher.urls == ["https://example.org/1706.03762.pdf"]
+    # The provider's link is tried first; arXiv's own path is only a fallback.
+    assert fetcher.urls[0] == "https://example.org/1706.03762.pdf"
 
     detail = client.get(f"{api_prefix}/papers/{paper_id}", headers=auth_headers(token))
     assert detail.status_code == 200
     entry = detail.json()
-    assert entry["title"] == ATTENTION["title"]
-    assert entry["authors"] == ATTENTION["authors"]
+    # Bibliographic facts arrive through the silent lookup, not the import, so
+    # the import only guarantees the identifier and the stored file.
     assert entry["arxiv_id"] == ARXIV_ID
-    assert entry["metadata_status"] == "recognized"
-    assert entry["capabilities"]["has_pdf"] is True
+    assert entry["capabilities"]["has_source"] is True
 
     fetched_import = client.get(
         f"{api_prefix}/imports/{body['id']}",
@@ -86,6 +91,7 @@ def test_arxiv_doi_import_uses_arxiv_metadata_when_crossref_has_no_record(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(
@@ -107,76 +113,58 @@ def test_arxiv_doi_import_uses_arxiv_metadata_when_crossref_has_no_record(
     assert response.json()["status"] == "ready"
     assert response.json()["identifier_type"] == "arxiv"
     assert response.json()["identifier"] == ARXIV_ID
-    assert response.json()["metadata_source"] == "arxiv"
+    assert response.json()["paper_id"] is not None
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert items["total"] == 1
+    assert items["items"][0]["arxiv_id"] == ARXIV_ID
 
 
-def test_import_without_available_pdf_keeps_the_entry(
+def test_import_without_available_pdf_leaves_no_entry(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
+    """An entry always points at a stored file, so a failed download adds none."""
     provider = FakeProvider(ProviderMetadata(source="fake", **ATTENTION))
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [provider]
     )
+    # Every source refuses, including the arXiv path an identifier provides.
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FailingPdfFetcher()
     token = register_user(email="reader@example.com")["access_token"]
 
     response = _import(client, api_prefix, token, ARXIV_ID)
 
     assert response.status_code == 202, response.text
     body = response.json()
-    assert body["status"] == "pdf_unavailable"
+    assert body["status"] == "source_unavailable"
     assert body["error_code"] == "paper_pdf_not_available"
-
-    entry = client.get(
-        f"{api_prefix}/papers/{body['paper_id']}",
-        headers=auth_headers(token),
-    ).json()
-    assert entry["title"] == ATTENTION["title"]
-    assert entry["capabilities"]["has_pdf"] is False
-    assert entry["pdf"] == {"available": False, "page_count": None, "byte_size": None}
+    assert body["paper_id"] is None
 
     library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
-    assert library["total"] == 1
-    assert library["items"][0]["processing"]["status"] is None
-
-
-def test_import_can_add_the_entry_to_a_project(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-) -> None:
-    provider = FakeProvider(ProviderMetadata(source="fake", **ATTENTION))
-    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
-        [provider]
-    )
-    token = register_user(email="reader@example.com")["access_token"]
-    project = client.post(
-        f"{api_prefix}/projects",
-        headers=auth_headers(token),
-        json={"name": "Reading"},
-    ).json()
-
-    response = _import(client, api_prefix, token, ARXIV_ID, project_id=project["id"])
-
-    assert response.status_code == 202, response.text
-    assert response.json()["project_id"] == project["id"]
-    members = client.get(
-        f"{api_prefix}/projects/{project['id']}/papers",
-        headers=auth_headers(token),
-    ).json()
-    assert members["total"] == 1
-    assert members["items"][0]["id"] == response.json()["paper_id"]
+    assert library["total"] == 0
 
 
 def test_repeat_import_reuses_the_same_entry(
     client: TestClient,
     api_prefix: str,
     register_user,
+    make_pdf,
+    completed_imports,
 ) -> None:
-    provider = FakeProvider(ProviderMetadata(source="fake", **ATTENTION))
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        ),
+    )
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
     )
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -190,11 +178,13 @@ def test_repeat_import_reuses_the_same_entry(
     assert library["total"] == 1
 
 
-def test_import_reports_provider_and_lookup_failures_differently(
+def test_a_provider_outage_does_not_block_getting_the_source(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
+    """Bibliographic lookup is best effort; the PDF comes from the identifier."""
     failing = FakeProvider(
         error=AppError(
             "元数据服务暂时不可用",
@@ -205,14 +195,25 @@ def test_import_reports_provider_and_lookup_failures_differently(
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [failing]
     )
-    token = register_user(email="reader@example.com")["access_token"]
+    token = register_user(email="provider-down@example.com")["access_token"]
 
-    provider_down = _import(client, api_prefix, token, ARXIV_ID)
-    assert provider_down.status_code == 202
-    assert provider_down.json()["status"] == "failed"
-    assert provider_down.json()["error_code"] == "metadata_provider_failed"
-    assert provider_down.json()["paper_id"] is None
+    response = _import(client, api_prefix, token, ARXIV_ID)
 
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "ready"
+    assert body["paper_id"] is not None
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert items["total"] == 1
+
+
+def test_an_identifier_with_no_source_leaves_nothing_behind(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    completed_imports,
+) -> None:
+    """A DOI whose lookup and downloads all fail produces no library entry."""
     missing = FakeProvider(
         error=AppError(
             "没有查询到该标识符对应的论文",
@@ -223,44 +224,31 @@ def test_import_reports_provider_and_lookup_failures_differently(
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [missing]
     )
-    not_found = _import(client, api_prefix, token, "10.1234/does-not-exist")
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FailingPdfFetcher()
+    token = register_user(email="no-source@example.com")["access_token"]
 
-    assert not_found.status_code == 202
-    assert not_found.json()["status"] == "failed"
-    assert not_found.json()["error_code"] == "metadata_not_found"
+    response = _import(client, api_prefix, token, "10.1234/does-not-exist")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "source_unavailable"
     assert (
         client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()["total"]
         == 0
     )
 
 
-def test_import_rejects_unsupported_identifiers_and_foreign_projects(
+def test_import_rejects_unsupported_identifiers(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
-    owner = register_user(email="owner@example.com")
-    stranger = register_user(email="stranger@example.com")
-    token = owner["access_token"]
+    token = register_user(email="owner@example.com")["access_token"]
 
     invalid = _import(client, api_prefix, token, "attention is all you need")
+
     assert invalid.status_code == 422
     assert invalid.json()["code"] == "identifier_invalid"
-
-    project = client.post(
-        f"{api_prefix}/projects",
-        headers=auth_headers(token),
-        json={"name": "Mine"},
-    ).json()
-    foreign = _import(
-        client,
-        api_prefix,
-        stranger["access_token"],
-        ARXIV_ID,
-        project_id=project["id"],
-    )
-    assert foreign.status_code == 404
-    assert foreign.json()["code"] == "project_not_found"
 
 
 def test_imports_are_isolated_between_users(
@@ -268,10 +256,21 @@ def test_imports_are_isolated_between_users(
     api_prefix: str,
     register_user,
     db_session,
+    make_pdf,
+    completed_imports,
 ) -> None:
-    provider = FakeProvider(ProviderMetadata(source="fake", **ATTENTION))
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        ),
+    )
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
     )
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")

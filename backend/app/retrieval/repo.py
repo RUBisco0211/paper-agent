@@ -158,6 +158,25 @@ class ChunkRepository:
             or 0
         )
 
+    def has_any(self, paper_id: UUID) -> bool:
+        return bool(
+            self._session.scalar(
+                select(ChunkRecord.id).where(ChunkRecord.paper_id == paper_id).limit(1),
+            )
+        )
+
+    def has_pending(self, paper_id: UUID) -> bool:
+        return bool(
+            self._session.scalar(
+                select(ChunkRecord.id)
+                .where(
+                    ChunkRecord.paper_id == paper_id,
+                    ChunkRecord.embedding.is_(None),
+                )
+                .limit(1),
+            )
+        )
+
     def pending_embedding_chunks(
         self,
         paper_id: UUID,

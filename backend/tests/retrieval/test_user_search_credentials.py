@@ -28,7 +28,8 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes) -> str:
         files={"file": ("paper.pdf", pdf, "application/pdf")},
     )
     assert response.status_code == 202, response.text
-    return response.json()["paper"]["id"]
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    return items["items"][0]["id"]
 
 
 def _index_chunks(db_session: Session, *, user_paper_id: str, contents: list[str]) -> None:
@@ -58,6 +59,7 @@ def test_search_uses_the_users_own_key_and_the_indexed_model(
     make_pdf,
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
+    completed_imports,
 ) -> None:
     seen: list[tuple[str | None, str]] = []
 
@@ -107,6 +109,7 @@ def test_search_falls_back_to_keyword_only_when_the_user_saved_no_key(
     make_pdf,
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
+    completed_imports,
 ) -> None:
     from app.retrieval import depends as retrieval_depends
 

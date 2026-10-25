@@ -50,9 +50,10 @@ export function LibraryPage() {
       api.library.list({ q: query || undefined, limit: PAGE_SIZE, offset }),
     refetchInterval: (query) => {
       const items = query.state.data?.items ?? []
+      // Only finished imports reach the library, so there is nothing to poll.
       const busy = items.some(
         (item) =>
-          item.processing.status === "queued" || item.processing.status === "running",
+          item.import_status === "queued" || item.import_status === "running",
       )
       return busy ? 2000 : false
     },
@@ -177,7 +178,7 @@ export function LibraryPage() {
                   >
                     <TableCell className="max-w-md">
                       <p className="truncate font-medium">
-                        {paper.title ?? paper.original_filename ?? "未命名条目"}
+                        {paper.title ?? "未命名条目"}
                       </p>
                       <p className="text-muted-foreground truncate text-xs">
                         {paper.authors.slice(0, 3).join("、") || "作者未知"}
@@ -190,7 +191,7 @@ export function LibraryPage() {
                     <TableCell>
                       <PaperStatusBadge
                         capabilities={paper.capabilities}
-                        processing={paper.processing}
+                        importStatus={paper.import_status}
                       />
                     </TableCell>
                     <TableCell className="text-right">

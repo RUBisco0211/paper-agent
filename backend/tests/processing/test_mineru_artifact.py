@@ -4,7 +4,7 @@ import zipfile
 
 import pytest
 
-from app.literature_support.processing.mineru import _read_artifact
+from app.literature_support.importing.mineru import _read_artifact
 from app.platform.errors import AppError
 
 
@@ -42,7 +42,7 @@ def test_missing_content_list_is_rejected() -> None:
     with pytest.raises(AppError) as excinfo:
         _read_artifact(payload)
 
-    assert excinfo.value.code == "ingestion_artifact_invalid"
+    assert excinfo.value.code == "import_artifact_invalid"
 
 
 def test_path_traversal_is_rejected() -> None:
@@ -51,7 +51,7 @@ def test_path_traversal_is_rejected() -> None:
     with pytest.raises(AppError) as excinfo:
         _read_artifact(payload)
 
-    assert excinfo.value.code == "ingestion_artifact_invalid"
+    assert excinfo.value.code == "import_artifact_invalid"
 
 
 def test_incompatible_json_is_rejected() -> None:
@@ -62,11 +62,11 @@ def test_incompatible_json_is_rejected() -> None:
     for payload in (not_json, not_a_list, empty):
         with pytest.raises(AppError) as excinfo:
             _read_artifact(payload)
-        assert excinfo.value.code == "ingestion_artifact_invalid"
+        assert excinfo.value.code == "import_artifact_invalid"
 
 
 def test_invalid_zip_is_rejected() -> None:
     with pytest.raises(AppError) as excinfo:
         _read_artifact(b"definitely not a zip")
 
-    assert excinfo.value.code == "ingestion_artifact_invalid"
+    assert excinfo.value.code == "import_artifact_invalid"

@@ -14,11 +14,20 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
     )
 
 
+def _entry_id(client: TestClient, api_prefix: str, token: str, pdf: bytes) -> str:
+    """Upload and return the library entry the finished import produced."""
+    response = _upload(client, api_prefix, token, pdf)
+    assert response.status_code == 202, response.text
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    return items["items"][0]["id"]
+
+
 def test_list_and_filter_library_entries(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     _upload(client, api_prefix, token, make_pdf(page_count=1))
@@ -55,10 +64,10 @@ def test_paper_detail_exposes_capabilities_and_pdf_info(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(client, api_prefix, token, make_pdf(page_count=2))
-    paper_id = uploaded.json()["paper"]["id"]
+    paper_id = _entry_id(client, api_prefix, token, make_pdf(page_count=2))
 
     detail = client.get(
         f"{api_prefix}/papers/{paper_id}",
@@ -68,15 +77,13 @@ def test_paper_detail_exposes_capabilities_and_pdf_info(
     assert detail.status_code == 200
     body = detail.json()
     assert body["id"] == paper_id
-    assert body["metadata_status"] == "unrecognized"
     assert body["pdf"] == {
         "available": True,
         "page_count": 2,
         "byte_size": body["pdf"]["byte_size"],
     }
     assert body["pdf"]["byte_size"] > 0
-    assert body["processing"]["status"] == "failed"
-    assert body["processing"]["error_code"] == "provider_not_configured"
+    assert body["import_status"] == "ready"
 
 
 def test_pdf_endpoint_serves_the_original_file(
@@ -84,10 +91,11 @@ def test_pdf_endpoint_serves_the_original_file(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     pdf = make_pdf()
-    paper_id = _upload(client, api_prefix, token, pdf).json()["paper"]["id"]
+    paper_id = _entry_id(client, api_prefix, token, pdf)
 
     response = client.get(
         f"{api_prefix}/papers/{paper_id}/pdf",
@@ -110,6 +118,7 @@ def test_unknown_paper_id_returns_not_found(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -120,155 +129,3 @@ def test_unknown_paper_id_returns_not_found(
 
     assert response.status_code == 404
     assert response.json()["code"] == "paper_not_found"
-
-
-def test_ingestion_job_is_scoped_to_the_owning_user(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-) -> None:
-    owner = register_user(email="owner@example.com")
-    stranger = register_user(email="stranger@example.com")
-    uploaded = _upload(client, api_prefix, owner["access_token"], make_pdf())
-    job_id = uploaded.json()["ingestion_job"]["id"]
-    paper_id = uploaded.json()["paper"]["id"]
-
-    owner_view = client.get(
-        f"{api_prefix}/ingestion-jobs/{job_id}",
-        headers=auth_headers(owner["access_token"]),
-    )
-    stranger_view = client.get(
-        f"{api_prefix}/ingestion-jobs/{job_id}",
-        headers=auth_headers(stranger["access_token"]),
-    )
-
-    assert owner_view.status_code == 200
-    assert owner_view.json()["paper_id"] == paper_id
-    assert stranger_view.status_code == 404
-    assert stranger_view.json()["code"] == "ingestion_job_not_found"
-
-
-def test_retry_marks_verified_stages_succeeded_and_reports_the_failed_one(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-) -> None:
-    from app.library.repo import PaperRepository
-
-    token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(client, api_prefix, token, make_pdf())
-    job_id = UUID(uploaded.json()["ingestion_job"]["id"])
-    paper_id = UUID(uploaded.json()["paper"]["id"])
-
-    failed_view = client.get(
-        f"{api_prefix}/ingestion-jobs/{job_id}",
-        headers=auth_headers(token),
-    )
-    assert failed_view.json()["status"] == "failed"
-    assert failed_view.json()["error_code"] == "provider_not_configured"
-    stages = {stage["stage"]: stage for stage in failed_view.json()["stages"]}
-    assert stages["metadata"]["status"] == "succeeded"
-    assert stages["fulltext"]["status"] == "failed"
-    assert stages["fulltext"]["error_code"] == "provider_not_configured"
-    assert stages["fulltext"]["error_message"]
-
-    # Pretend local recognition already produced a verifiable artifact.
-    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
-    assert user_paper is not None and user_paper.paper_id is not None
-    PaperRepository(db_session).set_paper_capabilities(
-        user_paper.paper_id,
-        has_metadata=True,
-    )
-    db_session.commit()
-
-    retried = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
-        headers=auth_headers(token),
-    )
-
-    assert retried.status_code == 202, retried.text
-    new_job = retried.json()
-    assert new_job["id"] != str(job_id)
-    new_stages = {stage["stage"]: stage["status"] for stage in new_job["stages"]}
-    # The retry only redoes what is still missing, and MinerU is still absent.
-    assert new_stages == {
-        "metadata": "succeeded",
-        "fulltext": "failed",
-        "chunking": "pending",
-        "embedding": "pending",
-    }
-    assert new_job["status"] == "failed"
-
-
-def test_retry_conflicts_while_a_job_is_still_active(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-) -> None:
-    from app.library.repo import PaperRepository
-    from app.processing.domain import STAGE_ORDER
-    from app.processing.repo import IngestionRepository
-
-    token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(client, api_prefix, token, make_pdf())
-    paper_id = UUID(uploaded.json()["paper"]["id"])
-    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
-    assert user_paper is not None and user_paper.paper_id is not None
-    queued = IngestionRepository(db_session).create_job(
-        paper_id=user_paper.paper_id,
-        stages=STAGE_ORDER,
-    )
-    db_session.commit()
-
-    response = client.post(
-        f"{api_prefix}/ingestion-jobs/{queued.id}/retry",
-        headers=auth_headers(token),
-    )
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "ingestion_already_running"
-
-
-def test_retry_conflicts_when_nothing_is_left_to_do(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-) -> None:
-    from app.library.repo import PaperRepository
-    from app.processing.repo import IngestionRepository
-
-    token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(client, api_prefix, token, make_pdf())
-    job_id = UUID(uploaded.json()["ingestion_job"]["id"])
-    paper_id = UUID(uploaded.json()["paper"]["id"])
-
-    user_paper = PaperRepository(db_session).get_user_paper(paper_id)
-    assert user_paper is not None and user_paper.paper_id is not None
-    papers = PaperRepository(db_session)
-    papers.set_paper_capabilities(
-        user_paper.paper_id,
-        has_metadata=True,
-        has_fulltext=True,
-        has_keyword_index=True,
-        has_embedding=True,
-    )
-    IngestionRepository(db_session).finish_job(
-        job_id, error_code="provider_unavailable"
-    )
-    db_session.commit()
-
-    response = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
-        headers=auth_headers(token),
-    )
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "ingestion_nothing_to_retry"

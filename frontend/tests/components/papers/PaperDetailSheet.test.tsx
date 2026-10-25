@@ -23,10 +23,10 @@ const PAPER = {
   original_filename: "attention.pdf",
   added_at: "2026-09-17T00:00:00Z",
   capabilities: {
-    has_pdf: false,
+    has_source: false,
     has_metadata: true,
-    has_fulltext: true,
-    has_keyword_index: true,
+    has_parsed: true,
+    has_index: true,
     has_embedding: false,
   },
   processing: { job_id: null, status: null, current_stage: null, error_code: null },
@@ -48,7 +48,7 @@ describe("PaperDetailSheet", () => {
   it("PaperDetailSheet omits the PDF viewer when paper information opens", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => String(input).includes("/v1/projects")
       ? json({ items: [], total: 0, limit: 100, offset: 0 })
-      : json({ ...PAPER, capabilities: { ...PAPER.capabilities, has_pdf: true }, pdf: { available: true, page_count: 2, byte_size: 1000 } }))
+      : json({ ...PAPER, capabilities: { ...PAPER.capabilities, has_source: true }, pdf: { available: true, page_count: 2, byte_size: 1000 } }))
     render(<QueryClientProvider client={createQueryClient()}>
       <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
         <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
@@ -58,57 +58,26 @@ describe("PaperDetailSheet", () => {
     expect(screen.queryByText("重复 PDF 预览")).toBeNull()
     expect(screen.queryByRole("heading", { name: "原文" })).toBeNull()
   })
-  it("shows completed steps with a visible check and one section divider", async () => {
+  it("leaves progress to the import queue instead of duplicating it", async () => {
     const fetchImpl = vi.fn(async (input: string | URL) => {
-      if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })
-      if (String(input).endsWith("/v1/ingestion-jobs/j1")) return json({
-        id: "j1", paper_id: "p1", status: "succeeded", stages: [
-          "metadata", "fulltext", "chunking", "embedding",
-        ].map((stage) => ({ stage, status: "succeeded" })),
-      })
-      return json({ ...PAPER, processing: { job_id: "j1", status: "succeeded", current_stage: null, error_code: null } })
+      if (String(input).includes("/v1/projects"))
+        return json({ items: [], total: 0, limit: 100, offset: 0 })
+      return json({ ...PAPER, import_status: "ready" })
     })
-    render(<QueryClientProvider client={createQueryClient()}>
-      <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
-        <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
-      </ApiProvider>
-    </QueryClientProvider>)
-    const section = await screen.findByRole("region", { name: "处理进度" })
-    expect(section.className).not.toContain("border-y")
-    expect(section.nextElementSibling?.getAttribute("data-slot")).not.toBe("separator")
-    const firstIcon = section.querySelector("li > div > span")
-    expect(firstIcon?.className).toContain("bg-primary")
-    expect(firstIcon?.querySelector("svg.lucide-check")).toBeTruthy()
-  })
-
-  it("shows processing as ordered steps with the active stage and failure detail", async () => {
-    const fetchImpl = vi.fn(async (input: string | URL) => {
-      if (String(input).includes("/v1/projects")) return json({ items: [], total: 0, limit: 100, offset: 0 })
-      if (String(input).endsWith("/v1/ingestion-jobs/j1")) return json({
-        id: "j1", paper_id: "p1", status: "running", stages: [
-          { stage: "chunking", status: "pending" },
-          { stage: "embedding", status: "pending" },
-          { stage: "metadata", status: "failed", error_code: "metadata_not_found" },
-          { stage: "fulltext", status: "running" },
-        ],
-      })
-      return json({ ...PAPER, processing: { job_id: "j1", status: "running", current_stage: "fulltext", error_code: null } })
-    })
-    render(<QueryClientProvider client={createQueryClient()}>
-      <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
-        <MemoryRouter><PaperDetailSheet paperId="p1" onOpenChange={() => {}} /></MemoryRouter>
-      </ApiProvider>
-    </QueryClientProvider>)
-    const steps = await screen.findByRole("list", { name: "处理进度" })
-    expect(Array.from(steps.querySelectorAll("li")).map((item) => item.textContent)).toEqual([
-      expect.stringContaining("元数据"),
-      expect.stringContaining("正文解析"),
-      expect.stringContaining("分块"),
-      expect.stringContaining("向量化"),
-    ])
-    expect(steps.textContent).toContain("没有查询到该标识符")
-    expect(steps.textContent).toContain("进行中")
-    expect(screen.queryByRole("table")).toBeNull()
+    render(
+      <QueryClientProvider client={createQueryClient()}>
+        <ApiProvider
+          options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}
+        >
+          <MemoryRouter>
+            <PaperDetailSheet paperId="p1" onOpenChange={() => {}} />
+          </MemoryRouter>
+        </ApiProvider>
+      </QueryClientProvider>,
+    )
+    await screen.findAllByText("书目信息")
+    expect(screen.queryByRole("region", { name: "处理进度" })).toBeNull()
+    expect(screen.queryByRole("list", { name: "处理进度" })).toBeNull()
   })
 
   it("starts a single-paper session from a paper", async () => {

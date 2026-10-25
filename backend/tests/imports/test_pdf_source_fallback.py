@@ -29,7 +29,7 @@ class FailingFirstFetcher(FakePdfFetcher):
 
 
 def test_doi_import_downloads_an_open_pdf_when_crossref_has_no_pdf_link(
-    client: TestClient, api_prefix: str, register_user, make_pdf
+    client: TestClient, api_prefix: str, register_user, make_pdf, completed_imports
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(
@@ -60,7 +60,7 @@ def test_doi_import_downloads_an_open_pdf_when_crossref_has_no_pdf_link(
 
 
 def test_doi_import_tries_an_open_pdf_when_the_publisher_pdf_fails(
-    client: TestClient, api_prefix: str, register_user, make_pdf
+    client: TestClient, api_prefix: str, register_user, make_pdf, completed_imports
 ) -> None:
     provider = FakeProvider(
         ProviderMetadata(

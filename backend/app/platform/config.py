@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     mineru_api_url: str | None = None
     mineru_api_key: str | None = None
     mineru_timeout_seconds: float = 600.0
-    ingestion_concurrency: int = 2
+    import_concurrency: int = 2
     embedding_api_url: str | None = None
     embedding_api_key: str | None = None
     # 统一使用 bge-m3：1024 维、多语言、8192 token 上下文。

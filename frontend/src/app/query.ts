@@ -30,7 +30,7 @@ export const queryKeys = {
   llmCatalog: ["llm-catalog"] as const,
   papers: (params?: unknown) => ["papers", params ?? {}] as const,
   paper: (paperId: string) => ["paper", paperId] as const,
-  ingestionJob: (jobId: string) => ["ingestion-job", jobId] as const,
+  importStages: (importId: string) => ["import-stages", importId] as const,
   projects: (params?: unknown) => ["projects", params ?? {}] as const,
   project: (projectId: string) => ["project", projectId] as const,
   projectPapers: (projectId: string, params?: unknown) =>
