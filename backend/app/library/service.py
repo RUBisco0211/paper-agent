@@ -241,18 +241,9 @@ class PaperLibraryService:
             byte_size=stored.byte_size,
             page_count=stored.page_count,
         )
-        if paper.title is None:
-            # Provisional only: the silent enrichment replaces it once the file's
-            # own identifiers are recognized.
-            self._papers.set_paper_metadata(
-                paper.id,
-                bibliographic={
-                    "title": placeholder_title_from_filename(filename),
-                },
-                metadata_sources=None,
-            )
+        self._title_from_filename(paper.id, paper, filename)
         self._papers.commit()
-        self._enrich_quietly(paper.id)
+        self._enrich_quietly(paper.id, stored.detected_identifiers)
         started = self._imports.start_for_paper(
             paper,
             initiated_by=user_id,
@@ -262,10 +253,33 @@ class PaperLibraryService:
         self._papers.expire_all()
         return started
 
-    def _enrich_quietly(self, paper_id: UUID) -> None:
+    def _title_from_filename(
+        self,
+        paper_id: UUID,
+        paper: Paper,
+        filename: str | None,
+    ) -> None:
+        """Give an untitled paper a provisional title from its file name.
+
+        The silent enrichment replaces it once the file's own identifiers are
+        recognized; without it the library would show unnamed rows.
+        """
+        if paper.title is not None:
+            return
+        self._papers.set_paper_metadata(
+            paper_id,
+            bibliographic={"title": placeholder_title_from_filename(filename)},
+            metadata_sources=None,
+        )
+
+    def _enrich_quietly(
+        self,
+        paper_id: UUID,
+        identifiers: tuple[Identifier, ...] = (),
+    ) -> None:
         """Queue the bibliographic lookup; the caller never waits for it."""
         try:
-            self._enrichment.submit(paper_id)
+            self._enrichment.submit(paper_id, identifiers)
         except Exception as exc:
             logger.warning(
                 "service.library.enrichment_failed",
@@ -381,17 +395,10 @@ class PaperLibraryService:
             byte_size=stored.byte_size,
             page_count=stored.page_count,
         )
-        if paper.title is None:
-            self._papers.set_paper_metadata(
-                paper.id,
-                bibliographic={
-                    "title": placeholder_title_from_filename(
-                        filename or stored.file_hash
-                    ),
-                },
-                metadata_sources=None,
-            )
+        self._title_from_filename(paper.id, paper, filename or stored.file_hash)
         self._papers.commit()
+        # Look the bibliographic facts up beside the stages, never inside them.
+        self._enrich_quietly(paper.id, stored.detected_identifiers)
         return paper
 
     def link_entry(self, *, user_id: UUID, paper_id: UUID) -> UserPaper:

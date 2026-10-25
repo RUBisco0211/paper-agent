@@ -105,18 +105,21 @@ class PaperRepository:
             source=source,
         )
 
-    def mark_entry_ready(self, *, user_id: UUID, paper_id: UUID) -> None:
-        """Make the entry visible now that every stage finished."""
-        record = self._session.scalar(
+    def mark_entries_ready(self, *, paper_id: UUID) -> int:
+        """Reveal every entry waiting on this paper, not just the requester's.
+
+        Several people can be waiting for the same file; each of them gets their
+        own entry, and they all become visible together.
+        """
+        records = self._session.scalars(
             select(UserPaperRecord)
-            .where(UserPaperRecord.user_id == user_id)
             .where(UserPaperRecord.paper_id == paper_id)
-            .limit(1),
-        )
-        if record is None or record.ready:
-            return
-        record.ready = True
+            .where(UserPaperRecord.ready.is_(False)),
+        ).all()
+        for record in records:
+            record.ready = True
         self._session.flush()
+        return len(records)
 
     def get_paper_by_arxiv_id(self, arxiv_id: str) -> Paper | None:
         """The paper stored for this exact arXiv ID, version included."""

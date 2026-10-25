@@ -34,7 +34,7 @@ vi.mock("@/components/ui/MessageScroller", () => ({
 }))
 
 const STATUS_TEXT: Record<string, string> = {
-  running: "待执行",
+  running: "进行中",
   ready: "已完成",
   failed: "失败",
   source_unavailable: "缺少原文",

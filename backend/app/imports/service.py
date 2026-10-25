@@ -4,7 +4,6 @@ Metadata success already produces a usable library entry; a missing or failed
 PDF download only marks the entry as waiting for full text.
 """
 
-import asyncio
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -39,9 +38,8 @@ from ..platform.tasks import TaskScheduler
 from ..projects.repo import ProjectRepository
 from ..sessions.repo import SessionBindingRepository
 from ..sessions.service import SessionBindingService
-from .domain import ImportStatus, PaperImport, source_of
+from .domain import ACTIVE_STATUSES, ImportStatus, PaperImport, source_of
 from .ports import (
-    ImportRunner,
     ImportStarterFactory,
     PaperDiscoveryAdapter,
     PdfSourceLocator,
@@ -236,7 +234,6 @@ class ImportService:
         pdf_locator: PdfSourceLocator,
         scheduler: TaskScheduler,
         import_starter_factory: ImportStarterFactory,
-        runner: ImportRunner | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._storage = storage
@@ -245,7 +242,6 @@ class ImportService:
         self._pdf_locator = pdf_locator
         self._scheduler = scheduler
         self._import_starter_factory = import_starter_factory
-        self._runner = runner
 
     # API surface -----------------------------------------------------------
     def start(
@@ -263,6 +259,8 @@ class ImportService:
                 identifier_type=identifier.type.value,
                 identifier=identifier.value,
             )
+            current_status = "new"
+            current_paper_id = None
             if existing is None:
                 import_id = repository.add(
                     initiated_by=user_id,
@@ -271,22 +269,90 @@ class ImportService:
                 ).id
             else:
                 import_id = existing.id
-                if existing.status is not ImportStatus.READY:
+                # Re-read inside this session: the row may have advanced since
+                # the lookup, and every branch below depends on its status.
+                current = repository.get(import_id) or existing
+                current_status = current.status.value
+                current_paper_id = current.paper_id
+                if current.status is ImportStatus.READY:
+                    # Already usable: this user only needs their own entry.
+                    self._join_ready_paper(
+                        session, record=current, user_id=user_id
+                    )
+                elif current.status in ACTIVE_STATUSES:
+                    # Someone else is still working on it; join without
+                    # restarting their progress.
+                    self._join_running_import(
+                        session, record=current, user_id=user_id
+                    )
+                else:
                     repository.reset_for_retry(import_id)
             repository.commit()
+            logger.info(
+                "service.import.start_state",
+                import_id=str(import_id),
+                status=current_status,
+                paper_id=str(current_paper_id) if current_paper_id else None,
+            )
         finally:
             session.close()
 
-        self._scheduler.submit(
-            lambda: self._run(import_id),
-            name=f"import:{import_id}",
-        )
+        # The worker owns execution: it claims queued imports and runs every
+        # stage, including the download this request only recorded.
         logger.info(
             "service.import.queued",
             import_id=str(import_id),
             identifier_type=identifier.type.value,
         )
         return self.get(user_id=user_id, import_id=import_id)
+
+    def _join_ready_paper(
+        self,
+        session,
+        *,
+        record: PaperImport,
+        user_id: UUID,
+    ) -> None:
+        """Give a user an entry for a paper whose import already finished."""
+        logger.info(
+            "service.import.join_ready",
+            import_id=str(record.id),
+            paper_id=str(record.paper_id) if record.paper_id else None,
+            user_id=str(user_id),
+        )
+        if record.paper_id is None:
+            return
+        papers = PaperRepository(session)
+        existing = papers.get_user_paper_for_paper(
+            user_id=user_id, paper_id=record.paper_id
+        )
+        if existing is not None:
+            return
+        papers.add_user_paper(
+            user_id=user_id,
+            paper_id=record.paper_id,
+            source=source_of(record.identifier_type),
+            ready=True,
+        )
+
+    def _join_running_import(
+        self,
+        session,
+        *,
+        record: PaperImport,
+        user_id: UUID,
+    ) -> None:
+        """Join an import still running; the entry is revealed when it ends."""
+        if record.paper_id is None:
+            # The source stage has not bound a paper yet, so there is nothing
+            # to link; this user's entry appears when the import is revealed.
+            return
+        papers = PaperRepository(session)
+        papers.link_paper(
+            user_id=user_id,
+            paper_id=record.paper_id,
+            source=source_of(record.identifier_type),
+        )
 
     def entry_id_for(self, *, record: PaperImport, user_id: UUID) -> UUID | None:
         """The user's own entry for this import's paper, once it exists."""
@@ -322,12 +388,31 @@ class ImportService:
             record = ImportRepository(session).get(import_id)
         finally:
             session.close()
-        # The record is shared by everyone who wanted this paper, but only the
-        # person who started it may read its progress; anyone else gets the
-        # same answer as for an unknown record.
-        if record is None or record.initiated_by != user_id:
+        if record is None:
+            raise NotFoundError("入库记录不存在", code=ErrorCode.IMPORT_NOT_FOUND)
+        # The record is shared, so anyone who started it or who holds an entry
+        # for its paper may read its progress. Everyone else gets the same
+        # answer as for an unknown record.
+        if record.initiated_by != user_id and not self._has_entry_for(
+            record=record, user_id=user_id
+        ):
             raise NotFoundError("入库记录不存在", code=ErrorCode.IMPORT_NOT_FOUND)
         return record
+
+    def _has_entry_for(self, *, record: PaperImport, user_id: UUID) -> bool:
+        if record.paper_id is None:
+            return False
+        session = self._session_factory()
+        try:
+            return (
+                PaperRepository(session).get_user_paper_for_paper(
+                    user_id=user_id,
+                    paper_id=record.paper_id,
+                )
+                is not None
+            )
+        finally:
+            session.close()
 
     def queue(self, *, user_id: UUID, limit: int = 100) -> list[dict]:
         """Imports this user started, newest first, with their stage progress."""
@@ -382,53 +467,43 @@ class ImportService:
             return items[:limit]
 
     # Work ------------------------------------------------------------------
-    # Work ------------------------------------------------------------------
-    async def _run(self, import_id: UUID) -> None:
-        await asyncio.to_thread(self._run_sync, import_id)
+    def acquire(self, import_id: UUID) -> UUID | None:
+        """Fetch the source file and record the paper it belongs to.
 
-    def _run_sync(self, import_id: UUID) -> None:
-        """Acquire the source file, then hand the rest to the stage pipeline."""
+        Runs inside the worker so a slow download never holds a request open.
+        Returns the paper id, or ``None`` when no source could be found; the
+        caller records the failure on the stage.
+        """
         session = self._session_factory()
-        repository: ImportRepository | None = None
         try:
             repository = ImportRepository(session)
             record = repository.get(import_id)
-            if record is None or record.status is not ImportStatus.QUEUED:
-                return
-            try:
-                identifier = parse_identifier(record.identifier)
-            except AppError as exc:
-                repository.finish(
-                    import_id,
-                    status=ImportStatus.FAILED,
-                    error_code=str(exc.code),
-                )
-                repository.commit()
-                return
+            if record is None:
+                return None
+            identifier = parse_identifier(record.identifier)
 
-            # The source file decides whether this paper can exist at all: an
-            # entry always points at a stored file, so a paper row is only
-            # created once a download succeeds.
             papers = PaperRepository(session)
             library = self._build_library_service(session, papers)
-            attempted: set[str] = set()
-            last_error = ErrorCode.PAPER_PDF_NOT_AVAILABLE
-            source_error: str | None = None
 
-            paper_id = self._reuse_stored_paper(papers, identifier)
-            if paper_id is not None:
-                repository.expire_all()
-                repository.bind_paper(import_id, paper_id)
-                self._open_entry(papers, record.initiated_by, paper_id, identifier)
+            # A versioned arXiv id names exactly one file, so a stored copy is
+            # the same file and never needs downloading again.
+            reused = self._reuse_stored_paper(papers, identifier)
+            if reused is not None:
+                repository.bind_paper(import_id, reused)
+                self._open_entry(papers, record.initiated_by, reused, identifier)
                 repository.commit()
                 logger.info(
                     "service.import.reused_stored_file",
                     import_id=str(import_id),
-                    paper_id=str(paper_id),
+                    paper_id=str(reused),
                 )
-                self._resume_stages(import_id)
-                return
+                return reused
 
+            attempted: set[str] = set()
+            last_error = str(ErrorCode.PAPER_PDF_NOT_AVAILABLE)
+            paper: Paper | None = None
+            # The download lives in a temp directory that must outlive the
+            # hand-off into storage, so the context is entered here.
             with tempfile.TemporaryDirectory(
                 prefix="paper-agent-import-"
             ) as directory:
@@ -444,84 +519,60 @@ class ImportService:
                     except AppError as exc:
                         fallback = []
                         if not attempted:
-                            last_error = exc.code
+                            last_error = str(exc.code)
                     stored = self._download_first(
                         urls=fallback,
                         attempted=attempted,
                         destination=staging,
                     )
-
-                if stored is None:
-                    source_error = str(last_error)
-                else:
+                if stored is not None:
                     with stored.path.open("rb") as handle:
                         paper = library.adopt_source(
                             stream=handle,
                             filename=f"{identifier.value}.pdf",
                         )
-                        paper_id = paper.id
-                        # The identifier is part of the paper's identity, not
-                        # just the request that fetched it.
-                        papers.set_paper_metadata(
-                            paper.id,
-                            bibliographic=paper.bibliographic,
-                            metadata_sources=paper.metadata_sources,
-                            doi=(
-                                identifier.value
-                                if identifier.type is IdentifierType.DOI
-                                else None
-                            ),
-                            arxiv_id=(
-                                identifier.full_value
-                                if identifier.type is IdentifierType.ARXIV
-                                else None
-                            ),
-                        )
-                        papers.commit()
 
-            if source_error is not None:
-                repository.expire_all()
-                repository.finish(
-                    import_id,
-                    status=ImportStatus.SOURCE_UNAVAILABLE,
-                    error_code=source_error,
-                )
-                repository.commit()
+            if paper is None:
+                # The stage records the failure; the import is not failed yet,
+                # it simply has no source (a distinct terminal state).
                 logger.info(
                     "service.import.source_unavailable",
                     import_id=str(import_id),
-                    error_code=source_error,
+                    error_code=last_error,
                 )
-                return
+                raise AppError(
+                    "没有可用的原文来源",
+                    code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                    status_code=422,
+                    details={"error_code": last_error},
+                )
 
-            repository.expire_all()
-            repository.bind_paper(import_id, paper_id)
-            self._open_entry(papers, record.initiated_by, paper_id, identifier)
+            # The identifier is part of the paper's identity, not just of the
+            # request that fetched it.
+            papers.set_paper_metadata(
+                paper.id,
+                bibliographic=paper.bibliographic,
+                metadata_sources=paper.metadata_sources,
+                doi=(
+                    identifier.value
+                    if identifier.type is IdentifierType.DOI
+                    else None
+                ),
+                arxiv_id=(
+                    identifier.full_value
+                    if identifier.type is IdentifierType.ARXIV
+                    else None
+                ),
+            )
+            repository.bind_paper(import_id, paper.id)
+            self._open_entry(papers, record.initiated_by, paper.id, identifier)
             repository.commit()
             logger.info(
                 "service.import.bound",
                 import_id=str(import_id),
-                paper_id=str(paper_id),
+                paper_id=str(paper.id),
             )
-
-            self._resume_stages(import_id)
-        except Exception as exc:
-            logger.exception(
-                "service.import.crashed",
-                import_id=str(import_id),
-                error_type=type(exc).__name__,
-            )
-            if repository is None:
-                raise
-            try:
-                repository.finish(
-                    import_id,
-                    status=ImportStatus.FAILED,
-                    error_code=str(ErrorCode.INTERNAL_ERROR),
-                )
-                repository.commit()
-            except Exception:  # pragma: no cover - last resort
-                repository.rollback()
+            return paper.id
         finally:
             session.close()
 
@@ -576,19 +627,6 @@ class ImportService:
         if not self._storage.exists(paper_pdf_key(paper.file_hash)):
             return None
         return paper.id
-
-    def _resume_stages(self, import_id: UUID) -> None:
-        """Run the remaining stages; the import is ready only when they finish."""
-        if self._runner is not None:
-            self._runner.submit_stages(import_id)
-            return
-        session = self._session_factory()
-        try:
-            repository = ImportRepository(session)
-            repository.finish(import_id, status=ImportStatus.READY)
-            repository.commit()
-        finally:
-            session.close()
 
     def _candidate_urls(self, identifier: Identifier) -> list[str]:
         """Where a source file might live for this identifier, best first."""

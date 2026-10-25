@@ -88,11 +88,23 @@ class MetadataEnricher:
         self._session_factory = session_factory
         self._papers = papers
 
-    def submit(self, paper_id: UUID) -> None:
-        """Queue the lookup without making the caller wait for the network."""
-        shared_pool().submit(self._run_isolated, paper_id)
+    def submit(
+        self,
+        paper_id: UUID,
+        identifiers: tuple[Identifier, ...] = (),
+    ) -> None:
+        """Queue the lookup without making the caller wait for the network.
 
-    def _run_isolated(self, paper_id: UUID) -> None:
+        ``identifiers`` are the ones recognized while the file was stored, so
+        the pool does not read the PDF a second time.
+        """
+        shared_pool().submit(self._run_isolated, paper_id, identifiers)
+
+    def _run_isolated(
+        self,
+        paper_id: UUID,
+        identifiers: tuple[Identifier, ...] = (),
+    ) -> None:
         """Run in its own session so a shared one is never touched."""
         session = self._session_factory()
         try:
@@ -102,7 +114,7 @@ class MetadataEnricher:
                 session_factory=self._session_factory,
                 papers=PaperRepository(session),
             )
-            enricher.enrich(paper_id)
+            enricher.enrich(paper_id, identifiers)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -114,7 +126,11 @@ class MetadataEnricher:
         finally:
             session.close()
 
-    def enrich(self, paper_id: UUID) -> MetadataStatus:
+    def enrich(
+        self,
+        paper_id: UUID,
+        identifiers: tuple[Identifier, ...] = (),
+    ) -> MetadataStatus:
         """Recognize identifiers in the file, then resolve them online.
 
         Returns the resulting status; it is persisted either way so a repeat
@@ -126,19 +142,24 @@ class MetadataEnricher:
         if paper.was_checked_for_metadata and paper.has_metadata:
             return MetadataStatus.RECOGNIZED
 
-        with self._storage.materialize(paper_pdf_key(paper.file_hash)) as path:
-            identifiers = self._identifiers_from(path)
+        if not identifiers:
+            with self._storage.materialize(paper_pdf_key(paper.file_hash)) as path:
+                identifiers = tuple(self._identifiers_from(path))
         if not identifiers:
             return self._record(paper_id, None, MetadataStatus.UNRECOGNIZED, None)
 
         identifier = preferred_identifier(identifiers)
         outcome = self._resolver.resolve(identifier)
         if outcome.metadata is None:
+            # A provider outage says nothing about the paper, so it leaves no
+            # trace: the next attempt asks again. Only a definitive answer is
+            # recorded, and that is what stops further lookups.
+            settled = outcome.status is not MetadataStatus.PROVIDER_FAILED
             return self._record(
                 paper_id,
                 None,
                 outcome.status,
-                [source_entry(identifier, outcome.source)],
+                [source_entry(identifier, outcome.source)] if settled else None,
             )
 
         metadata = outcome.metadata

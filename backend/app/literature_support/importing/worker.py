@@ -8,11 +8,16 @@ import structlog
 from app.imports.repo import ImportRepository
 from app.literature_support.embedding import build_embedding_adapter
 from app.literature_support.importing.mineru import MineruParser
-from app.literature_support.importing.pipeline import ImportPipeline
+from app.literature_support.importing.pipeline import (
+    ImportPipeline,
+    build_import_pipeline,
+    build_source_acquirer,
+)
 from app.platform.config import settings
 from app.platform.database import SessionFactory, SessionLocal
 from app.platform.logging import configure_logging
 from app.platform.storage import get_object_storage
+from app.platform.tasks import InlineTaskScheduler
 
 logger = structlog.get_logger(__name__)
 
@@ -63,16 +68,18 @@ class ImportWorker:
 
 def main() -> None:
     configure_logging()
-    pipeline = ImportPipeline(
-        scheduler=None,
+    storage = get_object_storage()
+    pipeline = build_import_pipeline(
+        storage=storage,
         session_factory=SessionLocal,
-        storage=get_object_storage(),
-        mineru=MineruParser(
-            base_url=settings.mineru_api_url,
-            api_key=settings.mineru_api_key,
-            timeout_seconds=settings.mineru_timeout_seconds,
+        scheduler=InlineTaskScheduler(),
+        # Identifier imports need the downloader here: the API process only
+        # records the import and the worker owns every stage.
+        acquirer=build_source_acquirer(
+            session_factory=SessionLocal,
+            storage=storage,
+            scheduler=InlineTaskScheduler(),
         ),
-        embeddings=build_embedding_adapter(),
     )
     worker = ImportWorker(session_factory=SessionLocal, pipeline=pipeline)
     worker.recover_interrupted()

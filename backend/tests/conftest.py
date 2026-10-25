@@ -385,13 +385,43 @@ def completed_imports(
     """
     from app.imports.queue import ImportQueueService
     from app.imports.repo import ImportRepository
-    from app.library.depends import get_import_starter
+    from app.imports.service import ImportService
+    from app.library.depends import (
+        get_import_starter,
+        get_metadata_resolver,
+        get_pdf_fetcher,
+    )
     from app.library.repo import PaperRepository
     from app.literature_support.importing.pipeline import ImportPipeline
+    from app.literature_support.scholar.metadata import build_default_resolver
+    from app.literature_support.scholar.pdf_fetch import PdfFetcher
+    from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+    from app.literature_support.importing.worker import ImportWorker
     from app.platform.tasks import InlineTaskScheduler
 
     mineru = StubMineruParser()
     embeddings = StubEmbeddingAdapter()
+
+    def acquirer_factory() -> ImportService:
+        """Reads the test's overrides, so a case can swap the fetcher."""
+        overrides = client.app.dependency_overrides
+
+        def pick(key, fallback):
+            factory = overrides.get(key)
+            return factory() if factory is not None else fallback()
+
+        return ImportService(
+            session_factory=session_factory,
+            storage=storage,
+            resolver=pick(get_metadata_resolver, build_default_resolver),
+            pdf_fetcher=pick(
+                get_pdf_fetcher,
+                lambda: PdfFetcher(max_bytes=settings.max_pdf_bytes),
+            ),
+            pdf_locator=pick(get_pdf_locator, DoiPdfLocator),
+            scheduler=InlineTaskScheduler(),
+            import_starter_factory=lambda **_kwargs: next(build()),
+        )
 
     def build() -> Iterator[ImportQueueService]:
         session = session_factory()
@@ -402,6 +432,7 @@ def completed_imports(
                 storage=storage,
                 mineru=mineru,
                 embeddings=embeddings,
+                acquirer=acquirer_factory(),
             )
             yield ImportQueueService(
                 ImportRepository(session),
@@ -413,22 +444,45 @@ def completed_imports(
 
     client.app.dependency_overrides[get_import_starter] = build
 
-    # Identifier imports drive their stages through this factory; point it at
-    # the same stand-ins so a downloaded file finishes without MinerU.
-    from app.imports import depends as import_depends
-
-    def build_pipeline(**_kwargs):
-        return ImportPipeline(
-            scheduler=InlineTaskScheduler(),
+    def run_worker() -> None:
+        """Run queued imports the way the worker process does."""
+        worker = ImportWorker(
             session_factory=session_factory,
-            storage=storage,
-            mineru=mineru,
-            embeddings=embeddings,
+            pipeline=ImportPipeline(
+                scheduler=InlineTaskScheduler(),
+                session_factory=session_factory,
+                storage=storage,
+                mineru=mineru,
+                embeddings=embeddings,
+                acquirer=acquirer_factory(),
+            ),
         )
+        while worker.run_once():
+            pass
 
-    monkeypatch.setattr(import_depends, "build_stage_runner", build_pipeline)
+    from app.imports import depends as import_depends
+    from app.imports.depends import get_pdf_locator
+
     monkeypatch.setattr(
         import_depends, "build_import_service", lambda **_kwargs: next(build())
+    )
+
+    # The worker owns execution, so the request hands the queued import to the
+    # worker before returning; the app dependency wiring stays as production
+    # has it, and only the starting call is wrapped.
+    from app.imports import service as import_service_module
+
+    original_start = import_service_module.ImportService.start
+
+    def start_then_work(self, *, user_id, identifier_text):
+        record = original_start(
+            self, user_id=user_id, identifier_text=identifier_text
+        )
+        run_worker()
+        return self.get(user_id=user_id, import_id=record.id)
+
+    monkeypatch.setattr(
+        import_service_module.ImportService, "start", start_then_work
     )
     return mineru
 

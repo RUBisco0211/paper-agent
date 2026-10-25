@@ -46,13 +46,7 @@ def build_import_service(**kwargs):
     return build(**kwargs)
 
 
-def build_stage_runner(**kwargs):
-    """The pipeline that runs an import's stages, without the queue around it."""
-    from app.literature_support.importing.pipeline import (
-        build_import_pipeline,
-    )
 
-    return build_import_pipeline(**kwargs)
 
 
 def get_import_service(
@@ -73,12 +67,6 @@ def get_import_service(
         pdf_locator=pdf_locator,
         scheduler=scheduler,
         import_starter_factory=build_import_service,
-        runner=build_stage_runner(
-            session=session,
-            storage=storage,
-            session_factory=session_factory,
-            scheduler=scheduler,
-        ),
     )
 
 

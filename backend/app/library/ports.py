@@ -9,11 +9,13 @@ from uuid import UUID
 
 from app.imports.domain import PaperImport
 
+from .domain import Paper
+
 
 class MetadataEnricherPort(Protocol):
     """Fill a paper's bibliographic facts from its stored source file."""
 
-    def submit(self, paper_id: UUID) -> None: ...
+    def submit(self, paper_id: UUID, identifiers: tuple = ()) -> None: ...
 
 
 class ImportStarter(Protocol):
@@ -23,11 +25,18 @@ class ImportStarter(Protocol):
     and links the requesting user to it once the import is ready.
     """
 
-    def start_for_paper(self, paper_id: UUID) -> PaperImport | None: ...
+    def start_for_paper(
+        self,
+        paper: Paper,
+        *,
+        initiated_by: UUID,
+        identifier_type: str,
+        identifier: str,
+    ) -> PaperImport: ...
 
-    def get_import(self, import_id: UUID) -> PaperImport | None: ...
+    def get(self, import_id: UUID) -> PaperImport | None: ...
 
-    def retry_import(self, import_id: UUID) -> PaperImport: ...
+    def retry(self, import_id: UUID) -> PaperImport: ...
 
     def latest_imports_for_papers(
         self,

@@ -174,7 +174,12 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
     assert approval.status_code == 201
     from app.imports.service import ImportService
 
-    monkeypatch.setattr(ImportService, "_run_sync", lambda self, import_id: None)
+    # The batch only queues; the download belongs to the worker. Letting the
+    # worker run would finish the import, so both stages stay pending here.
+    monkeypatch.setattr(ImportService, "acquire", lambda self, import_id: None)
+    from app.literature_support.importing.pipeline import ImportPipeline
+
+    monkeypatch.setattr(ImportPipeline, "run_sync", lambda self, import_id: None)
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     result = client.post(
         f"{api_prefix}/internal/import-approved",
@@ -182,4 +187,5 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"user_id": owner["user"]["id"], "session_id": session_id},
     )
     assert result.status_code == 200
-    assert result.json()["results"][0]["status"] == "queued"
+    # The batch only records the import; the worker picks it up afterwards.
+    assert result.json()["results"][0]["status"] in {"queued", "running"}

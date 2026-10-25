@@ -12,8 +12,10 @@ import { paperProcessingStatusLabel, paperStageLabel, paperStageRank } from "@/l
 import type { ImportQueueItem } from "@/types/business"
 
 const ERROR_TEXT: Record<string, string> = {
-  import_source_unavailable: "没有找到可用的源文件",
   paper_pdf_not_available: "没有找到可用的源文件",
+  metadata_not_found: "没有查询到这篇文献的元数据，正文处理不受影响",
+  metadata_provider_failed: "元数据服务暂时不可用，不影响正文处理",
+  identifier_not_resolved: "没有查询到这个标识符对应的文献",
   provider_not_configured: "对应服务未配置",
   provider_unavailable: "上游服务暂时不可用",
   provider_rate_limited: "上游服务限流",
@@ -92,7 +94,9 @@ function QueueRow({
       </ol>
 
       {item.error_code && RETRYABLE.has(item.status) && (
-        <p className="text-muted-foreground text-xs">{ERROR_TEXT[item.error_code] ?? "入库未完成"}</p>
+        <p className="text-muted-foreground text-xs">
+          {ERROR_TEXT[item.error_code ?? ""] ?? "处理未完成，可重试；若持续失败请稍后再试"}
+        </p>
       )}
     </div>
   )
@@ -102,8 +106,11 @@ function importStatusLabel(item: ImportQueueItem): string {
   if (item.status === "ready") return "已完成"
   if (item.status === "source_unavailable") return "缺少原文"
   if (item.status === "failed") return "失败"
-  const stage = item.stages.find((entry) => entry.status === "running")
-  return stage ? paperProcessingStatusLabel("running") : paperProcessingStatusLabel("pending")
+  // The worker marks a stage running only after it claims the import, so the
+  // record's own status is the honest answer during that gap.
+  return item.status === "running"
+    ? paperProcessingStatusLabel("running")
+    : paperProcessingStatusLabel("pending")
 }
 
 export function ImportQueuePanel() {

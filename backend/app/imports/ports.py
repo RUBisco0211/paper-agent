@@ -11,6 +11,16 @@ from ..platform.storage import ObjectStorage
 from ..platform.tasks import TaskScheduler
 
 
+class SourceAcquirer(Protocol):
+    """Gets the source file for an import and records its paper.
+
+    Runs inside the worker, not the request, so a slow download never holds an
+    HTTP connection; returns ``None`` when no file could be found.
+    """
+
+    def acquire(self, import_id: UUID) -> UUID | None: ...
+
+
 class ImportRunner(Protocol):
     """Runs an import's stages.
 

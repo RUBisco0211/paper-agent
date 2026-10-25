@@ -95,6 +95,14 @@ class ImportQueueService:
                 self._link_if_ready(existing, initiated_by)
                 return existing
             if existing.status in ACTIVE_STATUSES:
+                # Someone else's import is still running; this user joins it by
+                # getting their own entry, which is revealed when it finishes.
+                self._papers.link_paper(
+                    user_id=initiated_by,
+                    paper_id=paper.id,
+                    source=source_of(identifier_type),
+                )
+                self._papers.commit()
                 return existing
             self._repository.bind_paper(import_id, paper.id)
             self._papers.link_paper(

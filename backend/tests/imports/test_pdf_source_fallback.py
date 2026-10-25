@@ -54,7 +54,7 @@ def test_doi_import_downloads_an_open_pdf_when_crossref_has_no_pdf_link(
         json={"identifier": "10.1234/open"},
     )
 
-    assert result.status_code == 202
+    assert result.status_code == 202, result.text
     assert result.json()["status"] == "ready"
     assert fetcher.urls == ["https://example.org/open.pdf"]
 
@@ -85,7 +85,7 @@ def test_doi_import_tries_an_open_pdf_when_the_publisher_pdf_fails(
         json={"identifier": "10.1234/open"},
     )
 
-    assert result.status_code == 202
+    assert result.status_code == 202, result.text
     assert result.json()["status"] == "ready"
     assert fetcher.urls == [
         "https://publisher.example/blocked.pdf",

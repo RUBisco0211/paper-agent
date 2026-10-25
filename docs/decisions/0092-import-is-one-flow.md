@@ -9,7 +9,7 @@
 
 **一次入库 = 一条 `paper_imports` 记录，一篇论文只有一条。** 直接上传与 DOI/arXiv 导入是同一条流程的两种来源，差异只在第一个阶段取文件的手段。导入记录不属于某个用户的请求：同一文件被第二个人导入时复用同一条记录，只新增收藏关系。记录保留 `initiated_by` 表示谁先发起，仅作追溯，不参与权限与可见性。
 
-**流程有四个阶段：`source / parse / chunk / embed`。** `source` 把原文拿到手（下载或上传即得，故不叫 download）；四者全部成功才是 `ready`。阶段状态存 `import_stages` 子表，一条导入对四行。`ingestion_jobs` 与 `ingestion_stages` 取消，`ingestion` 一词不再出现在代码、表名与文案中；并发按阶段分别控制，因为四个阶段的瓶颈分别是网络、MinerU 每日页数、本机 CPU 与向量服务的 token 限额。
+**流程有四个阶段：`source / parse / chunk / embed`。** `source` 把原文拿到手（下载或上传即得，故不叫 download）；四者全部成功才是 `ready`。阶段状态存 `import_stages` 子表，一条导入对四行。`ingestion_jobs` 与 `ingestion_stages` 取消，`ingestion` 一词不再出现在代码、表名与文案中。四个阶段的瓶颈分别是网络、MinerU 每日页数、本机 CPU 与向量服务的 token 限额，因此它们**需要**分别控制并发；本次只完成数据模型与阶段划分，按阶段分队列调度仍未实现（见 OUT OF SCOPE）。
 
 **元数据不占流程。** 它只依赖原文文件，与解析、切块、向量化无同步关系，因此在 `source` 成功后静默查询，失败不打扰任何人，也从不阻断 `ready`。查过与否由 `metadata_sources` 是否为空判断，不设状态枚举。
 

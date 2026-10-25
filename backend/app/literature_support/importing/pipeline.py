@@ -40,6 +40,7 @@ from app.imports.domain import (
     StageStatus,
     source_of,
 )
+from app.imports.ports import SourceAcquirer
 from app.imports.queue import ImportQueueService
 from app.imports.repo import ImportRepository
 from app.retrieval.ports import EmbeddingAdapter
@@ -63,6 +64,7 @@ class ImportPipeline:
         storage: ObjectStorage,
         mineru: MineruParser,
         embeddings: EmbeddingAdapter,
+        acquirer: SourceAcquirer | None = None,
         target_tokens: int | None = None,
         max_chars: int | None = None,
     ) -> None:
@@ -71,6 +73,7 @@ class ImportPipeline:
         self._storage = storage
         self._mineru = mineru
         self._embeddings = embeddings
+        self._acquirer = acquirer
         self._target_tokens = target_tokens or settings.chunk_token_num
         self._max_chars = max_chars or settings.chunk_max_chars
 
@@ -110,22 +113,6 @@ class ImportPipeline:
                 state = record.stage(stage)
                 if state is None or state.status is not StageStatus.PENDING:
                     continue
-                if stage is ImportStage.SOURCE:
-                    # The source file is already stored when an import reaches
-                    # the pipeline: uploads supply it, identifiers resolved it.
-                    repository.mark_stage_succeeded(
-                        import_id, stage=stage, progress={"stored": True}
-                    )
-                    session.commit()
-                    continue
-                if record.paper_id is None:
-                    repository.finish(
-                        import_id,
-                        status=ImportStatus.FAILED,
-                        error_code=str(ErrorCode.PAPER_NOT_FOUND),
-                    )
-                    session.commit()
-                    return
 
                 repository.mark_stage_running(import_id, stage=stage)
                 session.commit()
@@ -175,16 +162,36 @@ class ImportPipeline:
                         import_id, stage=stage, progress=progress
                     )
                     session.commit()
+                    # The source stage may have created the paper.
+                    record = repository.get(import_id) or record
 
             if failure is None:
+                # A stage left pending or failed must never pass as ready.
+                unfinished = [
+                    stage.value
+                    for stage in (
+                        (repository.get(import_id) or record).stages
+                    )
+                    if stage.status is not StageStatus.SUCCEEDED
+                ]
+                if unfinished:
+                    raise RuntimeError(
+                        f"import {import_id} reached the end with unfinished "
+                        f"stages: {unfinished}"
+                    )
                 repository.finish(import_id, status=ImportStatus.READY)
                 session.commit()
                 # Every stage finished: the entry may now appear in the library.
                 self._reveal_entry(papers, record, session)
             else:
-                repository.finish(
-                    import_id, status=ImportStatus.FAILED, error_code=failure
+                # No source file is its own outcome: nothing else can run, but
+                # it is not an internal failure.
+                terminal = (
+                    ImportStatus.SOURCE_UNAVAILABLE
+                    if failure == str(ErrorCode.PAPER_PDF_NOT_AVAILABLE)
+                    else ImportStatus.FAILED
                 )
+                repository.finish(import_id, status=terminal, error_code=failure)
                 session.commit()
             logger.info(
                 "import.finished",
@@ -209,10 +216,8 @@ class ImportPipeline:
             paper_id=record.paper_id,
             source=source_of(record.identifier_type),
         )
-        papers.mark_entry_ready(
-            user_id=record.initiated_by,
-            paper_id=record.paper_id,
-        )
+        # Everyone waiting on this paper sees it at once.
+        papers.mark_entries_ready(paper_id=record.paper_id)
         session.commit()
         logger.info(
             "import.linked",
@@ -231,6 +236,9 @@ class ImportPipeline:
         chunks: ChunkRepository,
         record: PaperImport,
     ) -> dict | None:
+        if stage is ImportStage.SOURCE:
+            return self._source_stage(repository, record)
+
         paper = papers.get_paper(record.paper_id)
         if paper is None:
             raise AppError(
@@ -241,6 +249,33 @@ class ImportPipeline:
         if stage is ImportStage.CHUNK:
             return self._chunking_stage(papers, chunks, paper)
         return self._embedding_stage(papers, chunks, paper.id)
+
+    def _source_stage(
+        self,
+        repository: ImportRepository,
+        record: PaperImport,
+    ) -> dict:
+        """Obtain the file whose absence would make the paper impossible.
+
+        Uploads arrive with the paper already bound; an identifier import has to
+        fetch it, and the whole import fails when no source can be found.
+        """
+        if record.paper_id is not None:
+            return {"stored": True}
+        if self._acquirer is None:
+            raise AppError(
+                "没有可用的原文来源",
+                code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                status_code=422,
+            )
+        paper_id = self._acquirer.acquire(record.id)
+        if paper_id is None:
+            raise AppError(
+                "没有可用的原文来源",
+                code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+                status_code=422,
+            )
+        return {"stored": True, "paper_id": str(paper_id)}
 
     def _parse_stage(
         self,
@@ -406,16 +441,17 @@ def _safe_error_details(details: object) -> dict[str, int]:
 
 def build_import_pipeline(
     *,
-    session: Session,
     storage: ObjectStorage,
     session_factory: SessionFactory,
     scheduler: TaskScheduler,
+    acquirer: SourceAcquirer | None = None,
 ) -> ImportPipeline:
     """The stage pipeline on its own, for callers that drive a specific import."""
     return ImportPipeline(
         scheduler=scheduler,
         session_factory=session_factory,
         storage=storage,
+        acquirer=acquirer,
         mineru=MineruParser(
             base_url=settings.mineru_api_url,
             api_key=settings.mineru_api_key,
@@ -437,7 +473,6 @@ def build_import_service(
     """Assemble the import workflow for HTTP requests, imports and agent tools."""
     papers = PaperRepository(session)
     pipeline = build_import_pipeline(
-        session=session,
         storage=storage,
         session_factory=session_factory,
         scheduler=scheduler,
@@ -449,3 +484,24 @@ def build_import_service(
     )
 
 
+def build_source_acquirer(
+    *,
+    session_factory: SessionFactory,
+    storage: ObjectStorage,
+    scheduler: TaskScheduler,
+):
+    """The downloader the worker uses for identifier imports."""
+    from app.imports.service import ImportService
+    from app.literature_support.scholar.metadata import build_default_resolver
+    from app.literature_support.scholar.pdf_fetch import PdfFetcher
+    from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+
+    return ImportService(
+        session_factory=session_factory,
+        storage=storage,
+        resolver=build_default_resolver(),
+        pdf_fetcher=PdfFetcher(max_bytes=settings.max_pdf_bytes),
+        pdf_locator=DoiPdfLocator(),
+        scheduler=scheduler,
+        import_starter_factory=build_import_service,
+    )

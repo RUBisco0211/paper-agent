@@ -1,5 +1,8 @@
 from uuid import UUID
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from fastapi.testclient import TestClient
 
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
@@ -294,3 +297,108 @@ def test_imports_are_isolated_between_users(
         user_id=owner_id,
         arxiv_id=ARXIV_ID,
     )
+
+
+def test_reimporting_a_paper_whose_parse_failed_stays_failed(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+) -> None:
+    """Re-importing must not turn an unfinished paper into a ready one."""
+    from app.imports.domain import ImportStage, ImportStatus
+    from app.imports.repo import ImportRepository
+    from app.literature_support.scholar.metadata import ProviderMetadata
+
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        )
+    )
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
+    token = register_user(email="reimport@example.com")["access_token"]
+
+    first = _import(client, api_prefix, token, ARXIV_ID).json()
+    record = ImportRepository(db_session).get(UUID(first["id"]))
+    assert record is not None
+    # MinerU is not configured in this test, so parsing cannot have succeeded.
+    assert record.status is not ImportStatus.READY
+
+    second = _import(client, api_prefix, token, ARXIV_ID).json()
+
+    db_session.expire_all()
+    after = ImportRepository(db_session).get(UUID(first["id"]))
+    assert after is not None
+    assert after.status is not ImportStatus.READY
+    parse = after.stage(ImportStage.PARSE)
+    assert parse is None or parse.status.value != "succeeded"
+    assert second["status"] != "ready"
+
+
+def test_a_second_user_importing_the_same_paper_gets_their_own_entry(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+    completed_imports,
+) -> None:
+    """Two people importing the same paper each end up with their own entry."""
+    from app.imports.repo import ImportRepository
+    from app.library.repo import PaperRepository, UserPaperRecord
+
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        )
+    )
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
+    first = register_user(email="first-waiter@example.com")
+    second = register_user(email="second-waiter@example.com")
+
+    first_result = _import(client, api_prefix, first["access_token"], ARXIV_ID)
+    assert first_result.status_code == 202, first_result.text
+    second_result = _import(client, api_prefix, second["access_token"], ARXIV_ID)
+
+    assert second_result.status_code == 202, second_result.text
+    assert second_result.json()["status"] == "ready"
+    db_session.expire_all()
+    record = ImportRepository(db_session).find_by_identifier(
+        identifier_type="arxiv", identifier=ARXIV_ID
+    )
+    assert record is not None and record.paper_id is not None
+
+    papers = PaperRepository(db_session)
+    for account in (first, second):
+        user_id = UUID(
+            client.get(
+                f"{api_prefix}/auth/me", headers=auth_headers(account["access_token"])
+            ).json()["id"]
+        )
+        entry = papers.get_user_paper_for_paper(
+            user_id=user_id, paper_id=record.paper_id
+        )
+        assert entry is not None, "every importer keeps their own entry"
+    # Both entries point at the same paper, and both are usable.
+    ready = db_session.scalars(
+        select(UserPaperRecord).where(
+            UserPaperRecord.paper_id == record.paper_id,
+            UserPaperRecord.ready.is_(True),
+        )
+    ).all()
+    assert len(ready) == 2
