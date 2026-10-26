@@ -100,11 +100,15 @@ class RunPipeline:
 
             def heartbeat() -> None:
                 while not stop.wait(LEASE_SECONDS / 3):
+                    # The lease lives on the guard connection; renewing it
+                    # through another session would hide a dead guard.
+                    if not self._guard_alive(connection):
+                        lost.set()
+                        return
                     try:
                         with self._session_factory() as session:
-                            if not RunRepository(session).renew_lease(
-                                run_id, lease_seconds=LEASE_SECONDS
-                            ):
+                            renew = RunRepository(session).renew_lease
+                            if not renew(run_id, lease_seconds=LEASE_SECONDS):
                                 lost.set()
                                 return
                     except Exception as exc:
@@ -114,11 +118,13 @@ class RunPipeline:
                             error_type=type(exc).__name__,
                         )
                         return
+                if not self._guard_alive(connection):
+                    lost.set()
 
             thread = Thread(target=heartbeat, daemon=True)
             thread.start()
             try:
-                self._run_owned(run_id, lost)
+                self._run_owned(run_id, lost, guard=connection)
             finally:
                 stop.set()
                 thread.join()
@@ -127,7 +133,8 @@ class RunPipeline:
                     {"key": f"paper-run:{run_id}"},
                 )
 
-    def _run_owned(self, run_id: UUID, lost: Event) -> None:
+    def _run_owned(self, run_id: UUID, lost: Event, *, guard=None) -> None:
+        guard_connection = guard
         session = self._session_factory()
         try:
             runs = RunRepository(session)
@@ -145,9 +152,20 @@ class RunPipeline:
 
             stage = run.current_stage or RunStage.PARSE
             while stage is not None:
-                # An executor that lost its lease must not keep publishing; a
-                # direct caller that never held one owns the run by asking.
-                if lost.is_set() or not runs.mark_stage_started(run_id, stage=stage):
+                # Losing the guard, or the lease it represents, ends this
+                # executor's right to publish anything.
+                if (
+                    lost.is_set()
+                    or not self._guard_alive(guard_connection)
+                    or not runs.hold_ownership(
+                        run_id, lease_seconds=LEASE_SECONDS
+                    )
+                ):
+                    session.rollback()
+                    lost.set()
+                    logger.warning("pipelines.run.guard_lost", run_id=str(run_id))
+                    return
+                if not runs.mark_stage_started(run_id, stage=stage):
                     session.rollback()
                     logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
                     return
@@ -180,13 +198,29 @@ class RunPipeline:
                         error_type=type(exc).__name__,
                     )
                     return
-                if lost.is_set() or not runs.publish_stage(run_id, stage=stage):
+                if (
+                    lost.is_set()
+                    or not self._guard_alive(guard_connection)
+                    or not runs.hold_ownership(
+                        run_id, lease_seconds=LEASE_SECONDS
+                    )
+                    or not runs.publish_stage(run_id, stage=stage)
+                ):
                     session.rollback()
                     logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
                     return
                 session.commit()
                 stage = next_stage(stage)
 
+            # Publication is the last point where the guard can still refuse.
+            if (
+                lost.is_set()
+                or not self._guard_alive(guard_connection)
+                or not runs.hold_ownership(run_id, lease_seconds=LEASE_SECONDS)
+            ):
+                session.rollback()
+                logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
+                return
             papers.lock_paper(run.paper_id)
             runs.finish_success(run_id)
             self._grant_entries(
@@ -201,6 +235,16 @@ class RunPipeline:
             raise
         finally:
             session.close()
+
+    @staticmethod
+    def _guard_alive(connection) -> bool:
+        """Whether this executor still holds its own advisory-lock connection."""
+        if connection is None:
+            return True
+        try:
+            return bool(connection.scalar(text("SELECT 1")) == 1)
+        except Exception:
+            return False
 
     # Stages ----------------------------------------------------------------
     def _run_stage(

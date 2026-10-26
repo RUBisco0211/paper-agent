@@ -215,7 +215,7 @@ def test_a_reclaimed_run_refuses_any_late_publish_from_its_old_executor(
     with session_factory() as session:
         runs = RunRepository(session)
         # A late executor can neither start nor publish a stage, nor revive it.
-        assert not runs.claim_ownership(run.id, lease_seconds=300)
+        assert not runs.hold_ownership(run.id, lease_seconds=300)
         assert not runs.mark_stage_started(run.id, stage="parse")
         assert not runs.publish_stage(run.id, stage="parse")
         assert runs.get(run.id).status.value == "failed"

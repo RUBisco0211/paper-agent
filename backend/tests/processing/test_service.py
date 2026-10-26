@@ -1,9 +1,12 @@
 """End-to-end processing tests with deterministic stand-in providers."""
 
 import json
+import time
 from pathlib import Path
+from threading import Thread
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.library.repo import PaperRepository
@@ -508,3 +511,63 @@ def test_heartbeat_renews_the_lease_when_parsing_outlasts_the_interval(
     monkeypatch.setattr(parser, "parse", parse)
     runner.run_sync(run.id)
     assert renewed.is_set()
+
+
+def test_a_live_lease_does_not_let_a_lost_guard_connection_publish_success(
+    paper, pipeline, session_factory, monkeypatch
+):
+    """The lease can still be valid while the executor's own guard is gone."""
+    from threading import Event
+
+    import app.pipelines.pipeline as module
+
+    runner, _ = pipeline
+    run = _start_run(session_factory, paper)
+    parsing, release = Event(), Event()
+    holder: dict[str, int | None] = {"pid": None}
+
+    def drop_guard() -> None:
+        pid = holder["pid"]
+        assert pid is not None, "the executor never took its advisory lock"
+        with session_factory() as session:
+            session.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
+            session.commit()
+        # Backends end asynchronously; wait until that one is really gone.
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with session_factory() as session:
+                alive = session.scalar(
+                    text("SELECT count(*) FROM pg_stat_activity WHERE pid = :pid"),
+                    {"pid": pid},
+                )
+            if not alive:
+                return
+            time.sleep(0.02)
+
+    def parse(*args, **kwargs):
+        # The stage begins only after the executor took its guard lock.
+        with session_factory() as session:
+            holder["pid"] = session.scalar(
+                text(
+                    "SELECT pid FROM pg_locks WHERE locktype = 'advisory' "
+                    "AND objsubid = 1 AND classid = 0 "
+                    "AND objid = (hashtextextended(:key, 0) & 4294967295)"
+                ),
+                {"key": f"paper-run:{run.id}"},
+            )
+        parsing.set()
+        assert release.wait(10)
+        drop_guard()
+        raise AssertionError("stage body must not run after the guard died")
+
+    monkeypatch.setattr(module, "LEASE_SECONDS", 600)
+    monkeypatch.setattr(runner._mineru, "parse", parse)
+    thread = Thread(target=lambda: runner.run_sync(run.id), daemon=True)
+    thread.start()
+    assert parsing.wait(5)
+    release.set()
+    thread.join(timeout=15)
+    with session_factory() as session:
+        stored = RunRepository(session).get(run.id)
+        assert stored is not None
+        assert stored.status is not RunStatus.SUCCESS

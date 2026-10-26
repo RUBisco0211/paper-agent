@@ -12,6 +12,9 @@ from sqlalchemy import (
     String,
     Text,
     Uuid,
+    and_,
+    func,
+    or_,
     select,
     text,
     update,
@@ -349,22 +352,35 @@ class RunRepository:
         return reclaimed
 
     # Stage transitions -----------------------------------------------------
-    def claim_ownership(self, run_id: UUID, *, lease_seconds: int) -> bool:
-        """Take the run only if it is still running and its lease is alive.
+    def hold_ownership(self, run_id: UUID, *, lease_seconds: int) -> bool:
+        """Confirm this executor may still publish the run.
 
-        An executor whose guard connection died may wake up after reclaiming
-        already freed the run. Conditional updates are what stop it there.
+        Pending means a direct caller owns the run by asking; running means a
+        leased executor owns it, and only while the lease is alive. Anything
+        terminal, or a running run whose lease expired, is not ours any more.
         """
-        claimed = self._session.execute(
+        now = _now()
+        held = self._session.execute(
             update(RunRecord)
             .where(RunRecord.id == run_id)
-            .where(RunRecord.status == RunStatus.RUNNING.value)
-            .where(RunRecord.leased_until > _now())
-            .values(leased_until=_now() + timedelta(seconds=lease_seconds))
+            .where(
+                or_(
+                    RunRecord.status == RunStatus.PENDING.value,
+                    and_(
+                        RunRecord.status == RunStatus.RUNNING.value,
+                        RunRecord.leased_until > now,
+                    ),
+                )
+            )
+            .values(
+                leased_until=func.coalesce(
+                    RunRecord.leased_until, now + timedelta(seconds=lease_seconds)
+                )
+            )
             .execution_options(synchronize_session=False)
         )
         self._session.commit()
-        return claimed.rowcount == 1
+        return held.rowcount == 1
 
     def mark_stage_started(self, run_id: UUID, *, stage: RunStage) -> bool:
         """Assign the stage only while this run has not reached a terminal state."""
