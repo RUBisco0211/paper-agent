@@ -14,6 +14,7 @@ from sqlalchemy import (
     Uuid,
     select,
     text,
+    update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -348,28 +349,61 @@ class RunRepository:
         return reclaimed
 
     # Stage transitions -----------------------------------------------------
-    def mark_stage_started(self, run_id: UUID, *, stage: RunStage) -> None:
-        record = self._session.get(RunRecord, run_id)
-        if record is None:
-            return
-        record.status = RunStatus.RUNNING.value
-        record.current_stage = stage.value
-        record.started_at = record.started_at or _now()
-        timings = dict(record.stage_timings or {})
-        timings[stage.value] = {"started_at": _now().isoformat()}
-        record.stage_timings = timings
-        self._session.flush()
+    def claim_ownership(self, run_id: UUID, *, lease_seconds: int) -> bool:
+        """Take the run only if it is still running and its lease is alive.
 
-    def mark_stage_finished(self, run_id: UUID, *, stage: RunStage) -> None:
-        record = self._session.get(RunRecord, run_id)
-        if record is None:
-            return
+        An executor whose guard connection died may wake up after reclaiming
+        already freed the run. Conditional updates are what stop it there.
+        """
+        claimed = self._session.execute(
+            update(RunRecord)
+            .where(RunRecord.id == run_id)
+            .where(RunRecord.status == RunStatus.RUNNING.value)
+            .where(RunRecord.leased_until > _now())
+            .values(leased_until=_now() + timedelta(seconds=lease_seconds))
+            .execution_options(synchronize_session=False)
+        )
+        self._session.commit()
+        return claimed.rowcount == 1
+
+    def mark_stage_started(self, run_id: UUID, *, stage: RunStage) -> bool:
+        """Assign the stage only while this run has not reached a terminal state."""
+        now = _now()
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status not in (
+            RunStatus.PENDING.value,
+            RunStatus.RUNNING.value,
+        ):
+            self._session.rollback()
+            return False
+        timings = dict(record.stage_timings or {})
+        timings[stage.value] = {"started_at": now.isoformat()}
+        record.stage_timings = timings
+        record.current_stage = stage.value
+        record.started_at = record.started_at or now
+        self._session.flush()
+        return True
+
+    def publish_stage(self, run_id: UUID, *, stage: RunStage) -> bool:
+        """Record a finished stage only if the run is still ours to publish."""
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status not in (
+            RunStatus.PENDING.value,
+            RunStatus.RUNNING.value,
+        ):
+            self._session.rollback()
+            return False
         timings = dict(record.stage_timings or {})
         entry = dict(timings.get(stage.value) or {})
         entry["finished_at"] = _now().isoformat()
         timings[stage.value] = entry
         record.stage_timings = timings
         self._session.flush()
+        return True
 
     def finish_success(self, run_id: UUID) -> None:
         record = self._session.get(RunRecord, run_id)

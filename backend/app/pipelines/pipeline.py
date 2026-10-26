@@ -145,17 +145,19 @@ class RunPipeline:
 
             stage = run.current_stage or RunStage.PARSE
             while stage is not None:
-                if lost.is_set():
+                # An executor that lost its lease must not keep publishing; a
+                # direct caller that never held one owns the run by asking.
+                if lost.is_set() or not runs.mark_stage_started(run_id, stage=stage):
                     session.rollback()
+                    logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
                     return
-                runs.mark_stage_started(run_id, stage=stage)
                 session.commit()
-                runs.renew_lease(run_id, lease_seconds=LEASE_SECONDS)
                 try:
                     self._run_stage(stage, papers=papers, chunks=chunks, paper=paper)
                 except AppError as exc:
                     session.rollback()
-                    runs.mark_stage_finished(run_id, stage=stage)
+                    if not runs.publish_stage(run_id, stage=stage):
+                        return
                     runs.finish_failure(run_id, error_message=exc.message)
                     session.commit()
                     logger.info(
@@ -167,7 +169,8 @@ class RunPipeline:
                     return
                 except Exception as exc:  # unexpected: stop and record it
                     session.rollback()
-                    runs.mark_stage_finished(run_id, stage=stage)
+                    if not runs.publish_stage(run_id, stage=stage):
+                        return
                     runs.finish_failure(run_id, error_message=type(exc).__name__)
                     session.commit()
                     logger.exception(
@@ -177,10 +180,10 @@ class RunPipeline:
                         error_type=type(exc).__name__,
                     )
                     return
-                if lost.is_set():
+                if lost.is_set() or not runs.publish_stage(run_id, stage=stage):
                     session.rollback()
+                    logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
                     return
-                runs.mark_stage_finished(run_id, stage=stage)
                 session.commit()
                 stage = next_stage(stage)
 
@@ -191,6 +194,11 @@ class RunPipeline:
             )
             session.commit()
             logger.info("pipelines.run.finished", run_id=str(run_id))
+        except BaseException:
+            # Nothing may be published on a half-done run; the transaction is
+            # one commit, so rollback leaves it exactly where it started.
+            session.rollback()
+            raise
         finally:
             session.close()
 

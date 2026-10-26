@@ -125,7 +125,7 @@ def test_a_run_moves_to_the_next_stage_only_after_the_current_one(
         assert run.current_stage is RunStage.PARSE
 
         runs.mark_stage_started(run.id, stage=RunStage.PARSE)
-        runs.mark_stage_finished(run.id, stage=RunStage.PARSE)
+        runs.publish_stage(run.id, stage=RunStage.PARSE)
         runs.finish_success(run.id)
         session.commit()
 

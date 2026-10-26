@@ -393,7 +393,12 @@ def test_success_is_rolled_back_when_granting_entries_is_interrupted(
     with pytest.raises(RuntimeError, match="injected grant interruption"):
         runner.run_sync(run.id)
     with session_factory() as session:
-        assert RunRepository(session).get(run.id).status is RunStatus.RUNNING
+        # The run never became success: it rolled back to where it started.
+        stored = RunRepository(session).get(run.id)
+        assert stored.status is RunStatus.PENDING
+        # Stage progress is recorded per stage; it is not rolled back, so the
+        # entry point stays visible and a retry resumes from there.
+        assert stored.current_stage is RunStage.EMBED
         assert PaperRepository(session).get_user_paper_for_paper(
             user_id=user_id, paper_id=paper
         ) is None

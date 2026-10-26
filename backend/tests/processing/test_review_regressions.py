@@ -152,3 +152,70 @@ def test_paper_migration_preserves_bindings_when_clearing_paper_data(revision):
     )
     assert "session_bindings" not in cleared
     assert "schedule_bindings" not in cleared
+
+
+def test_project_paper_search_filters_by_the_shared_bibliographic_title(
+    client, api_prefix, register_user, make_pdf, completed_imports, session_factory
+):
+    from app.library.repo import PaperRecord
+    from tests.conftest import auth_headers
+
+    account = register_user()
+    headers = auth_headers(account["access_token"])
+    project = client.post(
+        f"{api_prefix}/projects", headers=headers, json={"name": "Reading"}
+    ).json()["id"]
+    client.post(
+        f"{api_prefix}/papers",
+        headers=headers,
+        files={"file": ("private.pdf", make_pdf(), "application/pdf")},
+        data={"project_id": project},
+    )
+    with session_factory() as session:
+        paper = session.query(PaperRecord).one()
+        paper.bibliographic = {"title": "Attention Is All You Need"}
+        session.commit()
+    found = client.get(
+        f"{api_prefix}/projects/{project}/papers",
+        headers=headers,
+        params={"q": "attention"},
+    )
+    assert found.status_code == 200, found.text
+    assert found.json()["total"] == 1
+    missing = client.get(
+        f"{api_prefix}/projects/{project}/papers",
+        headers=headers,
+        params={"q": "unrelated"},
+    )
+    assert missing.json()["total"] == 0
+
+
+def test_a_reclaimed_run_refuses_any_late_publish_from_its_old_executor(
+    session_factory, make_user
+):
+    from app.pipelines.repo import RunRecord
+
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="4" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+    with session_factory() as session:
+        assert RunRepository(session).claim_next(lease_seconds=300) == run.id
+    # The executor's guard connection died and its lease ran out.
+    with session_factory() as session:
+        record = session.get(RunRecord, run.id)
+        record.leased_until = record.created_at
+        session.commit()
+    # With no executor holding the advisory lock, the run is reclaimed.
+    with session_factory() as session:
+        assert RunRepository(session).reclaim_expired() == 1
+    with session_factory() as session:
+        runs = RunRepository(session)
+        # A late executor can neither start nor publish a stage, nor revive it.
+        assert not runs.claim_ownership(run.id, lease_seconds=300)
+        assert not runs.mark_stage_started(run.id, stage="parse")
+        assert not runs.publish_stage(run.id, stage="parse")
+        assert runs.get(run.id).status.value == "failed"
