@@ -135,14 +135,24 @@
 - [x] 迁移：`user_runs` 加 `project_id`（可空，外键 projects）
 - [x] `RunService.request` 接受 `project_id`，校验项目属于当前用户
 - [x] 已完成论文的请求不写 `user_runs`，直接建 `user_papers` 与 `project_papers`
-- [x] run 成功时：按 `paper_id` 反查 `user_runs`，先建 `user_papers` 再建 `project_papers`
-- [x] 队列接口改为 `downloads` ∪ `user_runs`，按 `run_id` 去重
+- [x] run 成功时：只兑现该 `run_id` 的 `user_runs`，用户/项目关系与 success 一起提交
+- [x] 队列接口合并 `downloads` ∪ `user_runs`，按 `run_id` 仅消除跨表重复
 - [x] 上传接口把 `project_id` 传下去
 - [x] 前端：列表只显示状态；详情按动作列步骤（导入含「获取原文」，上传含「文件上传」）
 - [x] 测试：上传已在库的论文只建关系、不进队列
 - [x] 测试：导入到指定项目后该条目出现在项目里
 - [x] 测试：别人的项目 ID 被拒绝
-- [x] 测试：队列里同一 run 只出现一次
+- [x] 测试：download 已代表的 user_run 不重复显示，独立下载尝试保留
+
+### PR #9 审查修复
+
+- [x] S1：用户文件名不写入共享书目，未获取书目时标题为空
+- [x] B1：仅领取 pending、执行排他锁、持续续租与过期回收
+- [x] B2/B3：挂靠和完成同锁；成功与用户、项目授权同事务
+- [x] B4：0036/0037 不删除会话或定时任务绑定（不自动恢复已被旧迁移删除的数据）
+- [x] B5/B6：授权入库继承会话项目；非 PDF 候选继续尝试其他来源
+- [x] B7/B9：队列固定读取关联 run；查看文献使用当前用户条目 ID
+- [x] B8：文档明确仅消除跨表重复，不合并独立下载历史
 
 ### 待办（用户明确不急）
 

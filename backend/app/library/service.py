@@ -24,7 +24,6 @@ from .domain import (
     Capabilities,
     Paper,
     UserPaper,
-    placeholder_title_from_filename,
 )
 from .ports import MetadataEnricherPort, RunStarter
 from .repo import PaperRepository
@@ -238,7 +237,6 @@ class PaperLibraryService:
             byte_size=stored.byte_size,
             page_count=stored.page_count,
         )
-        self._title_from_filename(paper.id, paper, filename)
         self._papers.commit()
         self._enrich_quietly(paper.id, stored.detected_identifiers)
         run = self._runs.request(
@@ -246,25 +244,6 @@ class PaperLibraryService:
         )
         self._papers.expire_all()
         return run
-
-    def _title_from_filename(
-        self,
-        paper_id: UUID,
-        paper: Paper,
-        filename: str | None,
-    ) -> None:
-        """Give an untitled paper a provisional title from its file name.
-
-        The silent enrichment replaces it once the file's own identifiers are
-        recognized; without it the library would show unnamed rows.
-        """
-        if paper.title is not None:
-            return
-        self._papers.set_paper_metadata(
-            paper_id,
-            bibliographic={"title": placeholder_title_from_filename(filename)},
-            metadata_sources=None,
-        )
 
     def _enrich_quietly(
         self,
@@ -389,7 +368,6 @@ class PaperLibraryService:
             byte_size=stored.byte_size,
             page_count=stored.page_count,
         )
-        self._title_from_filename(paper.id, paper, filename or stored.file_hash)
         self._papers.commit()
         # Look the bibliographic facts up beside the run, never inside it.
         self._enrich_quietly(paper.id, stored.detected_identifiers)

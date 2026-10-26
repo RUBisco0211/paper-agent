@@ -11,6 +11,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy import select
 
+from app.library.repo import PaperRepository
 from app.literature_support.scholar.identifiers import parse_identifier
 from app.platform.database import SessionFactory
 from app.platform.errors import (
@@ -125,7 +126,7 @@ class ImportApprovalService:
 
     def consume(self, *, user_id: UUID, session_id: UUID) -> list[dict]:
         with self._session_factory() as session:
-            SessionBindingService(
+            binding = SessionBindingService(
                 SessionBindingRepository(session), ProjectRepository(session)
             ).require(session_id=session_id, user_id=user_id)
             record = session.scalar(
@@ -151,6 +152,7 @@ class ImportApprovalService:
                     item = self._importer.start(
                         user_id=user_id,
                         identifier_text=candidate["identifier"],
+                        project_id=binding.project_id,
                     )
                     results.append(
                         {
@@ -274,11 +276,20 @@ class ImportService:
                 {item.paper_id for item in downloads if item.paper_id}
                 | {item.paper_id for item in requests if item.paper_id}
             )
-            runs = RunRepository(session).latest_for_papers(paper_ids)
+            runs = RunRepository(session).get_many(
+                list({item.run_id for item in downloads + requests if item.run_id})
+            )
+            papers = PaperRepository(session)
+            entries = {
+                paper_id: papers.get_user_paper_for_paper(
+                    user_id=user_id, paper_id=paper_id
+                )
+                for paper_id in paper_ids
+            }
 
             items: list[dict] = []
             for item in downloads:
-                run = runs.get(item.paper_id) if item.paper_id else None
+                run = runs.get(item.run_id)
                 items.append(
                     {
                         "source": "download",
@@ -287,6 +298,10 @@ class ImportService:
                         "identifier_type": item.identifier_type,
                         "status": item.status.value,
                         "paper_id": str(item.paper_id) if item.paper_id else None,
+                        "user_paper_id": (
+                            str(entries[item.paper_id].id)
+                            if entries.get(item.paper_id) else None
+                        ),
                         "run_id": str(item.run_id) if item.run_id else None,
                         "project_id": (
                             str(item.project_id) if item.project_id else None
@@ -305,7 +320,7 @@ class ImportService:
                 if key in seen_requests:
                     continue
                 seen_requests.add(key)
-                run = runs.get(request.paper_id) if request.paper_id else None
+                run = runs.get(request.run_id)
                 items.append(
                     {
                         "source": "request",
@@ -315,6 +330,10 @@ class ImportService:
                         "status": run.status.value if run else "pending",
                         "paper_id": (
                             str(request.paper_id) if request.paper_id else None
+                        ),
+                        "user_paper_id": (
+                            str(entries[request.paper_id].id)
+                            if entries.get(request.paper_id) else None
                         ),
                         "run_id": (
                             str(request.run_id) if request.run_id else None

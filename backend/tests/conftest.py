@@ -418,9 +418,11 @@ def completed_imports(
         )
 
     def _default_pdf_locator():
-        from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+        from types import SimpleNamespace
 
-        return DoiPdfLocator()
+        # Provider-backed source discovery is explicitly supplied by tests
+        # that cover it; an unrelated fixture must never reach the network.
+        return SimpleNamespace(find=lambda doi: [])
 
     mineru = StubMineruParser()
     embeddings = StubEmbeddingAdapter()

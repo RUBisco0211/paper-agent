@@ -59,6 +59,7 @@ class DownloadQueueItem(BaseModel):
     identifier_type: str
     status: str
     paper_id: str | None = None
+    user_paper_id: str | None = None
     run_id: str | None = None
     project_id: str | None = None
     source_url: str | None = None

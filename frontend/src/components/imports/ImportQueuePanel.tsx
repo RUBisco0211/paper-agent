@@ -82,11 +82,11 @@ function RequestRow({
           {item.error_message && (
             <p className="text-destructive text-xs">{item.error_message}</p>
           )}
-          {item.paper_id && item.status === "success" && (
+          {item.user_paper_id && (
             <button
               type="button"
               className="w-fit text-xs underline"
-              onClick={() => openPaper(item.paper_id!)}
+              onClick={() => openPaper(item.user_paper_id!)}
             >
               查看文献
             </button>

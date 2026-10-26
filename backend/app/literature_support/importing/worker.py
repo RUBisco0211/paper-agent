@@ -56,6 +56,8 @@ class PipelineWorker:
         return done
 
     def run_runs(self, *, concurrency: int) -> int:
+        with self._session_factory() as session:
+            RunRepository(session).reclaim_expired()
         run_ids: list = []
         for _ in range(concurrency):
             with self._session_factory() as session:

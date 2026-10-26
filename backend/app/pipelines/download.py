@@ -12,6 +12,7 @@ from uuid import UUID
 
 import structlog
 
+from app.literature_support.importing.pdf import ensure_pdf_magic, inspect_pdf
 from app.literature_support.scholar.identifiers import (
     Identifier,
     IdentifierType,
@@ -127,15 +128,21 @@ class DownloadService:
         """First candidate that yields a file; raises when none does."""
         attempted: set[str] = set()
         last_error = ErrorCode.PAPER_PDF_NOT_AVAILABLE
-        candidates = list(self._candidate_urls(identifier))
-        if identifier.type is IdentifierType.DOI:
-            candidates.extend(self._locator_urls(identifier.value))
-        for candidate in candidates:
+
+        def candidates():
+            yield from self._candidate_urls(identifier)
+            if identifier.type is IdentifierType.DOI:
+                yield from self._locator_urls(identifier.value)
+
+        for candidate in candidates():
             if candidate in attempted:
                 continue
             attempted.add(candidate)
             try:
                 downloaded = self._fetcher.download(candidate, destination=staging)
+                with downloaded.path.open("rb") as handle:
+                    ensure_pdf_magic(handle.read(5))
+                inspect_pdf(downloaded.path, max_pages=settings.max_pdf_pages)
                 return _Fetched(path=downloaded.path, source_url=candidate)
             except AppError as exc:
                 last_error = exc.code
@@ -204,8 +211,6 @@ def _record_identifier(
         metadata_sources=paper.metadata_sources,
         doi=identifier.value if identifier.type is IdentifierType.DOI else None,
         arxiv_id=(
-            identifier.full_value
-            if identifier.type is IdentifierType.ARXIV
-            else None
+            identifier.full_value if identifier.type is IdentifierType.ARXIV else None
         ),
     )

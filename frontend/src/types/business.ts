@@ -372,6 +372,8 @@ export interface ImportQueueItem {
   identifier_type: IdentifierType | "upload"
   status: DownloadStatus
   paper_id?: Uuid | null
+  /** The current user's entry, usable with the library detail endpoint. */
+  user_paper_id?: Uuid | null
   run_id?: Uuid | null
   project_id?: Uuid | null
   source_url?: string | null
@@ -397,5 +399,4 @@ export interface ImportApprovalPreview {
     source_id: string
   }>
 }
-
 

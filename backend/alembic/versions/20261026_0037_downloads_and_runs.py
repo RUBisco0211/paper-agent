@@ -32,8 +32,6 @@ depends_on: str | Sequence[str] | None = None
 #: Cleared children first; ``projects`` survives, only its paper links go.
 CLEARED_TABLES = (
     "session_bound_citations",
-    "session_bindings",
-    "schedule_bindings",
     "project_papers",
     "import_approvals",
     "import_stages",

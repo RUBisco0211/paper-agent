@@ -74,6 +74,61 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
     assert first.json() == second.json()
 
 
+def test_approved_download_joins_the_project_when_the_session_is_project_scoped(
+    client, api_prefix, register_user, monkeypatch, completed_imports, make_pdf
+):
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+    from app.literature_support.scholar.metadata import (
+        MetadataResolver,
+        ProviderMetadata,
+    )
+    from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
+
+    owner = register_user(email="project-batch@example.com")
+    headers = auth_headers(owner["access_token"])
+    project = client.post(
+        f"{api_prefix}/projects", headers=headers, json={"name": "Reading"}
+    ).json()["id"]
+    session_id = str(uuid4())
+    bound = client.post(
+        f"{api_prefix}/session-bindings",
+        headers=headers,
+        json={"session_id": session_id, "project_id": project},
+    )
+    assert bound.status_code in (200, 201)
+    token = create_candidate_token(
+        user_id=owner["user"]["id"],
+        session_id=session_id,
+        openalex_id="https://openalex.org/W1",
+        identifier="10.1234/project",
+    )
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [
+            FakeProvider(
+                ProviderMetadata(source="fake", pdf_url="https://example.org/p.pdf")
+            )
+        ]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
+    approval = client.post(
+        f"{api_prefix}/imports/approvals",
+        headers=headers,
+        json={"session_id": session_id, "candidate_tokens": [token]},
+    )
+    assert approval.status_code == 201
+    monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
+    result = client.post(
+        f"{api_prefix}/internal/import-approved",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        json={"user_id": owner["user"]["id"], "session_id": session_id},
+    )
+    assert result.status_code == 200, result.text
+    members = client.get(f"{api_prefix}/projects/{project}/papers", headers=headers)
+    assert members.json()["total"] == 1
+
+
 def test_another_user_cannot_approve_a_discovered_candidate(
     client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
@@ -134,15 +189,20 @@ def test_import_queue_contains_only_the_current_users_imports(
 ) -> None:
     owner = register_user(email="queue-owner@example.com")
     stranger = register_user(email="queue-stranger@example.com")
-    db_session.add_all([
-        DownloadRecord(
-            user_id=UUID(user["user"]["id"]), identifier_type="doi",
-            identifier=identifier, status="pending",
-        )
-        for user, identifier in (
-            (owner, "10.1234/owner"), (stranger, "10.1234/stranger")
-        )
-    ])
+    db_session.add_all(
+        [
+            DownloadRecord(
+                user_id=UUID(user["user"]["id"]),
+                identifier_type="doi",
+                identifier=identifier,
+                status="pending",
+            )
+            for user, identifier in (
+                (owner, "10.1234/owner"),
+                (stranger, "10.1234/stranger"),
+            )
+        ]
+    )
     db_session.commit()
     response = client.get(
         f"{api_prefix}/imports/queue",
@@ -165,7 +225,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"session_id": session_id},
     )
     token = create_candidate_token(
-        user_id=owner["user"]["id"], session_id=session_id,
+        user_id=owner["user"]["id"],
+        session_id=session_id,
         openalex_id="https://openalex.org/W7148549932",
         identifier="10.48550/arXiv.2604.00722",
     )

@@ -9,7 +9,6 @@ from uuid import UUID
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..library.repo import PaperRepository
@@ -47,6 +46,9 @@ class RunService:
                 )
             runs = RunRepository(session)
             papers = PaperRepository(session)
+            # The finisher takes the same lock before publishing success and
+            # granting entries. No request can join after its audience is read.
+            papers.lock_paper(paper_id)
             run = runs.active_for_paper(paper_id)
             if run is None:
                 finished = runs.latest_for_paper(paper_id)
@@ -65,7 +67,7 @@ class RunService:
                         user_id=str(user_id),
                     )
                     return finished
-                run = self._start(session, runs, paper_id)
+                run = runs.add(paper_id)
             runs.add_user(user_id=user_id, run=run, project_id=project_id)
             session.commit()
             logger.info(
@@ -77,28 +79,6 @@ class RunService:
             return run
         finally:
             session.close()
-
-    def _start(self, session: Session, runs: RunRepository, paper_id: UUID) -> Run:
-        """Create the active run, tolerating a concurrent starter.
-
-        The partial unique index is the arbiter: whoever loses the race reads
-        the winner's row instead of creating a second active run.
-        """
-        try:
-            run = runs.add(paper_id)
-            session.commit()
-            logger.info(
-                "pipelines.request.started",
-                paper_id=str(paper_id),
-                run_id=str(run.id),
-            )
-            return run
-        except IntegrityError:
-            session.rollback()
-            existing = runs.active_for_paper(paper_id)
-            if existing is None:  # pragma: no cover - index released meanwhile
-                raise
-            return existing
 
     # Requests --------------------------------------------------------------
     def requests_of_run(self, run_id: UUID) -> list[UserRunRequest]:

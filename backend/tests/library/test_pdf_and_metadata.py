@@ -301,7 +301,9 @@ def test_metadata_resolution_fills_the_paper_from_a_single_provider(
         headers=auth_headers(token),
     ).json()
 
-    assert detail["title"] is not None
+    # No identifier was detected and no lookup ran. A private filename is not
+    # a bibliographic title and must not be published to the shared paper.
+    assert detail["title"] is None
 
 
 def test_resolve_metadata_surfaces_provider_failure_without_crashing(

@@ -7,6 +7,8 @@
 
 ## DECISION
 
+运行领取只消费 pending；有效 running 不重复领取。执行者在整个运行期间持有 PostgreSQL 排他 advisory lock 并定期续租，过期回收不得释放仍被执行者持有的 run。文献模型迁移不得删除会话或定时任务绑定；已执行的删除不由后续升级隐式伪造恢复。
+
 **标识符获取与文档处理是两条记录。** `downloads` 记「某个用户请求为某个标识符取一份文件」，`runs` 记「一篇论文的一次处理」。两者都不再叫 import，`import_stages` 不再存在。
 
 **`papers` 的身份唯一键保持 `file_hash`。** 论文只在文件到手后才存在，因此不会出现「有 DOI 没文件」的行。下载成功后算 hash，命中则复用并补齐 `doi` / `arxiv_id`，未命中则用该 hash 建行。

@@ -375,3 +375,131 @@ def _override_services(
 class _EmptyLocator:
     def find(self, doi: str) -> list[str]:
         return []
+
+
+def test_success_is_rolled_back_when_granting_entries_is_interrupted(
+    paper, pipeline, session_factory, make_user, monkeypatch
+):
+    runner, _ = pipeline
+    user_id = make_user()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper)
+    original_grant = runner._grant_entries
+
+    def interrupt(**kwargs):
+        original_grant(**kwargs)
+        raise RuntimeError("injected grant interruption")
+
+    monkeypatch.setattr(runner, "_grant_entries", interrupt)
+    with pytest.raises(RuntimeError, match="injected grant interruption"):
+        runner.run_sync(run.id)
+    with session_factory() as session:
+        assert RunRepository(session).get(run.id).status is RunStatus.RUNNING
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=user_id, paper_id=paper
+        ) is None
+
+
+def test_finishing_waits_for_a_request_when_it_has_already_found_the_active_run(
+    paper, pipeline, session_factory, make_user, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, current_thread
+
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+    found, release, finishing = Event(), Event(), Event()
+    original = RunRepository.active_for_paper
+    original_lock = PaperRepository.lock_paper
+
+    def signal_lock(self, paper_id):
+        if current_thread().name == "finisher":
+            finishing.set()
+        return original_lock(self, paper_id)
+
+    def finish():
+        current_thread().name = "finisher"
+        runner.run_sync(run.id)
+
+    def pause_after_lookup(self, paper_id):
+        snapshot = original(self, paper_id)
+        found.set()
+        assert release.wait(5)
+        return snapshot
+
+    monkeypatch.setattr(RunRepository, "active_for_paper", pause_after_lookup)
+    monkeypatch.setattr(PaperRepository, "lock_paper", signal_lock)
+    # Exercise the publication boundary only: artifact writers themselves can
+    # take FK/UPDATE locks on the paper before the finisher reaches that point.
+    monkeypatch.setattr(runner, "_run_stage", lambda *args, **kwargs: None)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        attached = executor.submit(
+            RunService(session_factory).request, user_id=bob, paper_id=paper
+        )
+        assert found.wait(5)
+        finished = executor.submit(finish)
+        assert finishing.wait(5)
+        release.set()
+        attached.result(timeout=10)
+        finished.result(timeout=10)
+    with session_factory() as session:
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=bob, paper_id=paper
+        ) is not None
+
+
+def test_only_one_executor_parses_when_two_threads_execute_the_same_run(
+    paper, pipeline, session_factory, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    runner, parser = pipeline
+    run = _start_run(session_factory, paper)
+    entered, release = Event(), Event()
+    original = parser.parse
+
+    def pause_parse(**kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(**kwargs)
+
+    monkeypatch.setattr(parser, "parse", pause_parse)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(runner.run_sync, run.id)
+        assert entered.wait(5)
+        second = executor.submit(runner.run_sync, run.id)
+        second.result(timeout=5)
+        release.set()
+        first.result(timeout=10)
+    assert parser.calls == 1
+
+
+def test_heartbeat_renews_the_lease_when_parsing_outlasts_the_interval(
+    paper, pipeline, session_factory, monkeypatch
+):
+    from threading import Event, current_thread, main_thread
+
+    import app.pipelines.pipeline as module
+
+    runner, parser = pipeline
+    run = _start_run(session_factory, paper)
+    renewed = Event()
+    original_renew = RunRepository.renew_lease
+    original_parse = parser.parse
+
+    def renew(self, *args, **kwargs):
+        result = original_renew(self, *args, **kwargs)
+        if current_thread() is not main_thread():
+            renewed.set()
+        return result
+
+    def parse(**kwargs):
+        assert renewed.wait(5)
+        return original_parse(**kwargs)
+
+    monkeypatch.setattr(module, "LEASE_SECONDS", 0.3)
+    monkeypatch.setattr(RunRepository, "renew_lease", renew)
+    monkeypatch.setattr(parser, "parse", parse)
+    runner.run_sync(run.id)
+    assert renewed.is_set()

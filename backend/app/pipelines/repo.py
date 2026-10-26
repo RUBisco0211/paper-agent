@@ -169,6 +169,12 @@ class RunRepository:
         record = self._session.get(RunRecord, run_id)
         return _to_run(record) if record else None
 
+    def get_many(self, run_ids: list[UUID]) -> dict[UUID, Run]:
+        records = self._session.scalars(
+            select(RunRecord).where(RunRecord.id.in_(run_ids))
+        ).all()
+        return {record.id: _to_run(record) for record in records}
+
     def active_for_paper(self, paper_id: UUID) -> Run | None:
         record = self._session.scalar(
             select(RunRecord)
@@ -290,11 +296,7 @@ class RunRepository:
         """Take the oldest active run and hold a lease on it."""
         record = self._session.scalar(
             select(RunRecord)
-            .where(
-                RunRecord.status.in_(
-                    [RunStatus.PENDING.value, RunStatus.RUNNING.value]
-                )
-            )
+            .where(RunRecord.status == RunStatus.PENDING.value)
             .order_by(RunRecord.created_at, RunRecord.id)
             .with_for_update(skip_locked=True)
             .limit(1),
@@ -308,12 +310,15 @@ class RunRepository:
         self._session.commit()
         return run_id
 
-    def renew_lease(self, run_id: UUID, *, lease_seconds: int) -> None:
-        record = self._session.get(RunRecord, run_id)
-        if record is None:
-            return
+    def renew_lease(self, run_id: UUID, *, lease_seconds: int) -> bool:
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status != RunStatus.RUNNING.value:
+            return False
         record.leased_until = _now() + timedelta(seconds=lease_seconds)
         self._session.commit()
+        return True
 
     def reclaim_expired(self) -> int:
         """Fail runs whose worker died, so the paper is not locked out forever."""
@@ -321,15 +326,26 @@ class RunRepository:
             select(RunRecord)
             .where(RunRecord.status == RunStatus.RUNNING.value)
             .where(RunRecord.leased_until.is_not(None))
-            .where(RunRecord.leased_until < _now()),
+            .where(RunRecord.leased_until < _now())
+            .with_for_update(skip_locked=True),
         ).all()
+        reclaimed = 0
         for record in records:
+            # A slow but live executor still holds its advisory lock. Never
+            # release the paper for another run while it can publish artifacts.
+            available = self._session.scalar(
+                text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {"key": f"paper-run:{record.id}"},
+            )
+            if not available:
+                continue
             record.status = RunStatus.FAILED.value
             record.error_message = "处理中断，请重试"
             record.finished_at = _now()
             record.leased_until = None
+            reclaimed += 1
         self._session.commit()
-        return len(records)
+        return reclaimed
 
     # Stage transitions -----------------------------------------------------
     def mark_stage_started(self, run_id: UUID, *, stage: RunStage) -> None:

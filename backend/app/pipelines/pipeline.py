@@ -11,9 +11,11 @@ import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Event, Thread
 from uuid import UUID
 
 import structlog
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.library.repo import PaperRepository
@@ -80,6 +82,52 @@ class RunPipeline:
         await asyncio.to_thread(self.run_sync, run_id)
 
     def run_sync(self, run_id: UUID) -> None:
+        # A session-level advisory lock survives stage commits, and is released
+        # by PostgreSQL if this executor's connection/process dies.
+        with (
+            self._session_factory() as guard,
+            guard.get_bind().connect() as connection,
+        ):
+            acquired = connection.scalar(
+                text("SELECT pg_try_advisory_lock(hashtextextended(:key, 0))"),
+                {"key": f"paper-run:{run_id}"},
+            )
+            if not acquired:
+                return
+            connection.commit()
+            stop = Event()
+            lost = Event()
+
+            def heartbeat() -> None:
+                while not stop.wait(LEASE_SECONDS / 3):
+                    try:
+                        with self._session_factory() as session:
+                            if not RunRepository(session).renew_lease(
+                                run_id, lease_seconds=LEASE_SECONDS
+                            ):
+                                lost.set()
+                                return
+                    except Exception as exc:
+                        lost.set()
+                        logger.error(
+                            "pipelines.run.heartbeat_failed",
+                            error_type=type(exc).__name__,
+                        )
+                        return
+
+            thread = Thread(target=heartbeat, daemon=True)
+            thread.start()
+            try:
+                self._run_owned(run_id, lost)
+            finally:
+                stop.set()
+                thread.join()
+                connection.execute(
+                    text("SELECT pg_advisory_unlock(hashtextextended(:key, 0))"),
+                    {"key": f"paper-run:{run_id}"},
+                )
+
+    def _run_owned(self, run_id: UUID, lost: Event) -> None:
         session = self._session_factory()
         try:
             runs = RunRepository(session)
@@ -97,11 +145,16 @@ class RunPipeline:
 
             stage = run.current_stage or RunStage.PARSE
             while stage is not None:
+                if lost.is_set():
+                    session.rollback()
+                    return
                 runs.mark_stage_started(run_id, stage=stage)
                 session.commit()
+                runs.renew_lease(run_id, lease_seconds=LEASE_SECONDS)
                 try:
                     self._run_stage(stage, papers=papers, chunks=chunks, paper=paper)
                 except AppError as exc:
+                    session.rollback()
                     runs.mark_stage_finished(run_id, stage=stage)
                     runs.finish_failure(run_id, error_message=exc.message)
                     session.commit()
@@ -113,6 +166,7 @@ class RunPipeline:
                     )
                     return
                 except Exception as exc:  # unexpected: stop and record it
+                    session.rollback()
                     runs.mark_stage_finished(run_id, stage=stage)
                     runs.finish_failure(run_id, error_message=type(exc).__name__)
                     session.commit()
@@ -123,15 +177,19 @@ class RunPipeline:
                         error_type=type(exc).__name__,
                     )
                     return
+                if lost.is_set():
+                    session.rollback()
+                    return
                 runs.mark_stage_finished(run_id, stage=stage)
                 session.commit()
                 stage = next_stage(stage)
 
+            papers.lock_paper(run.paper_id)
             runs.finish_success(run_id)
-            session.commit()
             self._grant_entries(
                 runs=runs, papers=papers, run_id=run_id, session=session
             )
+            session.commit()
             logger.info("pipelines.run.finished", run_id=str(run_id))
         finally:
             session.close()
@@ -246,9 +304,7 @@ class RunPipeline:
         if not paper.artifact_manifest_key:
             return False
         try:
-            manifest = json.loads(
-                self._storage.read_text(paper.artifact_manifest_key)
-            )
+            manifest = json.loads(self._storage.read_text(paper.artifact_manifest_key))
         except (FileNotFoundError, ValueError):
             return False
         if manifest.get("file_hash") != paper.file_hash:
@@ -279,9 +335,7 @@ class RunPipeline:
                 code=ErrorCode.IMPORT_ARTIFACT_INVALID,
                 status_code=502,
             )
-        manifest = json.loads(
-            self._storage.read_text(refreshed.artifact_manifest_key)
-        )
+        manifest = json.loads(self._storage.read_text(refreshed.artifact_manifest_key))
         return self._storage.read_bytes(manifest["files"][name]["key"])
 
     # Entries ---------------------------------------------------------------
@@ -298,15 +352,12 @@ class RunPipeline:
         if run is None:
             return
         for request in runs.requests_of_run(run_id):
-            entry = papers.link_paper(
-                user_id=request.user_id, paper_id=run.paper_id
-            )
+            entry = papers.link_paper(user_id=request.user_id, paper_id=run.paper_id)
             # The entry must exist first: a project holds the user's entries.
             if request.project_id is not None:
                 ProjectRepository(session).add_papers(
                     project_id=request.project_id, user_paper_ids=[entry.id]
                 )
-        session.commit()
 
     @contextmanager
     def _pdf_file(self, file_hash: str) -> Iterator[Path]:

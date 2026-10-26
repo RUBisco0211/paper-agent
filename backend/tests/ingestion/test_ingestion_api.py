@@ -39,7 +39,8 @@ def test_list_and_filter_library_entries(
     assert body["total"] == 2
     assert body["limit"] == 50
     assert body["offset"] == 0
-    assert [item["title"] for item in body["items"]] == ["paper", "paper"]
+    # Neither file has authoritative metadata; filenames are private input.
+    assert [item["title"] for item in body["items"]] == [None, None]
 
     paged = client.get(
         f"{api_prefix}/papers",

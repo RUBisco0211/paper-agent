@@ -91,3 +91,44 @@ def test_doi_import_tries_an_open_pdf_when_the_publisher_pdf_fails(
         "https://publisher.example/blocked.pdf",
         "https://example.org/open.pdf",
     ]
+
+
+def test_fetch_tries_the_next_source_when_the_first_returns_html(
+    session_factory, storage, make_pdf
+):
+    import tempfile
+
+    from app.literature_support.scholar.identifiers import parse_identifier
+    from app.literature_support.scholar.pdf_fetch import DownloadedPdf
+    from app.pipelines.download import DownloadService
+
+    class HtmlFirstFetcher(FakePdfFetcher):
+        def download(self, url, *, destination):
+            if "publisher" in url:
+                self.urls.append(url)
+                destination.write_bytes(b"<html>Sign in</html>")
+                return DownloadedPdf(path=destination, byte_size=20)
+            return super().download(url, destination=destination)
+
+    fetcher = HtmlFirstFetcher(make_pdf())
+    service = DownloadService(
+        session_factory=session_factory,
+        storage=storage,
+        fetcher=fetcher,
+        resolver=MetadataResolver(
+            [
+                FakeProvider(
+                    ProviderMetadata(
+                        source="fake", pdf_url="https://publisher.example/login"
+                    )
+                )
+            ]
+        ),
+        locator=FakeLocator(),
+    )
+    with tempfile.TemporaryDirectory() as directory:
+        result = service._fetch(
+            parse_identifier("10.1234/open"), staging=Path(directory) / "file.pdf"
+        )
+        assert result.source_url == "https://example.org/open.pdf"
+    assert len(fetcher.urls) == 2
