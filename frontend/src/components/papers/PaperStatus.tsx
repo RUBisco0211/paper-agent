@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/Badge"
-import type { Capabilities, ImportStatus } from "@/lib/api"
+import type { Capabilities, RunStatus } from "@/lib/api"
 
 type Status = "done" | "failed" | "pending" | "idle"
 
@@ -10,12 +10,12 @@ type Status = "done" | "failed" | "pending" | "idle"
  */
 export function paperStatus(
   capabilities: Pick<Capabilities, "has_source" | "has_parsed">,
-  importStatus?: ImportStatus | null,
+  runStatus?: RunStatus | null,
 ): Status {
-  if (importStatus === "failed") {
+  if (runStatus === "failed") {
     return "failed"
   }
-  if (importStatus === "queued" || importStatus === "running") {
+  if (runStatus === "pending" || runStatus === "running") {
     return "pending"
   }
   if (!capabilities.has_source) {
@@ -43,11 +43,11 @@ const VARIANT = {
 
 export function PaperStatusBadge({
   capabilities,
-  importStatus,
+  runStatus,
 }: {
   capabilities: Pick<Capabilities, "has_source" | "has_parsed">
-  importStatus?: ImportStatus | null
+  runStatus?: RunStatus | null
 }) {
-  const status = paperStatus(capabilities, importStatus)
+  const status = paperStatus(capabilities, runStatus)
   return <Badge variant={VARIANT[status]}>{LABEL[status]}</Badge>
 }

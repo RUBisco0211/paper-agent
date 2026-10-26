@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 
-
 from ..auth.depends import CurrentUser
 from ..platform.errors import ErrorCode, NotFoundError
 from ..platform.pagination import Page, PageParamsDep
@@ -123,7 +122,7 @@ def read_paper_block_image(
     "",
     response_model=UploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="上传 PDF 并开始入库",
+    summary="上传 PDF 并加入处理",
 )
 def upload_paper(
     user: CurrentUser,
@@ -135,7 +134,7 @@ def upload_paper(
         filename=file.filename,
         stream=file.file,
     )
-    return UploadResponse(import_id=started.id, status=started.status)
+    return UploadResponse(run_id=started.id, status=started.status.value)
 
 
 @router.get(

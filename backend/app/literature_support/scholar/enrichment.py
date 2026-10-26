@@ -13,7 +13,6 @@ from uuid import UUID
 
 import structlog
 
-from app.library.domain import MetadataStatus
 from app.library.repo import PaperRepository
 from app.literature_support.importing.text import detect_identifiers
 from app.literature_support.scholar.identifiers import Identifier, IdentifierType
@@ -130,23 +129,23 @@ class MetadataEnricher:
         self,
         paper_id: UUID,
         identifiers: tuple[Identifier, ...] = (),
-    ) -> MetadataStatus:
+    ) -> bool:
         """Recognize identifiers in the file, then resolve them online.
 
-        Returns the resulting status; it is persisted either way so a repeat
-        call does not query the network again for a settled answer.
+        Returns whether an answer was recorded. A settled answer leaves a
+        source entry behind, which is what stops further lookups.
         """
         paper = self._papers.get_paper(paper_id)
         if paper is None:
             raise AppError("论文不存在", code="paper_not_found", status_code=404)
         if paper.was_checked_for_metadata and paper.has_metadata:
-            return MetadataStatus.RECOGNIZED
+            return True
 
         if not identifiers:
             with self._storage.materialize(paper_pdf_key(paper.file_hash)) as path:
                 identifiers = tuple(self._identifiers_from(path))
         if not identifiers:
-            return self._record(paper_id, None, MetadataStatus.UNRECOGNIZED, None)
+            return self._record(paper_id, None, None)
 
         identifier = preferred_identifier(identifiers)
         outcome = self._resolver.resolve(identifier)
@@ -154,12 +153,12 @@ class MetadataEnricher:
             # A provider outage says nothing about the paper, so it leaves no
             # trace: the next attempt asks again. Only a definitive answer is
             # recorded, and that is what stops further lookups.
-            settled = outcome.status is not MetadataStatus.PROVIDER_FAILED
             return self._record(
                 paper_id,
                 None,
-                outcome.status,
-                [source_entry(identifier, outcome.source)] if settled else None,
+                [source_entry(identifier, outcome.source)]
+                if outcome.settled
+                else None,
             )
 
         metadata = outcome.metadata
@@ -173,7 +172,6 @@ class MetadataEnricher:
         return self._record(
             paper_id,
             metadata.bibliographic(),
-            outcome.status,
             [source_entry(identifier, outcome.source)],
             doi=doi,
             arxiv_id=arxiv_id,
@@ -190,12 +188,11 @@ class MetadataEnricher:
         self,
         paper_id: UUID,
         bibliographic: dict | None,
-        status: MetadataStatus,
         sources: list | None,
         *,
         doi: str | None = None,
         arxiv_id: str | None = None,
-    ) -> MetadataStatus:
+    ) -> bool:
         paper = self._papers.get_paper(paper_id)
         # Fill-only: recognition never erases what is already known.
         merged = dict((paper.bibliographic if paper else None) or {})
@@ -212,6 +209,6 @@ class MetadataEnricher:
         logger.info(
             "metadata.enriched",
             paper_id=str(paper_id),
-            status=status.value,
+            settled=sources is not None,
         )
-        return status
+        return sources is not None

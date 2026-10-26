@@ -83,7 +83,7 @@ def test_paper_detail_exposes_capabilities_and_pdf_info(
         "byte_size": body["pdf"]["byte_size"],
     }
     assert body["pdf"]["byte_size"] > 0
-    assert body["import_status"] == "ready"
+    assert body["run_status"] == "success"
 
 
 def test_pdf_endpoint_serves_the_original_file(

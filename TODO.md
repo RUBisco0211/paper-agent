@@ -89,6 +89,51 @@
 - **用户决定不再回测**：接近上传上限的大 PDF 资源压力及生产级 S3 部署；现有实测仅覆盖较小样本和本地 RustFS。生产部署仍须使用可用的 S3 兼容对象存储。
 - **依据**：0056
 
+## R10 入库记录模型重做（进行中，依据 0093、0094）
+
+### 数据层
+
+- [x] 迁移：删 `paper_imports`、`import_stages`
+- [x] 迁移：建 `downloads`（user_id / identifier_type / identifier / status / paper_id / run_id / source_url / error_message / 时间戳）
+- [x] 迁移：建 `runs`（paper_id / status / current_stage / stage_timings JSONB / error_message / leased_until / started_at / finished_at）
+- [x] 迁移：建部分唯一索引 `(paper_id) WHERE status IN ('pending','running')`
+- [x] 迁移：建 `user_runs`（user_id / run_id / paper_id）
+- [x] 迁移：`user_papers` 删 `ready`、删 `source`
+- [ ] 迁移：`chunk_metadata` 去 `artifact_manifest_key` 副本
+- [x] 迁移：`papers` 保留 byte_size / page_count / mineru_version / metadata_sources / updated_at
+- [x] ORM 与仓储：`downloads` 仓储、`runs` 仓储（含租约领取与过期回收）、`user_runs` 仓储
+- [x] 删除 `PaperSource` 枚举、`MetadataStatus` 枚举、`ProviderMetadata.metadata_status()`
+
+### 流程层
+
+- [x] 上传入口：算 hash → papers 建/复用 → 按 paper_id 挂进行中 run（含 pending）或新建 run + user_runs
+- [x] 导入入口：只建 downloads 行并返回，不下载
+- [x] download worker：下载 → hash → papers 建/复用（补 doi/arxiv_id）→ 挂 run → 回填 paper_id / run_id
+- [x] run worker：parse → chunk → embed，推进 current_stage 与 stage_timings
+- [x] parse 阶段入口校验产物 sha256，不符则重新解析（不报错）
+- [x] run 成功：按 paper_id 查 user_runs，逐个写入 user_papers
+- [x] 租约续期与过期回收
+- [x] 产物路径扁平化：删 `runs/{job_id}/`，删 `mineru_job_artifact_key` 与 `mineru_artifact_prefix`
+
+### 接口与前端
+
+- [x] 队列接口改为以 downloads 为行，串出关联 run
+- [x] 删前端 `ERROR_TEXT` 映射，直接显示后端 `error_message`
+- [x] 删除文献库对 `user_papers.ready` 的过滤
+
+### 测试
+
+- [x] 并发：两人同时导入同一 DOI 只产生一条 run
+- [x] 并发：上传与下载得到同一 hash 时合并为同一篇论文
+- [x] 失败：下载失败不建论文、不建 run，downloads 行保留
+- [x] 失败：run 失败时所有挂靠用户可见同一结果
+- [x] 崩溃：租约过期的 run 被判失败，续租的正常存活
+- [x] 自愈：产物被截断后重试，parse 重新执行并成功
+
+### 待办（用户明确不急）
+
+- [ ] 租约超时时长与失效判定的调优
+
 ## 全局约束（不重复，只指路）
 
 - 不做清单与后置清单：`AGENTS.md` 第 1 节

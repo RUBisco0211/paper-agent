@@ -80,7 +80,9 @@
 | 0089 | agent, security | 强制关闭文件 offloader 和目录提示，保留内建压缩；修正无能力工作区隔离与生命周期 | 当前 | [0089-no-file-offloader.md](decisions/0089-no-file-offloader.md) |
 | 0090 | security, retrieval, ingest | 上游错误不进响应/错误记录/日志，请求级只覆盖 read 超时；检索设置明确 SiliconFlow Key | 当前 | [0090-safe-embedding-errors.md](decisions/0090-safe-embedding-errors.md) |
 | 0091 | library, ingest, data | 文献独占书目一份、条目只存归属；文献必带原文；阶段名对应产物（metadata/parse/chunking/embedding） | 当前 | [0091-papers-own-bibliographic-facts.md](decisions/0091-papers-own-bibliographic-facts.md) |
-| 0092 | ingest, data, product | 一次入库=一条 paper_imports、一篇一条；四阶段 source/parse/chunk/embed；元数据不占流程；未完成不进列表 | 当前 | [0092-import-is-one-flow.md](decisions/0092-import-is-one-flow.md) |
+| 0092 | ingest, data, product | 一次入库=一条 paper_imports、一篇一条；四阶段 source/parse/chunk/embed；元数据不占流程；未完成不进列表 | 已被 0094 取代 | [0092-import-is-one-flow.md](decisions/0092-import-is-one-flow.md) |
+| 0093 | data, ingest, storage, frontend | 删 user_papers.source 等无读取方的字段；产物改按 file_hash 扁平覆盖写；错误文案只由后端提供 | 当前 | [0093-column-pruning-and-flat-artifact-paths.md](decisions/0093-column-pruning-and-flat-artifact-paths.md) |
+| 0094 | data, ingest, product | 下载(downloads)与处理(runs)分成两条记录；下载异步、按用户建行不按 URL 去重；阶段并入 runs；删 user_papers.ready；界面合并为一个队列 | 当前 | [0094-download-and-run-are-separate-stages.md](decisions/0094-download-and-run-are-separate-stages.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

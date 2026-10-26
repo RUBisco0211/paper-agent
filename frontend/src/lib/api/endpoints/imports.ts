@@ -1,26 +1,16 @@
 import type { ApiClient } from "../client"
-import type { ExternalDiscoveryResponse, ImportQueueItem, Page, PaperImport, SearchInput, SearchResponse, Uuid } from "@/types/business"
+import type { DownloadRead, ExternalDiscoveryResponse, ImportQueueItem, SearchInput, SearchResponse, Uuid } from "@/types/business"
 
 export function importEndpoints(client: ApiClient) {
   return {
-    /** Accepts a DOI, an arXiv id or their canonical links. */
-    start: (identifier: string, options: { project_id?: Uuid } = {}) =>
-      client.request<PaperImport>("/v1/imports", {
+    /** Accepts a DOI, an arXiv id or their canonical links. Records the request only. */
+    start: (identifier: string) =>
+      client.request<DownloadRead>("/v1/imports", {
         method: "POST",
-        json: { identifier, ...options },
+        json: { identifier },
       }),
 
-    /** Poll until the status is terminal (ready / pdf_unavailable / failed). */
-    status: (importId: Uuid) => client.request<PaperImport>(`/v1/imports/${importId}`),
-
-    list: (params: { limit?: number } = {}) =>
-      client.request<Page<PaperImport>>("/v1/imports", { query: { ...params } }),
     queue: () => client.request<{ items: ImportQueueItem[] }>("/v1/imports/queue"),
-    /** Re-run the stages that did not finish; completed artifacts are reused. */
-    retry: (importId: Uuid) =>
-      client.request<PaperImport>(`/v1/imports/${importId}/retry`, {
-        method: "POST",
-      }),
     approve: (sessionId: Uuid, candidateTokens: string[]) =>
       client.request<{ id: Uuid; count: number }>("/v1/imports/approvals", {
         method: "POST", json: { session_id: sessionId, candidate_tokens: candidateTokens },

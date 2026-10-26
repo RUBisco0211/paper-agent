@@ -1,7 +1,6 @@
 import hashlib
 import json
 from collections.abc import Callable, Iterator
-from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -11,14 +10,14 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.library.depends import (
     get_paper_library_service,
 )
-from app.literature_support.scholar.enrichment import MetadataEnricher
-from app.literature_support.scholar.metadata import build_default_resolver
-from app.platform.tasks import InlineTaskScheduler
 from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
 from app.library.service import PaperLibraryService
-from app.platform.storage import ObjectStorage, mineru_job_artifact_key
-from app.imports.domain import ImportStage, ImportStatus, StageStatus
-from app.imports.repo import ImportRepository, ImportStageRecordOrm
+from app.literature_support.scholar.enrichment import MetadataEnricher
+from app.literature_support.scholar.metadata import build_default_resolver
+from app.pipelines.domain import RunStage, RunStatus
+from app.pipelines.repo import RunRecord, RunRepository
+from app.platform.storage import ObjectStorage, mineru_artifact_key
+from app.platform.tasks import InlineTaskScheduler
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
@@ -78,10 +77,10 @@ def test_paper_blocks_are_filtered_and_private(
             },
         ],
     }
-    key = mineru_job_artifact_key(paper.file_hash, "test", "blocks_index.json")
+    key = mineru_artifact_key(paper.file_hash, "blocks_index.json")
     payload = json.dumps(index).encode()
     storage.put_bytes(key, payload)
-    content_key = mineru_job_artifact_key(paper.file_hash, "test", "content_list.json")
+    content_key = mineru_artifact_key(paper.file_hash, "content_list.json")
     content_payload = json.dumps(
         [
             {"type": "text", "text": "Body", "page_idx": 0},
@@ -101,10 +100,10 @@ def test_paper_blocks_are_filtered_and_private(
         ]
     ).encode()
     storage.put_bytes(content_key, content_payload)
-    image_key = mineru_job_artifact_key(paper.file_hash, "test", "images/figure-1.png")
+    image_key = mineru_artifact_key(paper.file_hash, "images/figure-1.png")
     image_payload = b"\x89PNG\r\n\x1a\npreview"
     storage.put_bytes(image_key, image_payload)
-    manifest_key = mineru_job_artifact_key(paper.file_hash, "test", "manifest.json")
+    manifest_key = mineru_artifact_key(paper.file_hash, "manifest.json")
     storage.put_bytes(
         manifest_key,
         json.dumps(
@@ -241,38 +240,48 @@ def _upload(
     )
 
 
-def test_upload_stays_in_the_queue_until_every_stage_succeeds(
+def test_a_failed_upload_leaves_no_entry_in_the_library(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
     db_session: Session,
+    session_factory: sessionmaker[Session],
+    storage: ObjectStorage,
 ) -> None:
-    """Without a working parser the upload never becomes a library entry."""
+    """Without a working parser the paper exists but nobody owns it yet."""
     token = register_user(email="reader@example.com")["access_token"]
 
     response = _upload(client, api_prefix, token, make_pdf())
 
     assert response.status_code == 202, response.text
     body = response.json()
-    assert body["status"] == ImportStatus.FAILED.value
+    # The request only records the run; Failing here would need a worker.
+    assert body["status"] == RunStatus.PENDING.value
 
-    record = ImportRepository(db_session).get(UUID(body["import_id"]))
-    assert record is not None
-    stages = {stage.stage: stage for stage in record.stages}
-    assert set(stages) == set(ImportStage)
-    assert stages[ImportStage.SOURCE].status is StageStatus.SUCCEEDED
-    assert stages[ImportStage.PARSE].status is StageStatus.FAILED
-    assert stages[ImportStage.PARSE].error_code == "provider_not_configured"
-    # A blocking failure stops later stages instead of pretending they ran.
-    assert stages[ImportStage.CHUNK].status is StageStatus.PENDING
-    assert stages[ImportStage.EMBED].status is StageStatus.PENDING
+    from app.literature_support.embedding import build_embedding_adapter
+    from app.literature_support.importing.mineru import MineruParser
+    from app.pipelines.pipeline import RunPipeline
 
-    # The paper exists and the entry is already recorded, but the library hides
-    # it until every stage succeeds.
+    RunPipeline(
+        scheduler=InlineTaskScheduler(),
+        session_factory=session_factory,
+        storage=storage,
+        mineru=MineruParser(
+            base_url=None, api_key=None, timeout_seconds=30
+        ),
+        embeddings=build_embedding_adapter(),
+    ).run_sync(UUID(body["run_id"]))
+
+    run = RunRepository(db_session).get(UUID(body["run_id"]))
+    assert run is not None
+    assert run.status is RunStatus.FAILED
+    assert run.current_stage is RunStage.PARSE
+    assert run.error_message is not None
+
+    # The paper and its file exist; the entry does not, because no run succeeded.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
-    entry = db_session.scalar(select(UserPaperRecord))
-    assert entry is not None and entry.ready is False
+    assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 0
     library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert library["total"] == 0
 
@@ -290,16 +299,16 @@ def test_a_finished_upload_appears_in_the_library(
     response = _upload(client, api_prefix, token, make_pdf())
 
     assert response.status_code == 202, response.text
-    record = ImportRepository(db_session).get(UUID(response.json()["import_id"]))
-    assert record is not None and record.status is ImportStatus.READY
-    assert all(stage.status is StageStatus.SUCCEEDED for stage in record.stages)
+    run = RunRepository(db_session).get(UUID(response.json()["run_id"]))
+    assert run is not None and run.status is RunStatus.SUCCESS
+    assert run.current_stage is None
 
     library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert library["total"] == 1
     assert library["items"][0]["capabilities"]["has_parsed"] is True
 
 
-def test_duplicate_upload_reuses_paper_and_import(
+def test_a_second_upload_of_the_same_file_reuses_the_paper(
     client: TestClient,
     api_prefix: str,
     register_user,
@@ -315,11 +324,11 @@ def test_duplicate_upload_reuses_paper_and_import(
 
     assert first.status_code == 202
     assert second.status_code == 202
-    assert first.json()["import_id"] == second.json()["import_id"]
-    # One paper, one import, one entry: the second upload changes nothing.
+    # One paper and one entry: the second upload changes nothing.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 1
-    assert db_session.scalar(select(func.count(ImportStageRecordOrm.id))) == 4
+    # The finished run was not repeated just because a file was uploaded again.
+    assert db_session.scalar(select(func.count(RunRecord.id))) == 1
 
 
 def test_two_users_sharing_a_pdf_stay_isolated(
@@ -338,7 +347,8 @@ def test_two_users_sharing_a_pdf_stay_isolated(
     second = _upload(client, api_prefix, second_user["access_token"], pdf)
 
     assert first.status_code == 202 and second.status_code == 202
-    # One shared paper, two separate imports, two independent entries.
+    # One shared paper and two independent entries; the second upload joined
+    # the run that was already active instead of starting another.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 2
 
@@ -406,19 +416,11 @@ def test_upload_enforces_size_and_page_limits(
                     resolver=build_default_resolver(),
                     session_factory=session_factory,
                 )
-                from app.literature_support.importing.pipeline import (
-                    build_import_service,
-                )
+                from app.pipelines.runs import RunService
 
-                importer = build_import_service(
-                    session=session,
-                    storage=storage,
-                    session_factory=session_factory,
-                    scheduler=InlineTaskScheduler(),
-                )
                 yield PaperLibraryService(
                     papers,
-                    importer,
+                    RunService(session_factory=session_factory),
                     enrichment,
                     storage,
                     max_pdf_bytes=max_pdf_bytes,

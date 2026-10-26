@@ -1,7 +1,7 @@
 import hashlib
 import json
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 from uuid import UUID
@@ -15,22 +15,18 @@ from app.literature_support.importing.blocks import (
 from app.literature_support.importing.pdf import ensure_pdf_magic, inspect_pdf
 from app.literature_support.importing.text import detect_identifiers
 from app.literature_support.scholar.identifiers import Identifier
-from app.literature_support.scholar.metadata import ProviderMetadata
-from app.literature_support.scholar.pdf_fetch import PdfFetcher
-from app.imports.domain import PaperImport
+from app.pipelines.domain import Run
 
 from ..platform.config import settings as app_settings
 from ..platform.errors import AppError, ErrorCode, NotFoundError
 from ..platform.storage import ObjectStorage, paper_pdf_key
 from .domain import (
     Capabilities,
-    MetadataStatus,
     Paper,
-    PaperSource,
     UserPaper,
     placeholder_title_from_filename,
 )
-from .ports import ImportStarter, MetadataEnricherPort
+from .ports import MetadataEnricherPort, RunStarter
 from .repo import PaperRepository
 
 logger = structlog.get_logger(__name__)
@@ -45,7 +41,7 @@ class LibraryEntry:
     user_paper: UserPaper
     paper: Paper | None
     capabilities: Capabilities
-    latest_import: PaperImport | None
+    latest_run: Run | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +59,7 @@ class PaperLibraryService:
     def __init__(
         self,
         papers: PaperRepository,
-        imports: ImportStarter,
+        runs: RunStarter,
         enrichment: MetadataEnricherPort,
         storage: ObjectStorage,
         *,
@@ -71,7 +67,7 @@ class PaperLibraryService:
         max_pdf_pages: int | None = None,
     ) -> None:
         self._papers = papers
-        self._imports = imports
+        self._runs = runs
         self._enrichment = enrichment
         self._storage = storage
         self._max_pdf_bytes = max_pdf_bytes or app_settings.max_pdf_bytes
@@ -228,12 +224,12 @@ class PaperLibraryService:
         user_id: UUID,
         filename: str | None,
         stream: BinaryIO,
-    ) -> PaperImport:
-        """Store a source file and start the import that makes it usable.
+    ) -> Run:
+        """Store a source file and join it to the paper's processing.
 
-        The file hash decides paper identity, so a file already in the library
-        reuses its paper and its finished import. Nothing is added to the user's
-        library until the import is ready.
+        The file hash decides paper identity, so a file already stored reuses
+        its paper. The user joins the paper's active run or starts one; either
+        way the library entry appears only when a run succeeds.
         """
         stored = self._store_stream(stream)
         paper = self._papers.get_or_add_paper(
@@ -244,14 +240,9 @@ class PaperLibraryService:
         self._title_from_filename(paper.id, paper, filename)
         self._papers.commit()
         self._enrich_quietly(paper.id, stored.detected_identifiers)
-        started = self._imports.start_for_paper(
-            paper,
-            initiated_by=user_id,
-            identifier_type="upload",
-            identifier=filename or stored.file_hash,
-        )
+        run = self._runs.request(user_id=user_id, paper_id=paper.id)
         self._papers.expire_all()
-        return started
+        return run
 
     def _title_from_filename(
         self,
@@ -384,10 +375,10 @@ class PaperLibraryService:
         stream: BinaryIO,
         filename: str | None,
     ) -> Paper:
-        """Store a source file and return its paper, without starting an import.
+        """Store a source file and return its paper, without starting a run.
 
-        The identifier import owns the record that tracks this flow, so it must
-        not create a second one through the upload path.
+        The download owns the request that carries this file, so it must not
+        open a second path into the run by going through the upload entry point.
         """
         stored = self._store_stream(stream)
         paper = self._papers.get_or_add_paper(
@@ -397,7 +388,7 @@ class PaperLibraryService:
         )
         self._title_from_filename(paper.id, paper, filename or stored.file_hash)
         self._papers.commit()
-        # Look the bibliographic facts up beside the stages, never inside them.
+        # Look the bibliographic facts up beside the run, never inside it.
         self._enrich_quietly(paper.id, stored.detected_identifiers)
         return paper
 
@@ -409,11 +400,7 @@ class PaperLibraryService:
         )
         if existing is not None:
             return existing
-        created = self._papers.add_user_paper(
-            user_id=user_id,
-            paper_id=paper_id,
-            source=PaperSource.UPLOAD,
-        )
+        created = self._papers.add_user_paper(user_id=user_id, paper_id=paper_id)
         logger.info(
             "service.library.entry_created",
             user_id=str(user_id),
@@ -428,7 +415,7 @@ class PaperLibraryService:
             for paper_id in paper_ids
             if (paper := self._papers.get_paper(paper_id)) is not None
         }
-        imports = self._imports.latest_imports_for_papers(paper_ids)
+        runs = self._runs.latest_for_papers(paper_ids)
 
         return [
             LibraryEntry(
@@ -437,7 +424,7 @@ class PaperLibraryService:
                 capabilities=user_paper.capabilities(
                     papers.get(user_paper.paper_id),
                 ),
-                latest_import=imports.get(user_paper.paper_id),
+                latest_run=runs.get(user_paper.paper_id),
             )
             for user_paper in user_papers
         ]

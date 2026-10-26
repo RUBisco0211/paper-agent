@@ -3,7 +3,8 @@ from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
-from app.imports.repo import PaperImportRecord
+from app.pipelines.domain import DownloadStatus
+from app.pipelines.repo import DownloadRecord
 from app.platform.config import settings
 from app.platform.security import create_candidate_token
 from tests.conftest import auth_headers
@@ -51,7 +52,9 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
 
     def fake_start(self, *, user_id, identifier_text, project_id=None):
         imports.append(identifier_text)
-        return SimpleNamespace(id=uuid4(), identifier=identifier_text, status="queued")
+        return SimpleNamespace(
+            id=uuid4(), identifier=identifier_text, status=DownloadStatus.PENDING
+        )
 
     monkeypatch.setattr(ImportService, "start", fake_start)
     payload = {"user_id": owner["user"]["id"], "session_id": session_id}
@@ -132,9 +135,9 @@ def test_import_queue_contains_only_the_current_users_imports(
     owner = register_user(email="queue-owner@example.com")
     stranger = register_user(email="queue-stranger@example.com")
     db_session.add_all([
-        PaperImportRecord(
-            initiated_by=UUID(user["user"]["id"]), identifier_type="doi",
-            identifier=identifier, status="queued",
+        DownloadRecord(
+            user_id=UUID(user["user"]["id"]), identifier_type="doi",
+            identifier=identifier, status="pending",
         )
         for user, identifier in (
             (owner, "10.1234/owner"), (stranger, "10.1234/stranger")
@@ -172,14 +175,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"session_id": session_id, "candidate_tokens": [token]},
     )
     assert approval.status_code == 201
-    from app.imports.service import ImportService
-
-    # The batch only queues; the download belongs to the worker. Letting the
-    # worker run would finish the import, so both stages stay pending here.
-    monkeypatch.setattr(ImportService, "acquire", lambda self, import_id: None)
-    from app.literature_support.importing.pipeline import ImportPipeline
-
-    monkeypatch.setattr(ImportPipeline, "run_sync", lambda self, import_id: None)
+    # The batch only records the requests; the worker owns fetching them, so
+    # without a worker the downloads stay pending.
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     result = client.post(
         f"{api_prefix}/internal/import-approved",
@@ -187,5 +184,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"user_id": owner["user"]["id"], "session_id": session_id},
     )
     assert result.status_code == 200
-    # The batch only records the import; the worker picks it up afterwards.
-    assert result.json()["results"][0]["status"] in {"queued", "running"}
+    # The batch only records the request. Whether the worker then succeeds is
+    # the queue's business, so the result only has to name the request.
+    # The arXiv DOI is normalized to the arXiv id it names.
+    assert result.json()["results"][0]["identifier"] == "2604.00722"
+    assert result.json()["results"][0]["download_id"]

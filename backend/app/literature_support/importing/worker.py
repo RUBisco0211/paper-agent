@@ -1,18 +1,17 @@
-"""Run queued imports outside the HTTP process."""
+"""Run queued downloads and queued runs outside the HTTP process."""
 
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 
-from app.imports.repo import ImportRepository
-from app.literature_support.embedding import build_embedding_adapter
-from app.literature_support.importing.mineru import MineruParser
-from app.literature_support.importing.pipeline import (
-    ImportPipeline,
-    build_import_pipeline,
-    build_source_acquirer,
-)
+from app.literature_support.scholar.enrichment import MetadataEnricher
+from app.literature_support.scholar.metadata import build_default_resolver
+from app.literature_support.scholar.pdf_fetch import PdfFetcher
+from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+from app.pipelines.download import DownloadService
+from app.pipelines.pipeline import LEASE_SECONDS, RunPipeline, build_run_pipeline
+from app.pipelines.repo import RunRepository
 from app.platform.config import settings
 from app.platform.database import SessionFactory, SessionLocal
 from app.platform.logging import configure_logging
@@ -22,70 +21,93 @@ from app.platform.tasks import InlineTaskScheduler
 logger = structlog.get_logger(__name__)
 
 
-class ImportWorker:
+class PipelineWorker:
+    """One loop over both queues: fetch files first, then process papers."""
+
     def __init__(
-        self, *, session_factory: SessionFactory, pipeline: ImportPipeline
+        self,
+        *,
+        session_factory: SessionFactory,
+        downloads: DownloadService,
+        runs: RunPipeline,
     ) -> None:
         self._session_factory = session_factory
-        self._pipeline = pipeline
+        self._downloads = downloads
+        self._runs = runs
 
-    def recover_interrupted(self) -> int:
-        with self._session_factory() as session:
-            recovered = ImportRepository(session).recover_interrupted()
+    def recover(self) -> None:
+        """Return interrupted downloads to the queue and fail dead runs."""
+        recovered = self._downloads.recover_interrupted()
         if recovered:
-            logger.warning("worker.imports_recovered", count=recovered)
-        return recovered
-
-    def run_once(self) -> bool:
+            logger.warning("worker.downloads_recovered", count=recovered)
         with self._session_factory() as session:
-            import_id = ImportRepository(session).claim_next_queued()
-        if import_id is None:
-            return False
-        self._pipeline.run_sync(import_id)
-        return True
+            expired = RunRepository(session).reclaim_expired()
+        if expired:
+            logger.warning("worker.runs_reclaimed", count=expired)
 
-    def run_batch(self, *, max_concurrent_imports: int) -> int:
-        if max_concurrent_imports < 1:
-            raise ValueError("max_concurrent_imports must be positive")
-        import_ids = []
-        for _ in range(max_concurrent_imports):
-            with self._session_factory() as session:
-                import_id = ImportRepository(session).claim_next_queued()
-            if import_id is None:
+    def run_downloads(self, *, limit: int) -> int:
+        done = 0
+        for _ in range(limit):
+            download_id = self._downloads.claim_next()
+            if download_id is None:
                 break
-            import_ids.append(import_id)
-        if not import_ids:
+            self._downloads.run(download_id)
+            done += 1
+        return done
+
+    def run_runs(self, *, concurrency: int) -> int:
+        run_ids: list = []
+        for _ in range(concurrency):
+            with self._session_factory() as session:
+                run_id = RunRepository(session).claim_next(
+                    lease_seconds=LEASE_SECONDS
+                )
+            if run_id is None:
+                break
+            run_ids.append(run_id)
+        if not run_ids:
             return 0
-        with ThreadPoolExecutor(max_workers=max_concurrent_imports) as executor:
+        with ThreadPoolExecutor(max_workers=len(run_ids)) as executor:
             futures = [
-                executor.submit(self._pipeline.run_sync, import_id)
-                for import_id in import_ids
+                executor.submit(self._runs.run_sync, run_id) for run_id in run_ids
             ]
             for future in futures:
                 future.result()
-        return len(import_ids)
+        return len(run_ids)
 
 
 def main() -> None:
     configure_logging()
     storage = get_object_storage()
-    pipeline = build_import_pipeline(
+    resolver = build_default_resolver()
+    downloads = DownloadService(
+        session_factory=SessionLocal,
+        storage=storage,
+        fetcher=PdfFetcher(max_bytes=settings.max_pdf_bytes),
+        resolver=resolver,
+        locator=DoiPdfLocator(),
+        # A downloaded paper deserves its bibliographic facts just like an
+        # uploaded one; the lookup runs beside the run, never inside it.
+        enrichment=MetadataEnricher(
+            storage=storage,
+            resolver=resolver,
+            session_factory=SessionLocal,
+        ),
+    )
+    runs = build_run_pipeline(
         storage=storage,
         session_factory=SessionLocal,
         scheduler=InlineTaskScheduler(),
-        # Identifier imports need the downloader here: the API process only
-        # records the import and the worker owns every stage.
-        acquirer=build_source_acquirer(
-            session_factory=SessionLocal,
-            storage=storage,
-            scheduler=InlineTaskScheduler(),
-        ),
     )
-    worker = ImportWorker(session_factory=SessionLocal, pipeline=pipeline)
-    worker.recover_interrupted()
+    worker = PipelineWorker(
+        session_factory=SessionLocal, downloads=downloads, runs=runs
+    )
+    worker.recover()
     logger.info("worker.started")
     while True:
-        if not worker.run_batch(max_concurrent_imports=settings.import_concurrency):
+        fetched = worker.run_downloads(limit=settings.import_concurrency)
+        processed = worker.run_runs(concurrency=settings.import_concurrency)
+        if not fetched and not processed:
             time.sleep(0.5)
 
 

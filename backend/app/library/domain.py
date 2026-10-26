@@ -1,29 +1,11 @@
 """Paper library domain: global Paper facts and user-visible entries."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
 PDF_MAGIC = b"%PDF-"
 TITLE_MAX_LENGTH = 512
-
-
-class PaperSource(StrEnum):
-    UPLOAD = "upload"
-    DOI = "doi"
-    ARXIV = "arxiv"
-    MANUAL = "manual"
-
-
-class MetadataStatus(StrEnum):
-    """How complete the bibliographic record currently is."""
-
-    RECOGNIZED = "recognized"
-    PARTIAL = "partial"
-    UNRECOGNIZED = "unrecognized"
-    PROVIDER_FAILED = "provider_failed"
-    USER_PROVIDED = "user_provided"
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,9 +83,7 @@ class UserPaper:
     id: UUID
     user_id: UUID
     paper_id: UUID
-    source: PaperSource = PaperSource.UPLOAD
-    #: Whether the import finished; unfinished entries stay out of the library.
-    ready: bool = False
+    #: Present means usable: entries are written only once a run succeeded.
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

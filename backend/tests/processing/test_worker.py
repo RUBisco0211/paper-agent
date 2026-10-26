@@ -1,157 +1,212 @@
-from concurrent.futures import ThreadPoolExecutor
-from threading import Lock
-from uuid import UUID
+"""The worker drains downloads first, then runs, and reclaims dead runs."""
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.imports.domain import ImportStage, ImportStatus, StageStatus
-from app.imports.queue import ImportQueueService
-from app.imports.repo import ImportRepository
 from app.library.repo import PaperRepository
-from app.literature_support.importing.worker import ImportWorker
-from app.platform.tasks import ApiTaskScheduler
+from app.pipelines.domain import DownloadStatus, RunStage, RunStatus
+from app.pipelines.repo import DownloadRepository, RunRepository
 
 
-class RecordingPipeline:
-    def __init__(self) -> None:
-        self.imports: list[UUID] = []
-
-    def run_sync(self, import_id: UUID) -> None:
-        self.imports.append(import_id)
+@pytest.fixture(autouse=True)
+def _clean(clean_tables) -> None:
+    """Each case starts from an empty database."""
 
 
-def _user_id(client, api_prefix: str, token: str) -> UUID:
-    return UUID(
-        client.get(f"{api_prefix}/auth/me", headers={"Authorization": f"Bearer {token}"})
-        .json()["id"]
-    )
-
-
-def _queued_import(
-    db_session: Session,
-    *,
-    initiated_by: UUID,
-    identifier: str,
-    file_hash: str,
-    page_count: int = 1,
-) -> UUID:
-    """A paper with a stored file and an import that still needs its stages."""
-    papers = PaperRepository(db_session)
-    paper = papers.get_or_add_paper(
-        file_hash=file_hash, byte_size=100, page_count=page_count
-    )
-    imports = ImportRepository(db_session)
-    record = imports.add(
-        initiated_by=initiated_by,
-        identifier_type="upload",
-        identifier=identifier,
-    )
-    imports.bind_paper(record.id, paper.id)
-    imports.mark_stage_succeeded(record.id, stage=ImportStage.SOURCE)
-    db_session.commit()
-    return record.id
-
-
-def test_worker_runs_distinct_imports_concurrently_when_capacity_is_two(
-    session_factory: sessionmaker[Session],
-    db_session: Session,
-    register_user,
-    client,
-    api_prefix,
-) -> None:
-    token = register_user(email="parallel-worker@example.com")["access_token"]
-    user_id = _user_id(client, api_prefix, token)
-    import_ids = [
-        _queued_import(
-            db_session,
-            initiated_by=user_id,
-            identifier=f"{count}.pdf",
-            file_hash=f"{count}" * 64,
-            page_count=count,
+def _add_paper(session_factory: sessionmaker[Session]) -> object:
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="a" * 64, byte_size=100, page_count=1
         )
-        for count in (1, 2)
-    ]
-
-    observed: list[UUID] = []
-    lock = Lock()
-
-    class ParallelPipeline:
-        def run_sync(self, import_id: UUID) -> None:
-            with lock:
-                observed.append(import_id)
-
-    worker = ImportWorker(
-        session_factory=session_factory, pipeline=ParallelPipeline()
-    )
-    assert worker.run_batch(max_concurrent_imports=2) == 2
-    assert sorted(observed) == sorted(import_ids)
+        session.commit()
+        return paper
 
 
-def test_api_scheduler_leaves_the_stages_to_the_worker() -> None:
-    submitted: list[str] = []
-
-    class RecordingScheduler:
-        def submit(self, factory, *, name: str) -> None:
-            submitted.append(name)
-
-    scheduler = ApiTaskScheduler(RecordingScheduler())
-    scheduler.submit(lambda: None, name="import:one")
-    scheduler.submit(lambda: None, name="other:two")
-
-    assert submitted == ["other:two"]
-
-
-def test_worker_claims_a_queued_import(
+def test_a_run_carries_its_lease_so_a_dead_worker_is_detectable(
     session_factory: sessionmaker[Session],
-    db_session: Session,
-    register_user,
-    client,
-    api_prefix,
 ) -> None:
-    token = register_user(email="worker@example.com")["access_token"]
-    user_id = _user_id(client, api_prefix, token)
-    queued = _queued_import(
-        db_session,
-        initiated_by=user_id,
-        identifier="worker.pdf",
-        file_hash="w" * 64,
-    )
-    pipeline = RecordingPipeline()
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        runs.add(paper.id)
+        session.commit()
 
-    worker = ImportWorker(session_factory=session_factory, pipeline=pipeline)
+    with session_factory() as session:
+        claimed = RunRepository(session).claim_next(lease_seconds=60)
 
-    assert worker.run_once() is True
-    assert pipeline.imports == [queued]
+    with session_factory() as session:
+        run = RunRepository(session).get(claimed)
+        assert run is not None
+        assert run.status is RunStatus.RUNNING
+        assert run.leased_until is not None
+        assert run.leased_until > datetime.now(UTC)
 
 
-def test_worker_requeues_an_interrupted_import_when_it_restarts(
+def test_an_expired_lease_is_failed_so_the_paper_can_run_again(
     session_factory: sessionmaker[Session],
-    db_session: Session,
-    register_user,
-    client,
-    api_prefix,
 ) -> None:
-    token = register_user(email="restart@example.com")["access_token"]
-    user_id = _user_id(client, api_prefix, token)
-    import_id = _queued_import(
-        db_session,
-        initiated_by=user_id,
-        identifier="restart.pdf",
-        file_hash="r" * 64,
-    )
-    repository = ImportRepository(db_session)
-    repository.mark_stage_running(import_id, stage=ImportStage.PARSE)
-    db_session.commit()
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        run = runs.add(paper.id)
+        session.commit()
 
-    worker = ImportWorker(
-        session_factory=session_factory, pipeline=RecordingPipeline()
-    )
-    worker.recover_interrupted()
-    db_session.expire_all()
+    with session_factory() as session:
+        RunRepository(session).claim_next(lease_seconds=60)
 
-    record = ImportRepository(db_session).get(import_id)
-    assert record is not None
-    assert record.status is ImportStatus.QUEUED
-    parse = record.stage(ImportStage.PARSE)
-    assert parse is not None and parse.status is StageStatus.PENDING
+    # Simulate a worker that stopped renewing its lease.
+    from app.pipelines.repo import RunRecord
+
+    with session_factory() as session:
+        record = session.get(RunRecord, run.id)
+        assert record is not None
+        record.leased_until = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+
+    with session_factory() as session:
+        assert RunRepository(session).reclaim_expired() == 1
+
+    with session_factory() as session:
+        reclaimed = RunRepository(session).get(run.id)
+        assert reclaimed is not None
+        assert reclaimed.status is RunStatus.FAILED
+        assert reclaimed.error_message is not None
+
+
+def test_a_renewed_lease_keeps_its_run_alive(
+    session_factory: sessionmaker[Session],
+) -> None:
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        RunRepository(session).add(paper.id)
+        session.commit()
+
+    with session_factory() as session:
+        runs = RunRepository(session)
+        run_id = runs.claim_next(lease_seconds=60)
+    with session_factory() as session:
+        RunRepository(session).renew_lease(run_id, lease_seconds=60)
+
+    with session_factory() as session:
+        assert RunRepository(session).reclaim_expired() == 0
+
+    with session_factory() as session:
+        run = RunRepository(session).get(run_id)
+        assert run is not None
+        assert run.status is RunStatus.RUNNING
+
+
+def test_only_one_run_per_paper_can_be_active(
+    session_factory: sessionmaker[Session],
+) -> None:
+    """A second starter loses the race instead of doubling the work."""
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        first = runs.add(paper.id)
+        session.commit()
+
+    with session_factory() as session:
+        active = RunRepository(session).active_for_paper(paper.id)
+        assert active is not None
+        assert active.id == first.id
+
+
+def test_a_run_moves_to_the_next_stage_only_after_the_current_one(
+    session_factory: sessionmaker[Session],
+) -> None:
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        run = runs.add(paper.id)
+        session.commit()
+        assert run.current_stage is RunStage.PARSE
+
+        runs.mark_stage_started(run.id, stage=RunStage.PARSE)
+        runs.mark_stage_finished(run.id, stage=RunStage.PARSE)
+        runs.finish_success(run.id)
+        session.commit()
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(run.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+        assert finished.current_stage is None
+        timing = finished.timing(RunStage.PARSE)
+        assert timing.started_at is not None
+        assert timing.finished_at is not None
+
+
+def test_a_download_is_claimed_once(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        downloads = DownloadRepository(session)
+        record = downloads.add(
+            user_id=_user_id(session), identifier_type="doi", identifier="10.1/x"
+        )
+        session.commit()
+        download_id = record.id
+
+    with session_factory() as session:
+        assert DownloadRepository(session).claim_next() == download_id
+    with session_factory() as session:
+        assert DownloadRepository(session).claim_next() is None
+
+
+def test_an_interrupted_download_returns_to_the_queue(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        downloads = DownloadRepository(session)
+        downloads.add(
+            user_id=_user_id(session), identifier_type="doi", identifier="10.1/y"
+        )
+        session.commit()
+
+    with session_factory() as session:
+        DownloadRepository(session).claim_next()
+    with session_factory() as session:
+        assert DownloadRepository(session).recover_interrupted() == 1
+    with session_factory() as session:
+        assert DownloadRepository(session).claim_next() is not None
+
+
+def test_a_failed_download_keeps_its_row_and_reason(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        downloads = DownloadRepository(session)
+        record = downloads.add(
+            user_id=_user_id(session), identifier_type="doi", identifier="10.1/z"
+        )
+        session.commit()
+
+    with session_factory() as session:
+        repository = DownloadRepository(session)
+        repository.finish_failure(record.id, error_message="没有找到可用的原文")
+        session.commit()
+
+    with session_factory() as session:
+        stored = DownloadRepository(session).get(record.id)
+        assert stored is not None
+        assert stored.status is DownloadStatus.FAILED
+        assert stored.error_message == "没有找到可用的原文"
+        assert stored.run_id is None
+
+
+def _user_id(session: Session):
+    from app.auth.repo import UserRecord
+
+    user = session.query(UserRecord).first()
+    if user is None:
+        user = UserRecord(
+            email=f"worker-{datetime.now(UTC).timestamp()}@example.com",
+            password_hash="x",
+            display_name="Worker",
+        )
+        session.add(user)
+        session.flush()
+    return user.id

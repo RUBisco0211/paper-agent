@@ -17,7 +17,6 @@ import { Spinner } from "@/components/ui/Spinner"
 import { Textarea } from "@/components/ui/Textarea"
 import { AddToProjectMenu } from "@/components/papers/AddToProjectMenu"
 import { PaperStatusBadge } from "@/components/papers/PaperStatus"
-import { PAPER_SOURCE_LABEL } from "@/types/business"
 import { useApi } from "@/components/providers/ApiProvider"
 import { useAgentUi } from "@/components/providers/AgentUiProvider"
 import { describeError, notifyError } from "@/lib/errors"
@@ -39,8 +38,8 @@ export function PaperDetailSheet({
     queryFn: () => api.library.detail(paperId as string),
     enabled: Boolean(paperId),
     refetchInterval: (query) => {
-      const status = query.state.data?.import_status
-      return status === "queued" || status === "running" ? 1500 : false
+      const status = query.state.data?.run_status
+      return status === "pending" || status === "running" ? 1500 : false
     },
   })
 
@@ -88,9 +87,8 @@ export function PaperDetailSheet({
               <div className="flex flex-wrap items-center gap-2">
                 <PaperStatusBadge
                   capabilities={paper.capabilities}
-                  importStatus={paper.import_status}
+                  runStatus={paper.run_status}
                 />
-                <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                 {paper.doi ? <Badge variant="outline">DOI {paper.doi}</Badge> : null}
                 {paper.arxiv_id ? (
                   <Badge variant="outline">arXiv {paper.arxiv_id}</Badge>

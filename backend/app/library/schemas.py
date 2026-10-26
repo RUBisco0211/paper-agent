@@ -1,12 +1,9 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-
-from app.imports.domain import ImportStatus
-
-from .domain import Capabilities, PaperSource
+from .domain import Capabilities
 from .service import LibraryEntry
 
 
@@ -34,11 +31,10 @@ class UserPaperSummary(BaseModel):
     venue: str | None = None
     doi: str | None = None
     arxiv_id: str | None = None
-    source: PaperSource
     added_at: datetime
     capabilities: CapabilitiesRead
-    #: How the paper's own import is doing; ``None`` before one exists.
-    import_status: ImportStatus | None = None
+    #: How the paper's latest run is doing; ``None`` when it never ran.
+    run_status: str | None = None
 
 
 class UserPaperDetail(UserPaperSummary):
@@ -71,10 +67,10 @@ class PaperBlocksResponse(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """A stored file enters the queue; the library entry appears once ready."""
+    """A stored file joins the paper's run; the entry appears once it succeeds."""
 
-    import_id: UUID
-    status: ImportStatus
+    run_id: UUID
+    status: str
 
 
 def _capabilities(capabilities: Capabilities) -> CapabilitiesRead:
@@ -99,11 +95,10 @@ def to_summary(entry: LibraryEntry) -> UserPaperSummary:
         venue=paper.venue if paper else None,
         doi=paper.doi if paper else None,
         arxiv_id=paper.arxiv_id if paper else None,
-        source=user_paper.source,
         added_at=user_paper.created_at,
         capabilities=_capabilities(entry.capabilities),
-        import_status=(
-            entry.latest_import.status if entry.latest_import else None
+        run_status=(
+            entry.latest_run.status.value if entry.latest_run else None
         ),
     )
 

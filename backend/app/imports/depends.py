@@ -4,11 +4,8 @@ from fastapi import Depends
 
 from app.literature_support.scholar.pdf_sources import DoiPdfLocator
 
-from ..library.depends import MetadataResolverDep, PdfFetcherDep
-from ..platform.database import SessionDep, SessionFactoryDep
+from ..platform.database import SessionFactoryDep
 from ..platform.discovery import DiscoveryAggregator
-from ..platform.storage import StorageDep
-from ..platform.tasks import TaskSchedulerDep
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import PdfSourceLocator
 from .service import DiscoveryService, ImportApprovalService, ImportService
@@ -37,37 +34,9 @@ def get_pdf_locator() -> PdfSourceLocator:
 PdfSourceLocatorDep = Annotated[PdfSourceLocator, Depends(get_pdf_locator)]
 
 
-def build_import_service(**kwargs):
-    """Factory for the import workflow, shared by every entry point."""
-    from app.literature_support.importing.pipeline import (
-        build_import_service as build,
-    )
-
-    return build(**kwargs)
-
-
-
-
-
-def get_import_service(
-    session: SessionDep,
-    storage: StorageDep,
-    session_factory: SessionFactoryDep,
-    scheduler: TaskSchedulerDep,
-    resolver: MetadataResolverDep,
-    pdf_fetcher: PdfFetcherDep,
-    pdf_locator: PdfSourceLocatorDep,
-) -> ImportService:
-    """Wire identifier imports to the shared import workflow."""
-    return ImportService(
-        session_factory=session_factory,
-        storage=storage,
-        resolver=resolver,
-        pdf_fetcher=pdf_fetcher,
-        pdf_locator=pdf_locator,
-        scheduler=scheduler,
-        import_starter_factory=build_import_service,
-    )
+def get_import_service(session_factory: SessionFactoryDep) -> ImportService:
+    """Queue identifier downloads; the worker fetches and processes them."""
+    return ImportService(session_factory=session_factory)
 
 
 ImportServiceDep = Annotated[ImportService, Depends(get_import_service)]

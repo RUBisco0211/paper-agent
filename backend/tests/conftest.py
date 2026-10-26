@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic.config import Config
@@ -372,37 +372,60 @@ class StubEmbeddingAdapter:
 
 
 @pytest.fixture
+def make_user(session_factory: sessionmaker[Session]) -> Callable[[str], UUID]:
+    """Insert a user directly; tests that only need ownership never log in."""
+
+    def _make(email: str = "reader@example.com") -> UUID:
+        from app.auth.repo import UserRecord
+
+        with session_factory() as session:
+            user = UserRecord(
+                email=email, password_hash="x", display_name="Reader"
+            )
+            session.add(user)
+            session.commit()
+            return user.id
+
+    return _make
+
+
+@pytest.fixture
 def completed_imports(
     client: TestClient,
     session_factory: sessionmaker[Session],
     storage: ObjectStorage,
     monkeypatch,
 ) -> StubMineruParser:
-    """Make imports finish their stages inline with stand-in providers.
+    """Make a submitted request finish its download and run inline.
 
-    Uploads only reach the library once every stage succeeds, so most API tests
-    need a working pipeline without the real MinerU and embedding services.
+    Both queues are drained synchronously with stand-in providers, so an API test
+    can assert on the outcome without a background process.
     """
-    from app.imports.queue import ImportQueueService
-    from app.imports.repo import ImportRepository
-    from app.imports.service import ImportService
-    from app.library.depends import (
-        get_import_starter,
-        get_metadata_resolver,
-        get_pdf_fetcher,
-    )
-    from app.library.repo import PaperRepository
-    from app.literature_support.importing.pipeline import ImportPipeline
+    from app.imports.depends import get_pdf_locator
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
     from app.literature_support.scholar.metadata import build_default_resolver
     from app.literature_support.scholar.pdf_fetch import PdfFetcher
-    from app.literature_support.scholar.pdf_sources import DoiPdfLocator
-    from app.literature_support.importing.worker import ImportWorker
+    from app.pipelines.download import DownloadService
+    from app.pipelines.pipeline import RunPipeline
+    from app.pipelines.repo import DownloadRepository, RunRepository
     from app.platform.tasks import InlineTaskScheduler
+
+    def _enricher(resolver):
+        from app.literature_support.scholar.enrichment import MetadataEnricher
+
+        return MetadataEnricher(
+            storage=storage, resolver=resolver, session_factory=session_factory
+        )
+
+    def _default_pdf_locator():
+        from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+
+        return DoiPdfLocator()
 
     mineru = StubMineruParser()
     embeddings = StubEmbeddingAdapter()
 
-    def acquirer_factory() -> ImportService:
+    def downloader() -> DownloadService:
         """Reads the test's overrides, so a case can swap the fetcher."""
         overrides = client.app.dependency_overrides
 
@@ -410,79 +433,72 @@ def completed_imports(
             factory = overrides.get(key)
             return factory() if factory is not None else fallback()
 
-        return ImportService(
+        resolver = pick(get_metadata_resolver, build_default_resolver)
+        return DownloadService(
             session_factory=session_factory,
             storage=storage,
-            resolver=pick(get_metadata_resolver, build_default_resolver),
-            pdf_fetcher=pick(
+            fetcher=pick(
                 get_pdf_fetcher,
                 lambda: PdfFetcher(max_bytes=settings.max_pdf_bytes),
             ),
-            pdf_locator=pick(get_pdf_locator, DoiPdfLocator),
-            scheduler=InlineTaskScheduler(),
-            import_starter_factory=lambda **_kwargs: next(build()),
+            resolver=resolver,
+            locator=pick(get_pdf_locator, _default_pdf_locator),
+            enrichment=_enricher(resolver),
         )
 
-    def build() -> Iterator[ImportQueueService]:
-        session = session_factory()
-        try:
-            pipeline = ImportPipeline(
-                scheduler=InlineTaskScheduler(),
-                session_factory=session_factory,
-                storage=storage,
-                mineru=mineru,
-                embeddings=embeddings,
-                acquirer=acquirer_factory(),
-            )
-            yield ImportQueueService(
-                ImportRepository(session),
-                PaperRepository(session),
-                runner=pipeline,
-            )
-        finally:
-            session.close()
-
-    client.app.dependency_overrides[get_import_starter] = build
+    def pipeline() -> RunPipeline:
+        return RunPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=embeddings,
+        )
 
     def run_worker() -> None:
-        """Run queued imports the way the worker process does."""
-        worker = ImportWorker(
-            session_factory=session_factory,
-            pipeline=ImportPipeline(
-                scheduler=InlineTaskScheduler(),
-                session_factory=session_factory,
-                storage=storage,
-                mineru=mineru,
-                embeddings=embeddings,
-                acquirer=acquirer_factory(),
-            ),
-        )
-        while worker.run_once():
-            pass
+        """Drain both queues the way the worker process does."""
+        downloads = downloader()
+        while (download_id := downloads.claim_next()) is not None:
+            downloads.run(download_id)
+        runs = pipeline()
+        while True:
+            with session_factory() as session:
+                run_id = RunRepository(session).claim_next(lease_seconds=300)
+            if run_id is None:
+                break
+            runs.run_sync(run_id)
 
-    from app.imports import depends as import_depends
-    from app.imports.depends import get_pdf_locator
-
-    monkeypatch.setattr(
-        import_depends, "build_import_service", lambda **_kwargs: next(build())
-    )
-
-    # The worker owns execution, so the request hands the queued import to the
-    # worker before returning; the app dependency wiring stays as production
-    # has it, and only the starting call is wrapped.
+    # A submitted request only records intent; the worker does the rest. The
+    # wrapper keeps the API contract identical while running that worker now.
     from app.imports import service as import_service_module
 
     original_start = import_service_module.ImportService.start
 
     def start_then_work(self, *, user_id, identifier_text):
-        record = original_start(
+        download = original_start(
             self, user_id=user_id, identifier_text=identifier_text
         )
         run_worker()
-        return self.get(user_id=user_id, import_id=record.id)
+        with session_factory() as session:
+            return DownloadRepository(session).get(download.id) or download
 
     monkeypatch.setattr(
         import_service_module.ImportService, "start", start_then_work
+    )
+
+    # An upload joins its run in the request; run it right away so the entry
+    # exists by the time the response reaches the test.
+    from app.library import service as library_service_module
+
+    original_upload = library_service_module.PaperLibraryService.upload_pdf
+
+    def upload_then_work(self, *, user_id, filename, stream):
+        run = original_upload(self, user_id=user_id, filename=filename, stream=stream)
+        run_worker()
+        return run
+
+    monkeypatch.setattr(
+        library_service_module.PaperLibraryService, "upload_pdf", upload_then_work
     )
     return mineru
 
@@ -601,5 +617,7 @@ def register_user(
 
     return _register
 
+
+os.environ.setdefault("TZ", "UTC")
 
 os.environ.setdefault("TZ", "UTC")

@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
-from app.imports.repo import ImportRepository
+from app.pipelines.repo import RunRepository
 from app.library.repo import PaperRepository, UserPaperRecord
 from app.literature_support.scholar.identifiers import Identifier
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
@@ -93,9 +93,7 @@ def upload_paper(
         )
         assert response.status_code == 202, response.text
         db_session.expire_all()
-        record = ImportRepository(db_session).get(
-            UUID(response.json()["import_id"])
-        )
+        record = RunRepository(db_session).get(UUID(response.json()["run_id"]))
         assert record is not None and record.paper_id is not None
         entries = client.get(
             f"{api_prefix}/papers", headers=auth_headers(token)

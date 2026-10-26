@@ -2,8 +2,9 @@
 
 - DATE: 2026-10-24
 - TAGS: ingest, data, product
-- STATUS: 当前
+- STATUS: 已被 0094 取代
 - SUPERSEDES: 0019、0056 的任务模型；0058 的阶段命名
+- SUPERSEDED BY: 0094（记录模型、阶段划分、`user_papers.ready` 与 `source` 阶段全部重定；本节「元数据不占流程」与「未完成不进文献列表」仍有效）
 
 ## DECISION
 

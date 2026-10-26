@@ -10,24 +10,16 @@ from .schemas import (
     BoundBatchImportRequest,
     DiscoveryRequest,
     DiscoveryResponse,
+    DownloadRead,
     ImportApprovalPreview,
     ImportApprovalRead,
     ImportApprovalRequest,
     ImportQueueRead,
-    ImportRead,
     ImportRequest,
     ManualDiscoveryRequest,
 )
 
 router = APIRouter(prefix="/imports", tags=["imports"])
-
-
-def _read(record, service, user_id: UUID) -> ImportRead:
-    """Project one import, resolving the user's entry once it is ready."""
-    return ImportRead.from_domain(
-        record,
-        user_paper_id=service.entry_id_for(record=record, user_id=user_id),
-    )
 internal_router = APIRouter(tags=["imports"])
 
 
@@ -99,47 +91,23 @@ def import_approved_batch(
 
 @router.post(
     "",
-    response_model=ImportRead,
+    response_model=DownloadRead,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="按 DOI/arXiv 导入论文（先元数据，再尝试获取全文）",
+    summary="按 DOI/arXiv 请求获取原文",
 )
 def start_import(
     payload: ImportRequest,
     user: CurrentUser,
     service: ImportServiceDep,
-) -> ImportRead:
-    record = service.start(
+) -> DownloadRead:
+    download = service.start(
         user_id=user.id,
         identifier_text=payload.identifier,
     )
-    return _read(record, service, user.id)
-
-
-@router.post(
-    "/{import_id}/retry",
-    response_model=ImportRead,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="重试未完成的入库",
-)
-def retry_import(
-    import_id: UUID,
-    user: CurrentUser,
-    service: ImportServiceDep,
-) -> ImportRead:
-    """Re-run what did not finish; stages whose output exists are skipped."""
-    service.get(user_id=user.id, import_id=import_id)
-    return _read(service.retry_import(import_id), service, user.id)
-
-
-@router.get(
-    "/{import_id}",
-    response_model=ImportRead,
-    summary="读取导入进度",
-)
-def read_import(
-    import_id: UUID,
-    user: CurrentUser,
-    service: ImportServiceDep,
-) -> ImportRead:
-    record = service.get(user_id=user.id, import_id=import_id)
-    return _read(record, service, user.id)
+    return DownloadRead(
+        id=download.id,
+        identifier_type=download.identifier_type,
+        identifier=download.identifier,
+        status=download.status,
+        created_at=download.created_at,
+    )

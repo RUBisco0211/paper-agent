@@ -63,14 +63,16 @@ def test_stage_error_and_logs_exclude_secrets_when_provider_echoes_request(
     )
     assert uploaded.status_code == 202
     body = uploaded.json()
-    from app.imports.repo import ImportRepository
+    from app.pipelines.domain import RunStatus
+    from app.pipelines.repo import RunRepository
 
     with session_factory() as session:
-        record = ImportRepository(session).get(UUID(body["import_id"]))
-        assert record is not None
-        stages = {stage.stage.value: stage.status.value for stage in record.stages}
-        assert stages["embed"] == "failed"
-        persisted = repr(record)
+        run = RunRepository(session).get(UUID(body["run_id"]))
+        assert run is not None
+        assert run.status is RunStatus.FAILED
+        assert run.current_stage is not None
+        assert run.current_stage.value == "embed"
+        persisted = repr(run)
     for text in (uploaded.text, persisted, caplog.text):
         assert SECRET not in text
         assert SOURCE not in text

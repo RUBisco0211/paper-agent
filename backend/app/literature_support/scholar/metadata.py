@@ -16,7 +16,6 @@ from typing import Protocol
 import httpx
 import structlog
 
-from app.library.domain import MetadataStatus, PaperSource
 from app.literature_support.scholar.identifiers import Identifier, IdentifierType
 from app.platform.config import settings
 from app.platform.errors import AppError, ErrorCode
@@ -63,19 +62,12 @@ class ProviderMetadata:
             "extra": self.extra or {},
         }
 
-    def metadata_status(self) -> MetadataStatus:
-        if self.is_complete:
-            return MetadataStatus.RECOGNIZED
-        if self.title or self.authors:
-            return MetadataStatus.PARTIAL
-        return MetadataStatus.UNRECOGNIZED
-
-
 @dataclass(frozen=True, slots=True)
 class ResolutionOutcome:
     """Result of a best-effort online completion."""
 
-    status: MetadataStatus
+    #: False only when a provider failed, which means "ask again later".
+    settled: bool = True
     metadata: ProviderMetadata | None = None
     source: str | None = None
     error_code: ErrorCode | None = None
@@ -232,7 +224,6 @@ class MetadataResolver:
         )
         if provider is None:
             return ResolutionOutcome(
-                status=MetadataStatus.UNRECOGNIZED,
                 error_code=ErrorCode.PROVIDER_NOT_CONFIGURED,
             )
         try:
@@ -244,12 +235,11 @@ class MetadataResolver:
                 error_code=str(exc.code),
             )
             return ResolutionOutcome(
-                status=MetadataStatus.PROVIDER_FAILED,
+                settled=False,
                 source=provider.name,
                 error_code=exc.code,
             )
         return ResolutionOutcome(
-            status=metadata.metadata_status(),
             metadata=metadata,
             source=metadata.source,
         )
@@ -425,7 +415,4 @@ def build_default_resolver() -> MetadataResolver:
     return MetadataResolver([CrossrefClient(), ArxivClient()])
 
 
-def source_for(identifier: Identifier) -> PaperSource:
-    return (
-        PaperSource.DOI if identifier.type is IdentifierType.DOI else PaperSource.ARXIV
-    )
+

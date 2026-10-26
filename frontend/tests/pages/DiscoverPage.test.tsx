@@ -13,13 +13,12 @@ const api = {
     { source_id: "https://doi.org/10.1234/one", title: "First paper", doi: "10.1234/one", pdf_url: "https://example.org/one.pdf", sources: ["crossref"] },
     { source_id: "https://example.org/two", title: "Second paper", doi: null, pdf_url: null, sources: ["openalex"] },
   ], failed_sources: [] })) },
-  projects: { list: vi.fn(async () => ({ items: [{ id: "p1", name: "Project A" }], total: 1 })) },
-  imports: { start: vi.fn(async () => ({ id: "i1", status: "queued" })) },
+  imports: { start: vi.fn(async () => ({ id: "i1", status: "pending" })) },
 }
 vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api }) }))
 vi.mock("@/components/providers/ImportQueueProvider", () => ({ useImportQueue: () => ({ setOpen: vi.fn() }) }))
 
-it("searches externally and imports only an identified paper into the selected project", async () => {
+it("searches externally and queues only an identified paper", async () => {
   const user = userEvent.setup()
   render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><DiscoverPage /></MemoryRouter></QueryClientProvider>)
   await user.type(screen.getByRole("searchbox", { name: "搜索文献" }), "agent safety")
@@ -30,8 +29,7 @@ it("searches externally and imports only an identified paper into the selected p
   await user.click(screen.getByRole("checkbox", { name: /First paper/ }))
   await user.click(screen.getByRole("button", { name: /选择入库/ }))
   const dialog = screen.getByRole("dialog", { name: "导入所选文献" })
-  await user.click(within(dialog).getByRole("combobox", { name: "入库范围" }))
-  await user.click(screen.getByRole("option", { name: "Project A" }))
   await user.click(within(dialog).getByRole("button", { name: "确认导入" }))
-  await waitFor(() => expect(api.imports.start).toHaveBeenCalledWith("10.1234/one", { project_id: "p1" }))
+  // A request only records the identifier; the queue shows it from there.
+  await waitFor(() => expect(api.imports.start).toHaveBeenCalledWith("10.1234/one"))
 })

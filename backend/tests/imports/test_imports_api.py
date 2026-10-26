@@ -1,12 +1,11 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from fastapi.testclient import TestClient
-
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
-from app.library.repo import PaperRepository
+from app.library.repo import PaperRecord, PaperRepository
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from app.platform.errors import AppError, ErrorCode
 from tests.conftest import auth_headers
@@ -24,6 +23,17 @@ ATTENTION = {
     "arxiv_id": ARXIV_ID,
     "year": 2017,
 }
+
+
+def _entry_paper_id(client: TestClient, api_prefix: str, token: str):
+    """The paper behind the user's only library entry."""
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert items["total"] == 1, items
+    entry_id = items["items"][0]["id"]
+    detail = client.get(
+        f"{api_prefix}/papers/{entry_id}", headers=auth_headers(token)
+    ).json()
+    return detail.get("paper_id") or entry_id
 
 
 def _import(client: TestClient, api_prefix: str, token: str, identifier: str, **extra):
@@ -59,14 +69,11 @@ def test_arxiv_import_with_pdf_reaches_ready(
 
     assert response.status_code == 202, response.text
     body = response.json()
-    assert body["status"] == "ready"
+    assert body["status"] == "success"
     assert body["identifier_type"] == "arxiv"
     assert body["identifier"] == ARXIV_ID
-    assert body["paper_id"] is not None
-    assert body["error_code"] is None
-    assert body["finished_at"] is not None
-    paper_id = body["paper_id"]
-    UUID(paper_id)
+    paper_id = _entry_paper_id(client, api_prefix, token)
+    UUID(str(paper_id))
     # The provider's link is tried first; arXiv's own path is only a fallback.
     assert fetcher.urls[0] == "https://example.org/1706.03762.pdf"
 
@@ -78,12 +85,12 @@ def test_arxiv_import_with_pdf_reaches_ready(
     assert entry["arxiv_id"] == ARXIV_ID
     assert entry["capabilities"]["has_source"] is True
 
-    fetched_import = client.get(
-        f"{api_prefix}/imports/{body['id']}",
-        headers=auth_headers(token),
-    )
-    assert fetched_import.status_code == 200
-    assert fetched_import.json()["status"] == "ready"
+    queue = client.get(
+        f"{api_prefix}/imports/queue", headers=auth_headers(token)
+    ).json()
+    item = queue["items"][0]
+    assert item["status"] == "success"
+    assert item["run"]["status"] == "success"
 
     pdf = client.get(f"{api_prefix}/papers/{paper_id}/pdf", headers=auth_headers(token))
     assert pdf.status_code == 200
@@ -107,16 +114,17 @@ def test_arxiv_doi_import_uses_arxiv_metadata_when_crossref_has_no_record(
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [provider]
     )
-    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(make_pdf())
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
     token = register_user(email="arxiv-doi@example.com")["access_token"]
 
     response = _import(client, api_prefix, token, "10.48550/arXiv.1706.03762")
 
     assert response.status_code == 202, response.text
-    assert response.json()["status"] == "ready"
+    assert response.json()["status"] == "success"
     assert response.json()["identifier_type"] == "arxiv"
     assert response.json()["identifier"] == ARXIV_ID
-    assert response.json()["paper_id"] is not None
     items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert items["total"] == 1
     assert items["items"][0]["arxiv_id"] == ARXIV_ID
@@ -140,10 +148,16 @@ def test_import_without_available_pdf_leaves_no_entry(
     response = _import(client, api_prefix, token, ARXIV_ID)
 
     assert response.status_code == 202, response.text
-    body = response.json()
-    assert body["status"] == "source_unavailable"
-    assert body["error_code"] == "paper_pdf_not_available"
-    assert body["paper_id"] is None
+    assert response.json()["status"] == "failed"
+
+    queue = client.get(
+        f"{api_prefix}/imports/queue", headers=auth_headers(token)
+    ).json()
+    item = queue["items"][0]
+    # The request keeps its failure and its reason; nothing was processed.
+    assert item["status"] == "failed"
+    assert item["error_message"] == "没有找到可用的原文"
+    assert item["run"] is None
 
     library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert library["total"] == 0
@@ -176,7 +190,8 @@ def test_repeat_import_reuses_the_same_entry(
         client, api_prefix, token, f"https://arxiv.org/abs/{ARXIV_ID}"
     ).json()
 
-    assert first["paper_id"] == second["paper_id"]
+    # Two requests, one paper, one entry: the same file was stored once.
+    assert first["status"] == "success" and second["status"] == "success"
     library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert library["total"] == 1
 
@@ -203,9 +218,8 @@ def test_a_provider_outage_does_not_block_getting_the_source(
     response = _import(client, api_prefix, token, ARXIV_ID)
 
     assert response.status_code == 202
-    body = response.json()
-    assert body["status"] == "ready"
-    assert body["paper_id"] is not None
+    # The arXiv path is stable even when the lookup provider is down.
+    assert response.json()["status"] == "success"
     items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
     assert items["total"] == 1
 
@@ -233,7 +247,7 @@ def test_an_identifier_with_no_source_leaves_nothing_behind(
     response = _import(client, api_prefix, token, "10.1234/does-not-exist")
 
     assert response.status_code == 202
-    assert response.json()["status"] == "source_unavailable"
+    assert response.json()["status"] == "failed"
     assert (
         client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()["total"]
         == 0
@@ -278,14 +292,12 @@ def test_imports_are_isolated_between_users(
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")
 
-    created = _import(client, api_prefix, owner["access_token"], ARXIV_ID).json()
+    _import(client, api_prefix, owner["access_token"], ARXIV_ID)
 
-    foreign = client.get(
-        f"{api_prefix}/imports/{created['id']}",
-        headers=auth_headers(stranger["access_token"]),
-    )
-    assert foreign.status_code == 404
-    assert foreign.json()["code"] == "import_not_found"
+    stranger_queue = client.get(
+        f"{api_prefix}/imports/queue", headers=auth_headers(stranger["access_token"])
+    ).json()
+    assert stranger_queue["items"] == []
 
     owner_id = UUID(
         client.get(
@@ -299,17 +311,22 @@ def test_imports_are_isolated_between_users(
     )
 
 
-def test_reimporting_a_paper_whose_parse_failed_stays_failed(
+def test_a_paper_whose_parse_failed_stays_out_of_the_library(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
     db_session: Session,
+    session_factory,
+    storage,
 ) -> None:
-    """Re-importing must not turn an unfinished paper into a ready one."""
-    from app.imports.domain import ImportStage, ImportStatus
-    from app.imports.repo import ImportRepository
+    """A failed run grants no entry, and the failure stays on record."""
+    from app.literature_support.embedding import build_embedding_adapter
+    from app.literature_support.importing.mineru import MineruParser
     from app.literature_support.scholar.metadata import ProviderMetadata
+    from app.pipelines.pipeline import RunPipeline
+    from app.pipelines.repo import RunRecord
+    from app.platform.tasks import InlineTaskScheduler
 
     provider = FakeProvider(
         ProviderMetadata(
@@ -326,21 +343,39 @@ def test_reimporting_a_paper_whose_parse_failed_stays_failed(
     )
     token = register_user(email="reimport@example.com")["access_token"]
 
-    first = _import(client, api_prefix, token, ARXIV_ID).json()
-    record = ImportRepository(db_session).get(UUID(first["id"]))
-    assert record is not None
-    # MinerU is not configured in this test, so parsing cannot have succeeded.
-    assert record.status is not ImportStatus.READY
+    _import(client, api_prefix, token, ARXIV_ID)
+    # Drive the download that the request only recorded.
+    from app.imports.depends import get_pdf_locator
+    from app.pipelines.download import DownloadService
 
-    second = _import(client, api_prefix, token, ARXIV_ID).json()
+    downloads = DownloadService(
+        session_factory=session_factory,
+        storage=storage,
+        fetcher=FakePdfFetcher(make_pdf()),
+        resolver=MetadataResolver([provider]),
+        locator=get_pdf_locator(),
+    )
+    while (download_id := downloads.claim_next()) is not None:
+        downloads.run(download_id)
 
-    db_session.expire_all()
-    after = ImportRepository(db_session).get(UUID(first["id"]))
-    assert after is not None
-    assert after.status is not ImportStatus.READY
-    parse = after.stage(ImportStage.PARSE)
-    assert parse is None or parse.status.value != "succeeded"
-    assert second["status"] != "ready"
+    # MinerU is unconfigured, so this run can only fail.
+    RunPipeline(
+        scheduler=InlineTaskScheduler(),
+        session_factory=session_factory,
+        storage=storage,
+        mineru=MineruParser(base_url=None, api_key=None, timeout_seconds=30),
+        embeddings=build_embedding_adapter(),
+    ).run_sync(
+        db_session.scalars(select(RunRecord).order_by(RunRecord.created_at)).first().id
+    )
+
+    library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert library["total"] == 0
+    queue = client.get(
+        f"{api_prefix}/imports/queue", headers=auth_headers(token)
+    ).json()
+    assert queue["items"][0]["run"]["status"] == "failed"
+    assert queue["items"][0]["run"]["error_message"] is not None
 
 
 def test_a_second_user_importing_the_same_paper_gets_their_own_entry(
@@ -351,9 +386,9 @@ def test_a_second_user_importing_the_same_paper_gets_their_own_entry(
     db_session: Session,
     completed_imports,
 ) -> None:
-    """Two people importing the same paper each end up with their own entry."""
-    from app.imports.repo import ImportRepository
-    from app.library.repo import PaperRepository, UserPaperRecord
+    """Two people asking for the same paper share the work, not the entry."""
+    from app.library.repo import PaperRepository
+    from app.pipelines.repo import DownloadRecord, RunRecord
 
     provider = FakeProvider(
         ProviderMetadata(
@@ -374,14 +409,13 @@ def test_a_second_user_importing_the_same_paper_gets_their_own_entry(
     first_result = _import(client, api_prefix, first["access_token"], ARXIV_ID)
     assert first_result.status_code == 202, first_result.text
     second_result = _import(client, api_prefix, second["access_token"], ARXIV_ID)
-
     assert second_result.status_code == 202, second_result.text
-    assert second_result.json()["status"] == "ready"
+
     db_session.expire_all()
-    record = ImportRepository(db_session).find_by_identifier(
-        identifier_type="arxiv", identifier=ARXIV_ID
-    )
-    assert record is not None and record.paper_id is not None
+    assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
+    assert db_session.scalar(select(func.count(DownloadRecord.id))) == 2
+    # The same file was processed once, no matter how many people asked.
+    assert db_session.scalar(select(func.count(RunRecord.id))) == 1
 
     papers = PaperRepository(db_session)
     for account in (first, second):
@@ -390,15 +424,10 @@ def test_a_second_user_importing_the_same_paper_gets_their_own_entry(
                 f"{api_prefix}/auth/me", headers=auth_headers(account["access_token"])
             ).json()["id"]
         )
-        entry = papers.get_user_paper_for_paper(
-            user_id=user_id, paper_id=record.paper_id
-        )
-        assert entry is not None, "every importer keeps their own entry"
-    # Both entries point at the same paper, and both are usable.
-    ready = db_session.scalars(
-        select(UserPaperRecord).where(
-            UserPaperRecord.paper_id == record.paper_id,
-            UserPaperRecord.ready.is_(True),
-        )
-    ).all()
-    assert len(ready) == 2
+        library = client.get(
+            f"{api_prefix}/papers", headers=auth_headers(account["access_token"])
+        ).json()
+        assert library["total"] == 1, "every importer keeps their own entry"
+        assert papers.find_user_paper_by_identifier(
+            user_id=user_id, arxiv_id=ARXIV_ID
+        ) is not None

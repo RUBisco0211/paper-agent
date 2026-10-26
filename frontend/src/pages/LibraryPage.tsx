@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom"
 
 import { queryKeys } from "@/app/query"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/Alert"
-import { Badge } from "@/components/ui/Badge"
 import { Button } from "@/components/ui/Button"
 import {
   Empty,
@@ -27,7 +26,6 @@ import {
 } from "@/components/ui/Table"
 import { ImportDialog } from "@/components/papers/ImportDialog"
 import { PaperStatusBadge } from "@/components/papers/PaperStatus"
-import { PAPER_SOURCE_LABEL } from "@/types/business"
 import { useApi } from "@/components/providers/ApiProvider"
 import { useAgentUi } from "@/components/providers/AgentUiProvider"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
@@ -53,7 +51,7 @@ export function LibraryPage() {
       // Only finished imports reach the library, so there is nothing to poll.
       const busy = items.some(
         (item) =>
-          item.import_status === "queued" || item.import_status === "running",
+          item.run_status === "pending" || item.run_status === "running",
       )
       return busy ? 2000 : false
     },
@@ -186,12 +184,11 @@ export function LibraryPage() {
                       </p>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline">{PAPER_SOURCE_LABEL[paper.source]}</Badge>
                     </TableCell>
                     <TableCell>
                       <PaperStatusBadge
                         capabilities={paper.capabilities}
-                        importStatus={paper.import_status}
+                        runStatus={paper.run_status}
                       />
                     </TableCell>
                     <TableCell className="text-right">

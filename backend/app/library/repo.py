@@ -1,14 +1,11 @@
 from uuid import UUID
 
 from sqlalchemy import (
-    Boolean,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
     Uuid,
-    false,
     func,
     or_,
     select,
@@ -22,7 +19,7 @@ from ..platform.database import (
     TimestampMixin,
     UUIDPrimaryKeyMixin,
 )
-from .domain import Paper, PaperSource, UserPaper
+from .domain import Paper, UserPaper
 
 
 class PaperRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -60,18 +57,6 @@ class UserPaperRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    source: Mapped[str] = mapped_column(
-        String(16),
-        nullable=False,
-        default=PaperSource.UPLOAD.value,
-    )
-    #: False while the import is still running; the library hides these.
-    ready: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default=false(),
-    )
 
 
 class PaperRepository:
@@ -85,41 +70,15 @@ class PaperRepository:
         record = self._session.get(PaperRecord, paper_id)
         return _to_paper(record) if record else None
 
-    def link_paper(
-        self,
-        *,
-        user_id: UUID,
-        paper_id: UUID,
-        source: PaperSource,
-    ) -> UserPaper:
-        """Record that a user keeps this paper; the entry is not visible yet."""
+    def link_paper(self, *, user_id: UUID, paper_id: UUID) -> UserPaper:
+        """Record that a user keeps this paper, if they do not already."""
         existing = self.get_user_paper_for_paper(
             user_id=user_id,
             paper_id=paper_id,
         )
         if existing is not None:
             return existing
-        return self.add_user_paper(
-            user_id=user_id,
-            paper_id=paper_id,
-            source=source,
-        )
-
-    def mark_entries_ready(self, *, paper_id: UUID) -> int:
-        """Reveal every entry waiting on this paper, not just the requester's.
-
-        Several people can be waiting for the same file; each of them gets their
-        own entry, and they all become visible together.
-        """
-        records = self._session.scalars(
-            select(UserPaperRecord)
-            .where(UserPaperRecord.paper_id == paper_id)
-            .where(UserPaperRecord.ready.is_(False)),
-        ).all()
-        for record in records:
-            record.ready = True
-        self._session.flush()
-        return len(records)
+        return self.add_user_paper(user_id=user_id, paper_id=paper_id)
 
     def get_paper_by_arxiv_id(self, arxiv_id: str) -> Paper | None:
         """The paper stored for this exact arXiv ID, version included."""
@@ -231,20 +190,8 @@ class PaperRepository:
         )
         return _to_user_paper(record) if record else None
 
-    def add_user_paper(
-        self,
-        *,
-        user_id: UUID,
-        paper_id: UUID,
-        source: PaperSource,
-        ready: bool = False,
-    ) -> UserPaper:
-        record = UserPaperRecord(
-            user_id=user_id,
-            paper_id=paper_id,
-            source=source.value,
-            ready=ready,
-        )
+    def add_user_paper(self, *, user_id: UUID, paper_id: UUID) -> UserPaper:
+        record = UserPaperRecord(user_id=user_id, paper_id=paper_id)
         self._session.add(record)
         self._session.flush()
         return _to_user_paper(record)
@@ -261,12 +208,13 @@ class PaperRepository:
             select(UserPaperRecord)
             .join(PaperRecord, PaperRecord.id == UserPaperRecord.paper_id)
             .where(UserPaperRecord.user_id == user_id)
-            .where(UserPaperRecord.ready.is_(True))
         )
         count_statement = statement.with_only_columns(func.count(UserPaperRecord.id))
         if query:
             pattern = f"%{query.strip()}%"
-            statement = statement.where(PaperRecord.bibliographic["title"].astext.ilike(pattern))
+            statement = statement.where(
+                PaperRecord.bibliographic["title"].astext.ilike(pattern)
+            )
             count_statement = count_statement.where(
                 PaperRecord.bibliographic["title"].astext.ilike(pattern)
             )
@@ -399,8 +347,6 @@ def _to_user_paper(record: UserPaperRecord) -> UserPaper:
         id=record.id,
         user_id=record.user_id,
         paper_id=record.paper_id,
-        source=PaperSource(record.source),
-        ready=record.ready,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )

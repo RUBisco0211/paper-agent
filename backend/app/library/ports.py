@@ -1,15 +1,13 @@
 """Ports the library module needs from other domains.
 
-Kept as a protocol so the library never imports the import workflow
-implementation at module scope; wiring happens in ``library.depends``.
+Kept as protocols so the library never imports the pipelines implementation at
+module scope; wiring happens in ``library.depends``.
 """
 
 from typing import Protocol
 from uuid import UUID
 
-from app.imports.domain import PaperImport
-
-from .domain import Paper
+from ..pipelines.domain import Run
 
 
 class MetadataEnricherPort(Protocol):
@@ -18,27 +16,11 @@ class MetadataEnricherPort(Protocol):
     def submit(self, paper_id: UUID, identifiers: tuple = ()) -> None: ...
 
 
-class ImportStarter(Protocol):
-    """Start and inspect the import that brings a paper into the library.
+class RunStarter(Protocol):
+    """Join a user to a paper's processing, starting one when there is none."""
 
-    An import finishes on its own; the library only records that a paper exists
-    and links the requesting user to it once the import is ready.
-    """
+    def request(self, *, user_id: UUID, paper_id: UUID) -> Run: ...
 
-    def start_for_paper(
-        self,
-        paper: Paper,
-        *,
-        initiated_by: UUID,
-        identifier_type: str,
-        identifier: str,
-    ) -> PaperImport: ...
-
-    def get(self, import_id: UUID) -> PaperImport | None: ...
-
-    def retry(self, import_id: UUID) -> PaperImport: ...
-
-    def latest_imports_for_papers(
-        self,
-        paper_ids: list[UUID],
-    ) -> dict[UUID, PaperImport]: ...
+    def latest_for_papers(self, paper_ids: list[UUID]) -> dict[UUID, Run]:
+        """The most recent run of each paper, whichever user asked for it."""
+        ...

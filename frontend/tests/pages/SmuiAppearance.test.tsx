@@ -7,7 +7,7 @@ import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom"
 import { expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
-import type { ImportQueueItem } from "@/types/business"
+import type { DownloadStatus, ImportQueueItem, RunStatus } from "@/types/business"
 import { ImportQueuePanel } from "@/components/imports/ImportQueuePanel"
 import { NewChatPage } from "@/pages/chat/NewChatPage"
 import { MessageNavigationRail } from "@/components/chat/MessageNavigationRail"
@@ -33,35 +33,46 @@ vi.mock("@/components/ui/MessageScroller", () => ({
   useMessageScrollerVisibility: () => ({ currentAnchorId: null, visibleMessageIds: [] }),
 }))
 
-const STATUS_TEXT: Record<string, string> = {
-  running: "进行中",
-  ready: "已完成",
-  failed: "失败",
-  source_unavailable: "缺少原文",
-}
-
-it.each([
-  ["running", "text-muted-foreground"],
-  ["ready", "text-success"],
-  ["failed", "text-destructive"],
-  ["source_unavailable", "text-warning"],
-])("the import queue tones the %s state with semantic colors", (status, color) => {
+it.each<[DownloadStatus, RunStatus | null, string]>([
+  ["pending", null, "等待获取"],
+  ["running", null, "正在获取原文"],
+  ["success", "running", "正在处理"],
+  ["success", "success", "已完成"],
+  ["failed", null, "获取原文失败"],
+])('the import queue reads the %s download with a %s run as one process', (status, runStatus, label) => {
   queue.items = [{
     id: "import-1",
     identifier: "10.1234/example",
     identifier_type: "doi",
-    title: "测试文献",
     status,
     created_at: "2026-10-09T00:00:00Z",
-    stages: [],
+    run: runStatus ? { status: runStatus, stage: "parse", error_message: null } : null,
   }]
   render(
     <QueryClientProvider client={createQueryClient()}>
       <ImportQueuePanel />
     </QueryClientProvider>,
   )
-  const label = screen.getByText(STATUS_TEXT[status])
-  expect(label.classList.contains(color)).toBe(true)
+  expect(screen.getByText(label)).toBeTruthy()
+})
+
+it("the import queue shows the reason a fetch failed and no processing stage", () => {
+  queue.items = [{
+    id: "import-2",
+    identifier: "10.1234/missing",
+    identifier_type: "doi",
+    status: "failed",
+    error_message: "没有找到可用的原文",
+    created_at: "2026-10-09T00:00:00Z",
+    run: null,
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText("没有找到可用的原文")).toBeTruthy()
+  expect(screen.queryByText("生成向量")).toBeNull()
 })
 
 it("the draft composer leaves surface styling to the shared input when a new conversation is opened", () => {
