@@ -1,5 +1,6 @@
 """Persistence for downloads, runs and the users each of them serves."""
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -59,6 +60,11 @@ class DownloadRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         ForeignKey("runs.id", ondelete="SET NULL"),
         nullable=True,
     )
+    project_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(
@@ -67,6 +73,17 @@ class DownloadRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     finished_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+@dataclass(frozen=True, slots=True)
+class UserRunRequest:
+    """One user's request for a run, plus the project it asked for."""
+
+    user_id: UUID
+    project_id: UUID | None = None
+    run_id: UUID | None = None
+    paper_id: UUID | None = None
+    created_at: datetime | None = None
 
 
 class RunRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
@@ -130,6 +147,12 @@ class UserRunRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
+    #: The project this request also files the paper into, if any.
+    project_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("projects.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
 
 def _now() -> datetime:
@@ -190,19 +213,70 @@ class RunRepository:
         self._session.flush()
         return _to_run(record)
 
-    def add_user(self, *, user_id: UUID, run: Run) -> None:
-        """Record that this user asked for the run; one row per (user, run)."""
+    def add_user(
+        self,
+        *,
+        user_id: UUID,
+        run: Run,
+        project_id: UUID | None = None,
+    ) -> None:
+        """Record that this user asked for the run; one row per (user, run).
+
+        A later request for the same paper may name a project, so an existing
+        row without one absorbs it instead of being duplicated.
+        """
         existing = self._session.scalar(
-            select(UserRunRecord.id)
+            select(UserRunRecord)
             .where(UserRunRecord.user_id == user_id)
             .where(UserRunRecord.run_id == run.id),
         )
         if existing is not None:
+            if project_id is not None and existing.project_id is None:
+                existing.project_id = project_id
+                self._session.flush()
             return
         self._session.add(
-            UserRunRecord(user_id=user_id, run_id=run.id, paper_id=run.paper_id)
+            UserRunRecord(
+                user_id=user_id,
+                run_id=run.id,
+                paper_id=run.paper_id,
+                project_id=project_id,
+            )
         )
         self._session.flush()
+
+    def requests_of_run(self, run_id: UUID) -> list[UserRunRequest]:
+        """Everyone waiting on this run, with the project each asked for."""
+        rows = self._session.scalars(
+            select(UserRunRecord).where(UserRunRecord.run_id == run_id),
+        ).all()
+        return [
+            UserRunRequest(
+                user_id=row.user_id, project_id=row.project_id
+            )
+            for row in rows
+        ]
+
+    def list_requests_for_user(
+        self, *, user_id: UUID, limit: int
+    ) -> list[UserRunRequest]:
+        """This user's requests, newest first."""
+        rows = self._session.scalars(
+            select(UserRunRecord)
+            .where(UserRunRecord.user_id == user_id)
+            .order_by(UserRunRecord.created_at.desc(), UserRunRecord.id.desc())
+            .limit(limit),
+        ).all()
+        return [
+            UserRunRequest(
+                user_id=row.user_id,
+                project_id=row.project_id,
+                run_id=row.run_id,
+                paper_id=row.paper_id,
+                created_at=row.created_at,
+            )
+            for row in rows
+        ]
 
     def user_ids_of(self, run_id: UUID) -> list[UUID]:
         return list(
@@ -321,11 +395,13 @@ class DownloadRepository:
         user_id: UUID,
         identifier_type: str,
         identifier: str,
+        project_id: UUID | None = None,
     ) -> Download:
         record = DownloadRecord(
             user_id=user_id,
             identifier_type=identifier_type,
             identifier=identifier,
+            project_id=project_id,
             status=DownloadStatus.PENDING.value,
         )
         self._session.add(record)
@@ -428,6 +504,7 @@ def _to_download(record: DownloadRecord) -> Download:
         status=DownloadStatus(record.status),
         paper_id=record.paper_id,
         run_id=record.run_id,
+        project_id=record.project_id,
         source_url=record.source_url,
         error_message=record.error_message,
         created_at=record.created_at,

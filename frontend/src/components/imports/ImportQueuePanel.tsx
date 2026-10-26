@@ -1,4 +1,4 @@
-import { Check, Circle, LoaderCircle, X } from "lucide-react"
+import { ChevronRight, LoaderCircle } from "lucide-react"
 import { useState } from "react"
 
 import { PaperDetailSheet } from "@/components/papers/PaperDetailSheet"
@@ -6,109 +6,146 @@ import { useImportQueue } from "@/components/providers/ImportQueueProvider"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/Sheet"
 import type { DownloadStatus, ImportQueueItem, RunStatus } from "@/types/business"
 
-const DOWNLOAD_LABEL: Record<DownloadStatus, string> = {
-  pending: "等待获取",
-  running: "正在获取原文",
-  success: "原文已获取",
-  failed: "获取原文失败",
-}
-
-const RUN_LABEL: Record<RunStatus, string> = {
-  pending: "等待处理",
-  running: "正在处理",
+const STATUS_LABEL: Record<DownloadStatus, string> = {
+  pending: "等待中",
+  running: "处理中",
   success: "已完成",
-  failed: "处理失败",
-}
-
-const STAGE_LABEL: Record<string, string> = {
-  parse: "解析正文",
-  chunk: "切分片段",
-  embed: "生成向量",
+  failed: "失败",
 }
 
 /**
- * One request reads as one process: fetching the file, then processing it.
- * A failed fetch stops there, so no processing stage is shown for it.
+ * The list says only what state the request is in. Which steps it had — a
+ * fetch, then parsing, chunking and embedding — belongs to the detail, because
+ * an upload never fetched anything and there is no point showing the difference
+ * up front.
  */
-function QueueRow({
+function RequestRow({
   item,
   openPaper,
 }: {
   item: ImportQueueItem
   openPaper: (paperId: string) => void
 }) {
-  const active = item.status === "pending" || item.status === "running"
-  const title = item.identifier || "文献入库"
-  const run = item.run
-  const reason = item.error_message ?? run?.error_message
+  const [expanded, setExpanded] = useState(false)
+  const label = statusLabel(item)
+  const busy = item.status === "pending" || item.status === "running"
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg px-3 py-2 hover:bg-muted/40">
-      <div className="flex items-center gap-2">
-        {item.paper_id ? (
-          <button
-            type="button"
-            onClick={() => openPaper(item.paper_id!)}
-            className="min-w-0 flex-1 truncate text-left font-medium"
-          >
-            {title}
-          </button>
-        ) : (
-          <span className="min-w-0 flex-1 truncate font-medium">{title}</span>
-        )}
-        {active && <LoaderCircle aria-label="进行中" className="size-4 shrink-0 animate-spin" />}
-      </div>
-
-      <ol className="flex flex-wrap gap-x-4 gap-y-1 pl-1" aria-label="入库进度">
-        <Step
-          label="获取原文"
-          state={
-            item.status === "failed"
-              ? "failed"
-              : item.status === "success"
-                ? "done"
-                : "running"
-          }
+    <div className="rounded-lg hover:bg-muted/40">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((before) => !before)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`}
         />
-        {run && (
-          <Step
-            label={STAGE_LABEL[run.stage ?? ""] ?? "处理文献"}
-            state={
-              run.status === "failed"
-                ? "failed"
-                : run.status === "success"
-                  ? "done"
-                  : "running"
-            }
-          />
-        )}
-      </ol>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          {item.identifier || "本地上传"}
+        </span>
+        {busy && <LoaderCircle aria-label="进行中" className="size-4 shrink-0 animate-spin" />}
+        <span
+          className={`shrink-0 text-xs ${
+            item.status === "failed"
+              ? "text-destructive"
+              : item.status === "success"
+                ? "text-success"
+                : "text-muted-foreground"
+          }`}
+        >
+          {label}
+        </span>
+      </button>
 
-      <p className="text-muted-foreground text-xs">
-        {run && item.status === "success" ? RUN_LABEL[run.status] : DOWNLOAD_LABEL[item.status]}
-      </p>
-
-      {reason && <p className="text-destructive text-xs">{reason}</p>}
+      {expanded && (
+        <div className="flex flex-col gap-2 px-3 pb-3 pl-9">
+          <ol className="flex flex-col gap-1" aria-label="入库步骤">
+            {stepsOf(item).map((step) => (
+              <li key={step.label} className="flex items-center gap-2 text-xs">
+                <span
+                  aria-hidden="true"
+                  className={`size-1.5 rounded-full ${
+                    step.state === "failed"
+                      ? "bg-destructive"
+                      : step.state === "done"
+                        ? "bg-success"
+                        : "bg-muted-foreground"
+                  }`}
+                />
+                <span className="min-w-0 flex-1">{step.label}</span>
+                <span className="text-muted-foreground">{step.text}</span>
+              </li>
+            ))}
+          </ol>
+          {item.error_message && (
+            <p className="text-destructive text-xs">{item.error_message}</p>
+          )}
+          {item.paper_id && item.status === "success" && (
+            <button
+              type="button"
+              className="w-fit text-xs underline"
+              onClick={() => openPaper(item.paper_id!)}
+            >
+              查看文献
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
-function Step({ label, state }: { label: string; state: "done" | "failed" | "running" }) {
-  const Icon = state === "failed" ? X : state === "done" ? Check : Circle
-  return (
-    <li
-      className={`flex items-center gap-1 text-xs ${
-        state === "failed"
-          ? "text-destructive"
-          : state === "done"
-            ? "text-success"
-            : "text-primary"
-      }`}
-    >
-      <Icon aria-hidden="true" className="size-3" />
-      {label}
-    </li>
-  )
+type StepState = "done" | "failed" | "pending"
+
+function stepsOf(item: ImportQueueItem): Array<{ label: string; state: StepState; text: string }> {
+  const steps: Array<{ label: string; state: StepState; text: string }> = []
+  // Only a request that had to fetch shows a fetching step at all.
+  if (item.source === "download") {
+    steps.push({
+      label: "获取原文",
+      state:
+        item.status === "success"
+          ? "done"
+          : item.status === "failed"
+            ? "failed"
+            : "pending",
+      text: item.status === "success" ? "已完成" : item.status === "failed" ? "失败" : "进行中",
+    })
+  } else {
+    steps.push({ label: "文件上传", state: "done", text: "已完成" })
+  }
+  const run = item.run
+  if (run) {
+    steps.push({
+      label: stageLabel(run.stage),
+      state: run.status === "success" ? "done" : run.status === "failed" ? "failed" : "pending",
+      text: runText(run.status),
+    })
+  }
+  return steps
+}
+
+function stageLabel(stage?: string | null): string {
+  if (stage === "parse") return "解析正文"
+  if (stage === "chunk") return "切分片段"
+  if (stage === "embed") return "生成向量"
+  return "处理文献"
+}
+
+function runText(status: RunStatus): string {
+  if (status === "success") return "已完成"
+  if (status === "failed") return "失败"
+  return "进行中"
+}
+
+function statusLabel(item: ImportQueueItem): string {
+  // The request is only done when the work it handed over is done too.
+  if (item.status !== "success") return STATUS_LABEL[item.status]
+  if (item.run?.status === "failed") return STATUS_LABEL.failed
+  if (item.run?.status === "success") return STATUS_LABEL.success
+  return STATUS_LABEL.running
 }
 
 export function ImportQueuePanel() {
@@ -135,7 +172,7 @@ export function ImportQueuePanel() {
               <p className="text-muted-foreground p-3 text-sm">暂无入库任务</p>
             )}
             {items.map((item) => (
-              <QueueRow key={item.id} item={item} openPaper={openPaper} />
+              <RequestRow key={item.id} item={item} openPaper={openPaper} />
             ))}
           </div>
         </SheetContent>

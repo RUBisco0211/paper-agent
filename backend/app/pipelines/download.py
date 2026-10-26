@@ -102,7 +102,9 @@ class DownloadService:
                 return
 
             run = RunService(session_factory=self._session_factory).request(
-                user_id=record.user_id, paper_id=paper.id
+                user_id=record.user_id,
+                paper_id=paper.id,
+                project_id=record.project_id,
             )
             downloads.finish_success(
                 download_id,

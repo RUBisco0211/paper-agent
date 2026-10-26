@@ -77,6 +77,8 @@ class Download:
     status: DownloadStatus
     paper_id: UUID | None
     run_id: UUID | None
+    #: Project the requester also wants this paper filed into.
+    project_id: UUID | None
     source_url: str | None
     error_message: str | None
     created_at: datetime

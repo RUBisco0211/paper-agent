@@ -44,11 +44,13 @@ class ImportRepository:
         user_id: UUID,
         identifier_type: str,
         identifier: str,
+        project_id: UUID | None = None,
     ) -> Download:
         return DownloadRepository(self._session).add(
             user_id=user_id,
             identifier_type=identifier_type,
             identifier=identifier,
+            project_id=project_id,
         )
 
 

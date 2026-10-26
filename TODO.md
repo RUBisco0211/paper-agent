@@ -130,6 +130,20 @@
 - [x] 崩溃：租约过期的 run 被判失败，续租的正常存活
 - [x] 自愈：产物被截断后重试，parse 重新执行并成功
 
+### R11 队列并入请求记录与项目归属（依据 0095）
+
+- [x] 迁移：`user_runs` 加 `project_id`（可空，外键 projects）
+- [x] `RunService.request` 接受 `project_id`，校验项目属于当前用户
+- [x] 已完成论文的请求不写 `user_runs`，直接建 `user_papers` 与 `project_papers`
+- [x] run 成功时：按 `paper_id` 反查 `user_runs`，先建 `user_papers` 再建 `project_papers`
+- [x] 队列接口改为 `downloads` ∪ `user_runs`，按 `run_id` 去重
+- [x] 上传接口把 `project_id` 传下去
+- [x] 前端：列表只显示状态；详情按动作列步骤（导入含「获取原文」，上传含「文件上传」）
+- [x] 测试：上传已在库的论文只建关系、不进队列
+- [x] 测试：导入到指定项目后该条目出现在项目里
+- [x] 测试：别人的项目 ID 被拒绝
+- [x] 测试：队列里同一 run 只出现一次
+
 ### 待办（用户明确不急）
 
 - [ ] 租约超时时长与失效判定的调优

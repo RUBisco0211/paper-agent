@@ -10,6 +10,8 @@ class ImportRequest(BaseModel):
         max_length=255,
         description="DOI、arXiv ID 或它们的规范链接",
     )
+    #: Also file the paper into this project once it is usable.
+    project_id: UUID | None = None
 
 
 class ImportApprovalRequest(BaseModel):
@@ -44,14 +46,21 @@ class QueueRunRead(BaseModel):
 
 
 class DownloadQueueItem(BaseModel):
-    """One request the user made: fetching a file, then processing it."""
+    """One request the user made: fetching a file, then processing it.
 
+    ``source`` says whether the request carried a download (``download``) or
+    arrived with its file in hand (``request``); the list view does not have to
+    tell them apart, but the detail view lists the steps each one actually had.
+    """
+
+    source: str
     id: str
     identifier: str
     identifier_type: str
     status: str
     paper_id: str | None = None
     run_id: str | None = None
+    project_id: str | None = None
     source_url: str | None = None
     error_message: str | None = None
     created_at: datetime

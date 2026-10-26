@@ -4,10 +4,10 @@ import type { DownloadRead, ExternalDiscoveryResponse, ImportQueueItem, SearchIn
 export function importEndpoints(client: ApiClient) {
   return {
     /** Accepts a DOI, an arXiv id or their canonical links. Records the request only. */
-    start: (identifier: string) =>
+    start: (identifier: string, options: { projectId?: Uuid } = {}) =>
       client.request<DownloadRead>("/v1/imports", {
         method: "POST",
-        json: { identifier },
+        json: { identifier, project_id: options.projectId },
       }),
 
     queue: () => client.request<{ items: ImportQueueItem[] }>("/v1/imports/queue"),

@@ -103,6 +103,7 @@ def start_import(
     download = service.start(
         user_id=user.id,
         identifier_text=payload.identifier,
+        project_id=payload.project_id,
     )
     return DownloadRead(
         id=download.id,

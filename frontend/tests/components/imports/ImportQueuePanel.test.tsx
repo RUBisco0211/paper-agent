@@ -13,10 +13,10 @@ const queue = vi.hoisted(() => ({ setOpen: vi.fn() }))
 vi.mock("@/components/providers/ImportQueueProvider", () => ({ useImportQueue: () => ({
   open: true, setOpen: queue.setOpen, loading: false, error: false,
   items: [{
-    id: "import-1", identifier: "10.1234/example", identifier_type: "doi",
-    paper_id: "paper-1", status: "success",
-    created_at: "2026-10-09T00:00:00Z",
-    run: { status: "running", stage: "parse", error_message: null },
+    source: "download", id: "import-1", identifier: "10.1234/example",
+    identifier_type: "doi", status: "success",
+    paper_id: "paper-1", created_at: "2026-10-09T00:00:00Z",
+    run: { status: "success", stage: "parse", error_message: null },
   }],
 }) }))
 vi.mock("@/components/papers/PaperDetailSheet", () => ({ PaperDetailSheet: ({ paperId }: { paperId: string | null }) => paperId ? <div>文献详情抽屉 {paperId}</div> : null }))
@@ -35,7 +35,8 @@ it("opens the paper detail drawer from the import queue without navigating", asy
     </QueryClientProvider>,
   )
 
-  await userEvent.click(screen.getByText("10.1234/example"))
+  await userEvent.click(screen.getByRole("button", { name: /10.1234\/example/ }))
+  await userEvent.click(screen.getByRole("button", { name: "查看文献" }))
 
   expect(queue.setOpen).toHaveBeenCalledWith(false)
   expect(screen.getByText("文献详情抽屉 paper-1")).toBeTruthy()

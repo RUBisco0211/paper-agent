@@ -2,7 +2,7 @@ import hashlib
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import Response, StreamingResponse
 
 from ..auth.depends import CurrentUser
@@ -128,11 +128,13 @@ def upload_paper(
     user: CurrentUser,
     service: PaperLibraryServiceDep,
     file: Annotated[UploadFile, File(description="英文 born-digital PDF")],
+    project_id: Annotated[UUID | None, Form()] = None,
 ) -> UploadResponse:
     started = service.upload_pdf(
         user_id=user.id,
         filename=file.filename,
         stream=file.file,
+        project_id=project_id,
     )
     return UploadResponse(run_id=started.id, status=started.status.value)
 

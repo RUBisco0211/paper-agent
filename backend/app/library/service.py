@@ -224,6 +224,7 @@ class PaperLibraryService:
         user_id: UUID,
         filename: str | None,
         stream: BinaryIO,
+        project_id: UUID | None = None,
     ) -> Run:
         """Store a source file and join it to the paper's processing.
 
@@ -240,7 +241,9 @@ class PaperLibraryService:
         self._title_from_filename(paper.id, paper, filename)
         self._papers.commit()
         self._enrich_quietly(paper.id, stored.detected_identifiers)
-        run = self._runs.request(user_id=user_id, paper_id=paper.id)
+        run = self._runs.request(
+            user_id=user_id, paper_id=paper.id, project_id=project_id
+        )
         self._papers.expire_all()
         return run
 

@@ -34,13 +34,14 @@ vi.mock("@/components/ui/MessageScroller", () => ({
 }))
 
 it.each<[DownloadStatus, RunStatus | null, string]>([
-  ["pending", null, "等待获取"],
-  ["running", null, "正在获取原文"],
-  ["success", "running", "正在处理"],
+  ["pending", null, "等待中"],
+  ["running", null, "处理中"],
+  ["success", "running", "处理中"],
   ["success", "success", "已完成"],
-  ["failed", null, "获取原文失败"],
-])('the import queue reads the %s download with a %s run as one process', (status, runStatus, label) => {
+  ["failed", null, "失败"],
+])('the import queue list reads a %s request with a %s run as one state', (status, runStatus, label) => {
   queue.items = [{
+    source: "download",
     id: "import-1",
     identifier: "10.1234/example",
     identifier_type: "doi",
@@ -56,9 +57,51 @@ it.each<[DownloadStatus, RunStatus | null, string]>([
   expect(screen.getByText(label)).toBeTruthy()
 })
 
-it("the import queue shows the reason a fetch failed and no processing stage", () => {
+it("the import queue lists no steps until the request is opened", () => {
   queue.items = [{
+    source: "download",
     id: "import-2",
+    identifier: "10.1234/example",
+    identifier_type: "doi",
+    status: "success",
+    created_at: "2026-10-09T00:00:00Z",
+    run: { status: "running", stage: "chunk", error_message: null },
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  // The list only reports state; which steps ran is a detail of the request.
+  expect(screen.queryByText("获取原文")).toBeNull()
+  expect(screen.queryByText("切分片段")).toBeNull()
+})
+
+it("an upload shows its own first step, since it never fetched anything", async () => {
+  queue.items = [{
+    source: "request",
+    id: "run-1",
+    identifier: "",
+    identifier_type: "upload",
+    status: "running",
+    created_at: "2026-10-09T00:00:00Z",
+    run: { status: "running", stage: "parse", error_message: null },
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole("button", { name: /本地上传/ }))
+  expect(screen.getByText("文件上传")).toBeTruthy()
+  expect(screen.getByText("解析正文")).toBeTruthy()
+  expect(screen.queryByText("获取原文")).toBeNull()
+})
+
+it("a failed fetch reports its reason instead of a processing step", async () => {
+  queue.items = [{
+    source: "download",
+    id: "import-3",
     identifier: "10.1234/missing",
     identifier_type: "doi",
     status: "failed",
@@ -71,6 +114,7 @@ it("the import queue shows the reason a fetch failed and no processing stage", (
       <ImportQueuePanel />
     </QueryClientProvider>,
   )
+  await userEvent.click(screen.getByRole("button", { name: /10.1234\/missing/ }))
   expect(screen.getByText("没有找到可用的原文")).toBeTruthy()
   expect(screen.queryByText("生成向量")).toBeNull()
 })

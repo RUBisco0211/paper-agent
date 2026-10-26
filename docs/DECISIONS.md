@@ -83,6 +83,7 @@
 | 0092 | ingest, data, product | 一次入库=一条 paper_imports、一篇一条；四阶段 source/parse/chunk/embed；元数据不占流程；未完成不进列表 | 已被 0094 取代 | [0092-import-is-one-flow.md](decisions/0092-import-is-one-flow.md) |
 | 0093 | data, ingest, storage, frontend | 删 user_papers.source 等无读取方的字段；产物改按 file_hash 扁平覆盖写；错误文案只由后端提供 | 当前 | [0093-column-pruning-and-flat-artifact-paths.md](decisions/0093-column-pruning-and-flat-artifact-paths.md) |
 | 0094 | data, ingest, product | 下载(downloads)与处理(runs)分成两条记录；下载异步、按用户建行不按 URL 去重；阶段并入 runs；删 user_papers.ready；界面合并为一个队列 | 当前 | [0094-download-and-run-are-separate-stages.md](decisions/0094-download-and-run-are-separate-stages.md) |
+| 0095 | data, ingest, product, frontend | 队列=downloads∪user_runs 按 run 去重，只收录未完成请求；user_runs 带 project_id 并在接受请求时校验；列表只看状态，详情分动作列步骤 | 当前 | [0095-queue-is-requests-not-downloads.md](decisions/0095-queue-is-requests-not-downloads.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

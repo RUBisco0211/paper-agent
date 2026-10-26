@@ -364,12 +364,16 @@ export interface QueueRun {
  * A successful download is stitched to its run so both read as one process.
  */
 export interface ImportQueueItem {
+  /** Whether the request carried a download, or the file arrived with it. */
+  source: "download" | "request"
   id: Uuid
   identifier: string
-  identifier_type: IdentifierType
+  /** An upload has no identifier, so the type records where it came from. */
+  identifier_type: IdentifierType | "upload"
   status: DownloadStatus
   paper_id?: Uuid | null
   run_id?: Uuid | null
+  project_id?: Uuid | null
   source_url?: string | null
   error_message?: string | null
   created_at: string

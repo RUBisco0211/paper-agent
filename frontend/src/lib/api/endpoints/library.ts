@@ -15,10 +15,14 @@ const PAPERS = "/v1/papers"
 
 export function libraryEndpoints(client: ApiClient) {
   return {
-    /** Upload a local PDF; the response already contains the library entry. */
-    upload: (file: File, options: { signal?: AbortSignal } = {}) => {
+    /** Upload a local PDF; the paper joins its run and appears once it is usable. */
+    upload: (
+      file: File,
+      options: { signal?: AbortSignal; projectId?: Uuid } = {},
+    ) => {
       const form = new FormData()
       form.append("file", file)
+      if (options.projectId) form.append("project_id", options.projectId)
       return client.request<UploadResponse>(PAPERS, {
         method: "POST",
         body: form,

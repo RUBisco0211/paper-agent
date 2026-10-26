@@ -19,7 +19,13 @@ class MetadataEnricherPort(Protocol):
 class RunStarter(Protocol):
     """Join a user to a paper's processing, starting one when there is none."""
 
-    def request(self, *, user_id: UUID, paper_id: UUID) -> Run: ...
+    def request(
+        self,
+        *,
+        user_id: UUID,
+        paper_id: UUID,
+        project_id: UUID | None = None,
+    ) -> Run: ...
 
     def latest_for_papers(self, paper_ids: list[UUID]) -> dict[UUID, Run]:
         """The most recent run of each paper, whichever user asked for it."""

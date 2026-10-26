@@ -354,8 +354,14 @@ def _override_services(
 
     original_upload = library_service_module.PaperLibraryService.upload_pdf
 
-    def upload_then_work(self, *, user_id, filename, stream):
-        run = original_upload(self, user_id=user_id, filename=filename, stream=stream)
+    def upload_then_work(self, *, user_id, filename, stream, project_id=None):
+        run = original_upload(
+            self,
+            user_id=user_id,
+            filename=filename,
+            stream=stream,
+            project_id=project_id,
+        )
         run_worker()
         return run
 

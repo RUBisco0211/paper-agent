@@ -26,6 +26,7 @@ from app.platform.database import SessionFactory
 from app.platform.errors import AppError, ErrorCode
 from app.platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
 from app.platform.tasks import TaskScheduler
+from app.projects.repo import ProjectRepository
 from app.retrieval.ports import EmbeddingAdapter
 from app.retrieval.repo import ChunkRepository
 
@@ -296,8 +297,15 @@ class RunPipeline:
         run = runs.get(run_id)
         if run is None:
             return
-        for user_id in runs.user_ids_of(run_id):
-            papers.link_paper(user_id=user_id, paper_id=run.paper_id)
+        for request in runs.requests_of_run(run_id):
+            entry = papers.link_paper(
+                user_id=request.user_id, paper_id=run.paper_id
+            )
+            # The entry must exist first: a project holds the user's entries.
+            if request.project_id is not None:
+                ProjectRepository(session).add_papers(
+                    project_id=request.project_id, user_paper_ids=[entry.id]
+                )
         session.commit()
 
     @contextmanager

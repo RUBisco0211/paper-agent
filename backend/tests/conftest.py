@@ -474,9 +474,12 @@ def completed_imports(
 
     original_start = import_service_module.ImportService.start
 
-    def start_then_work(self, *, user_id, identifier_text):
+    def start_then_work(self, *, user_id, identifier_text, project_id=None):
         download = original_start(
-            self, user_id=user_id, identifier_text=identifier_text
+            self,
+            user_id=user_id,
+            identifier_text=identifier_text,
+            project_id=project_id,
         )
         run_worker()
         with session_factory() as session:
@@ -492,8 +495,14 @@ def completed_imports(
 
     original_upload = library_service_module.PaperLibraryService.upload_pdf
 
-    def upload_then_work(self, *, user_id, filename, stream):
-        run = original_upload(self, user_id=user_id, filename=filename, stream=stream)
+    def upload_then_work(self, *, user_id, filename, stream, project_id=None):
+        run = original_upload(
+            self,
+            user_id=user_id,
+            filename=filename,
+            stream=stream,
+            project_id=project_id,
+        )
         run_worker()
         return run
 
