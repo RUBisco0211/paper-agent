@@ -6,13 +6,14 @@ requests never has to finish inside one.
 """
 
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy import select
 
+from app.library.domain import Paper
 from app.library.repo import PaperRepository
-from app.literature_support.scholar.identifiers import parse_identifier
+from app.literature_support.scholar.identifiers import IdentifierType, parse_identifier
 from app.platform.database import SessionFactory
 from app.platform.errors import (
     AppError,
@@ -22,12 +23,14 @@ from app.platform.errors import (
     ValidationError,
 )
 from app.platform.security import create_candidate_token, read_candidate_token
+from app.platform.storage import ObjectStorage, paper_pdf_key
 from app.projects.repo import ProjectRecord, ProjectRepository
 from app.sessions.repo import SessionBindingRepository
 from app.sessions.service import SessionBindingService
 
-from ..pipelines.domain import Download
+from ..pipelines.domain import Download, DownloadStatus
 from ..pipelines.repo import DownloadRepository, RunRepository
+from ..pipelines.runs import RunService
 from .ports import PaperDiscoveryAdapter
 from .repo import ImportApprovalRecord, ImportRepository
 
@@ -210,8 +213,16 @@ class ImportApprovalService:
 class ImportService:
     """Record what a user asked for; the worker owns fetching and processing."""
 
-    def __init__(self, *, session_factory: SessionFactory) -> None:
+    def __init__(
+        self,
+        *,
+        session_factory: SessionFactory,
+        storage: ObjectStorage | None = None,
+        runs: RunService | None = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._storage = storage
+        self._runs = runs
 
     def start(
         self,
@@ -238,6 +249,22 @@ class ImportService:
                     raise NotFoundError(
                         "项目不存在", code=ErrorCode.PROJECT_NOT_FOUND
                     )
+            # A file already in the library never needs fetching again: the
+            # user joins its run and no download is queued.
+            reused = self._reuse_stored_paper(
+                session, user_id=user_id, identifier=identifier, project_id=project_id
+            )
+            if reused is not None:
+                session.commit()
+                logger.info(
+                    "imports.reused_stored_paper",
+                    paper_id=str(reused.id),
+                    identifier_type=identifier.type.value,
+                )
+                return self._reused_download(
+                    user_id=user_id, identifier=identifier
+                )
+
             repository = ImportRepository(session)
             download = repository.add_download(
                 user_id=user_id,
@@ -254,6 +281,55 @@ class ImportService:
             return download
         finally:
             session.close()
+
+    def _reuse_stored_paper(
+        self,
+        session,
+        *,
+        user_id: UUID,
+        identifier,
+        project_id: UUID | None,
+    ) -> Paper | None:
+        """Join a paper whose file is already stored; nothing is fetched."""
+        if self._runs is None or self._storage is None:
+            return None
+        papers = PaperRepository(session)
+        paper = papers.get_paper_by_identifier(
+            identifier_type=identifier.type.value,
+            identifier=(
+                identifier.full_value
+                if identifier.type is IdentifierType.ARXIV
+                else identifier.value
+            ),
+        )
+        if paper is None:
+            return None
+        # A row without its file is not a usable copy.
+        if not self._storage.exists(paper_pdf_key(paper.file_hash)):
+            return None
+        self._runs.request(
+            user_id=user_id, paper_id=paper.id, project_id=project_id
+        )
+        return paper
+
+    def _reused_download(self, *, user_id: UUID, identifier) -> Download:
+        """A stand-in result for a request that needed no download."""
+        now = datetime.now(UTC)
+        return Download(
+            id=uuid4(),
+            user_id=user_id,
+            identifier_type=identifier.type.value,
+            identifier=identifier.value,
+            status=DownloadStatus.SUCCESS,
+            paper_id=None,
+            run_id=None,
+            project_id=None,
+            source_url=None,
+            error_message=None,
+            created_at=now,
+            started_at=now,
+            finished_at=now,
+        )
 
     def queue(self, *, user_id: UUID, limit: int = 100) -> list[dict]:
         """Every request this user made, newest first, with its run's progress.

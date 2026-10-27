@@ -1,17 +1,16 @@
 """A request remembers where it should land, and the queue shows both doors."""
 
-from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.pipelines.repo import DownloadRecord, RunRecord, UserRunRecord
-from tests.conftest import auth_headers
-from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
-from tests.imports.test_imports_api import ATTENTION, ARXIV_ID
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
+from app.pipelines.repo import RunRecord, UserRunRecord
+from tests.conftest import auth_headers
+from tests.imports.test_imports_api import ARXIV_ID, ATTENTION
+from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
 
 
 def _create_project(client: TestClient, api_prefix: str, token: str, name: str) -> str:
@@ -177,3 +176,107 @@ def test_uploading_an_already_usable_paper_grants_it_without_queueing(
     with db_session as session:
         assert len(session.scalars(select(RunRecord)).all()) == 1
         assert len(session.scalars(select(UserRunRecord)).all()) == 1
+
+
+def test_importing_a_stored_identifier_does_not_download_again(
+    client, api_prefix, register_user, make_pdf, db_session, completed_imports
+):
+    """A paper already in the library is joined, never fetched a second time."""
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+    from app.library.repo import PaperRecord
+    from app.literature_support.scholar.metadata import (
+        MetadataResolver,
+        ProviderMetadata,
+    )
+    from app.pipelines.repo import DownloadRecord, RunRecord
+    from tests.imports.test_imports_api import ARXIV_ID, ATTENTION
+    from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
+
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        )
+    )
+    fetcher = FakePdfFetcher(make_pdf())
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: fetcher
+    token = register_user(email="reuse@example.com")["access_token"]
+
+    first = client.post(
+        f"{api_prefix}/imports",
+        headers=auth_headers(token),
+        json={"identifier": ARXIV_ID},
+    )
+    assert first.status_code == 202, first.text
+    downloads_after_first = db_session.query(DownloadRecord).count()
+    assert downloads_after_first == 1
+
+    second = client.post(
+        f"{api_prefix}/imports",
+        headers=auth_headers(token),
+        json={"identifier": ARXIV_ID},
+    )
+    assert second.status_code == 202, second.text
+
+    db_session.expire_all()
+    # No second fetch, because the file was already stored.
+    assert db_session.query(DownloadRecord).count() == downloads_after_first
+    assert db_session.query(PaperRecord).count() == 1
+    assert db_session.query(RunRecord).count() == 1
+
+
+def test_a_paper_row_without_its_file_is_downloaded_again(
+    client, api_prefix, register_user, make_pdf, db_session, completed_imports, storage
+):
+    """A leftover row must not stand in for a missing file."""
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+    from app.library.repo import PaperRecord
+    from app.literature_support.scholar.metadata import (
+        MetadataResolver,
+        ProviderMetadata,
+    )
+    from app.pipelines.repo import DownloadRecord
+    from app.platform.storage import paper_pdf_key
+    from tests.imports.test_imports_api import ARXIV_ID, ATTENTION
+    from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
+
+    provider = FakeProvider(
+        ProviderMetadata(
+            source="fake",
+            pdf_url="https://example.org/1706.03762.pdf",
+            **ATTENTION,
+        )
+    )
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [provider]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
+    token = register_user(email="missing-file@example.com")["access_token"]
+
+    first = client.post(
+        f"{api_prefix}/imports",
+        headers=auth_headers(token),
+        json={"identifier": ARXIV_ID},
+    )
+    assert first.status_code == 202, first.text
+    with db_session as session:
+        paper = session.query(PaperRecord).one()
+        stored_hash = paper.file_hash
+    storage.delete(paper_pdf_key(stored_hash))
+
+    second = client.post(
+        f"{api_prefix}/imports",
+        headers=auth_headers(token),
+        json={"identifier": ARXIV_ID},
+    )
+    assert second.status_code == 202, second.text
+
+    db_session.expire_all()
+    # The row was there but the file was not, so a fresh download was queued.
+    assert db_session.query(DownloadRecord).count() == 2

@@ -6,6 +6,7 @@ from app.literature_support.scholar.pdf_sources import DoiPdfLocator
 
 from ..platform.database import SessionFactoryDep
 from ..platform.discovery import DiscoveryAggregator
+from ..platform.storage import StorageDep
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import PdfSourceLocator
 from .service import DiscoveryService, ImportApprovalService, ImportService
@@ -34,9 +35,22 @@ def get_pdf_locator() -> PdfSourceLocator:
 PdfSourceLocatorDep = Annotated[PdfSourceLocator, Depends(get_pdf_locator)]
 
 
-def get_import_service(session_factory: SessionFactoryDep) -> ImportService:
-    """Queue identifier downloads; the worker fetches and processes them."""
-    return ImportService(session_factory=session_factory)
+def get_import_service(
+    session_factory: SessionFactoryDep,
+    storage: StorageDep,
+) -> ImportService:
+    """Queue identifier downloads, or reuse a paper whose file is already here.
+
+    The runs service is built from the same factory so a reused paper joins its
+    run without going through the download worker.
+    """
+    from app.pipelines.runs import RunService
+
+    return ImportService(
+        session_factory=session_factory,
+        storage=storage,
+        runs=RunService(session_factory=session_factory),
+    )
 
 
 ImportServiceDep = Annotated[ImportService, Depends(get_import_service)]

@@ -88,6 +88,27 @@ class PaperRepository:
         )
         return _to_paper(record) if record else None
 
+    def get_paper_by_doi(self, doi: str) -> Paper | None:
+        """The paper stored for this exact DOI, if its file is already here."""
+        record = self._session.scalar(
+            select(PaperRecord).where(PaperRecord.doi == doi).limit(1),
+        )
+        return _to_paper(record) if record else None
+
+    def get_paper_by_identifier(
+        self, *, identifier_type: str, identifier: str
+    ) -> Paper | None:
+        """Look a paper up by whichever identifier the caller holds.
+
+        Import entries ask this before downloading: a file already in storage
+        must not be fetched twice.
+        """
+        if identifier_type == "doi":
+            return self.get_paper_by_doi(identifier)
+        if identifier_type == "arxiv":
+            return self.get_paper_by_arxiv_id(identifier)
+        return None
+
     def get_paper_by_hash(self, file_hash: str) -> Paper | None:
         record = self._session.scalar(
             select(PaperRecord).where(PaperRecord.file_hash == file_hash),
