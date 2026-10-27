@@ -17,6 +17,8 @@ from app.literature_support.embedding.base import EmbeddingProfile, prepare
 from app.platform.config import settings
 from app.platform.errors import AppError, ErrorCode
 from app.platform.outbound_http import HttpClientFactory, default_http_client_factory
+from app.platform.rate_limit import TokenBucket, estimate_tokens
+from app.platform.redis import get_redis
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +39,7 @@ class OpenAICompatibleEmbeddingAdapter:
         max_retries: int | None = None,
         retry_backoff: float | None = None,
         sleeper: Callable[[float], None] = time.sleep,
+        bucket: TokenBucket | None = None,
     ) -> None:
         self._base_url = (
             base_url if base_url is not None else settings.embedding_api_url
@@ -57,6 +60,14 @@ class OpenAICompatibleEmbeddingAdapter:
             else retry_backoff
         )
         self._sleeper = sleeper
+        # The provider meters requests and tokens; spending them here is what
+        # keeps a burst of papers from turning into 429s and retries.
+        self._bucket = bucket or TokenBucket(
+            client=get_redis(),
+            name="embedding",
+            requests_per_minute=settings.embedding_rpm,
+            tokens_per_minute=settings.embedding_tpm,
+        )
 
     @property
     def model(self) -> str:
@@ -170,6 +181,9 @@ class OpenAICompatibleEmbeddingAdapter:
     def _embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
+        self._bucket.acquire(
+            tokens=estimate_tokens(sum(len(text) for text in texts))
+        )
         base_url = self._base_url
         if not base_url:
             raise AppError(
