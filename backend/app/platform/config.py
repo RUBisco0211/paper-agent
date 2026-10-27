@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: 已知的占位符/示例密钥：出现在生产配置里意味着令牌可被伪造
@@ -30,6 +30,19 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator(
+        "embedding_max_input_chars",
+        "embedding_max_batch_items",
+        "embedding_max_batch_chars",
+        mode="before",
+    )
+    @classmethod
+    def _blank_means_unset(cls, value: object) -> object:
+        """`.env` 里留空表示「用模型档案默认值」，不是 0 也不是错误。"""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     app_name: str = "Paper Agent API"
     app_version: str = "0.1.0"
