@@ -7,6 +7,7 @@ import { useApi } from "@/components/providers/ApiProvider"
 import { describeError, notifySuccess } from "@/lib/errors"
 import { useImportQueue } from "@/components/providers/ImportQueueProvider"
 import { Button } from "@/components/ui/Button"
+import { Checkbox } from "@/components/ui/Checkbox"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/Input"
 import { Spinner } from "@/components/ui/Spinner"
@@ -76,7 +77,7 @@ export function DiscoverPage() {
   }
 
   return <>
-    <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center border-b px-6"><h1 className="text-lg font-semibold">在线检索文献</h1></header>
+    <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center border-b px-4"><h1 className="font-medium">在线检索文献</h1></header>
     <div className="mx-auto w-full max-w-5xl space-y-5 px-6 py-6">
       <form onSubmit={searchPapers} className="flex gap-2">
         <Input type="search" aria-label="搜索文献" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="标题或关键词" maxLength={300} />
@@ -100,7 +101,13 @@ export function DiscoverPage() {
 
 function CandidateRow({ paper, selected, disabled, toggle }: { paper: ExternalPaperCandidate; selected: boolean; disabled: boolean; toggle: () => void }) {
   return <div className="flex gap-3 py-4">
-    <input type="checkbox" aria-label={paper.title} className="mt-1 size-4" checked={selected} disabled={disabled} onChange={toggle} />
+    <Checkbox
+      aria-label={paper.title}
+      className="mt-1"
+      checked={selected}
+      disabled={disabled}
+      onCheckedChange={() => toggle()}
+    />
     <div className="min-w-0 flex-1 space-y-1">
       <p className="font-medium">{paper.title}</p>
       {paper.authors?.length ? <p className="truncate text-sm text-muted-foreground">{paper.authors.join("、")}</p> : null}

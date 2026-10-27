@@ -85,6 +85,8 @@ class UserPaper:
     paper_id: UUID
     #: Present means usable: entries are written only once a run succeeded.
     created_at: datetime | None = None
+    #: Projects this entry belongs to; empty when it is only in the library.
+    project_ids: tuple[UUID, ...] = ()
     updated_at: datetime | None = None
 
     def capabilities(

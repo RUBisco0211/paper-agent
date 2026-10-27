@@ -148,7 +148,7 @@ def list_papers(
     user: CurrentUser,
     params: PageParamsDep,
     service: PaperLibraryServiceDep,
-    q: Annotated[str | None, Query(description="按标题过滤")] = None,
+    q: Annotated[str | None, Query(description="按标题或摘要过滤")] = None,
 ) -> Page[UserPaperSummary]:
     entries, total = service.list_entries(
         user_id=user.id,

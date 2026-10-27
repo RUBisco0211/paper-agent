@@ -1,3 +1,4 @@
+from dataclasses import replace
 from uuid import UUID
 
 from sqlalchemy import (
@@ -212,12 +213,13 @@ class PaperRepository:
         count_statement = statement.with_only_columns(func.count(UserPaperRecord.id))
         if query:
             pattern = f"%{query.strip()}%"
-            statement = statement.where(
-                PaperRecord.bibliographic["title"].astext.ilike(pattern)
+            # Title or abstract: both live in the shared bibliographic record.
+            match = or_(
+                PaperRecord.bibliographic["title"].astext.ilike(pattern),
+                PaperRecord.bibliographic["abstract"].astext.ilike(pattern),
             )
-            count_statement = count_statement.where(
-                PaperRecord.bibliographic["title"].astext.ilike(pattern)
-            )
+            statement = statement.where(match)
+            count_statement = count_statement.where(match)
         statement = (
             statement.order_by(
                 UserPaperRecord.created_at.desc(),
@@ -228,7 +230,35 @@ class PaperRepository:
         )
         records = self._session.scalars(statement).all()
         total = self._session.scalar(count_statement) or 0
-        return [_to_user_paper(record) for record in records], int(total)
+        projects_of = self._project_ids_of([record.id for record in records])
+        entries = []
+        for record in records:
+            entry = _to_user_paper(record)
+            entries.append(
+                replace(entry, project_ids=projects_of.get(record.id, ()))
+            )
+        return entries, int(total)
+
+    def _project_ids_of(
+        self, user_paper_ids: list[UUID]
+    ) -> dict[UUID, tuple[UUID, ...]]:
+        """Which projects each entry belongs to, in one round trip."""
+        if not user_paper_ids:
+            return {}
+        from ..projects.repo import ProjectPaperRecord
+
+        rows = self._session.execute(
+            select(
+                ProjectPaperRecord.user_paper_id,
+                ProjectPaperRecord.project_id,
+            )
+            .where(ProjectPaperRecord.user_paper_id.in_(user_paper_ids))
+            .order_by(ProjectPaperRecord.project_id),
+        ).all()
+        grouped: dict[UUID, list[UUID]] = {}
+        for user_paper_id, project_id in rows:
+            grouped.setdefault(user_paper_id, []).append(project_id)
+        return {key: tuple(value) for key, value in grouped.items()}
 
     def find_user_paper_by_identifier(
         self,
@@ -349,4 +379,5 @@ def _to_user_paper(record: UserPaperRecord) -> UserPaper:
         paper_id=record.paper_id,
         created_at=record.created_at,
         updated_at=record.updated_at,
+        project_ids=(),
     )

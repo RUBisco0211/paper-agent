@@ -42,6 +42,8 @@ class QueueRunRead(BaseModel):
 
     status: str
     stage: str | None = None
+    #: Stage name → ISO timestamp, for the stages that already finished.
+    stage_finished_at: dict[str, str] = Field(default_factory=dict)
     error_message: str | None = None
 
 

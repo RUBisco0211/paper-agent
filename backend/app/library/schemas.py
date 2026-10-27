@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .domain import Capabilities
 from .service import LibraryEntry
@@ -32,6 +32,8 @@ class UserPaperSummary(BaseModel):
     doi: str | None = None
     arxiv_id: str | None = None
     added_at: datetime
+    #: Projects this entry belongs to; empty when it is only in the library.
+    project_ids: list[UUID] = Field(default_factory=list)
     capabilities: CapabilitiesRead
     #: How the paper's latest run is doing; ``None`` when it never ran.
     run_status: str | None = None
@@ -96,6 +98,7 @@ def to_summary(entry: LibraryEntry) -> UserPaperSummary:
         doi=paper.doi if paper else None,
         arxiv_id=paper.arxiv_id if paper else None,
         added_at=user_paper.created_at,
+        project_ids=list(user_paper.project_ids),
         capabilities=_capabilities(entry.capabilities),
         run_status=(
             entry.latest_run.status.value if entry.latest_run else None

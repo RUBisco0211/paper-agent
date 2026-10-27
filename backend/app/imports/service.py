@@ -286,6 +286,11 @@ class ImportService:
                 )
                 for paper_id in paper_ids
             }
+            # An upload has no identifier; its file hash is what names it.
+            hashes = {
+                paper_id: (paper := papers.get_paper(paper_id)) and paper.file_hash
+                for paper_id in paper_ids
+            }
 
             items: list[dict] = []
             for item in downloads:
@@ -325,7 +330,7 @@ class ImportService:
                     {
                         "source": "request",
                         "id": str(request.run_id),
-                        "identifier": "",
+                        "identifier": hashes.get(request.paper_id) or "",
                         "identifier_type": "upload",
                         "status": run.status.value if run else "pending",
                         "paper_id": (
@@ -362,5 +367,11 @@ def _run_view(run) -> dict | None:
     return {
         "status": run.status.value,
         "stage": run.current_stage.value if run.current_stage else None,
+        # Which stages already finished, so the queue can list them separately.
+        "stage_finished_at": {
+            name: timing.finished_at.isoformat()
+            for name, timing in run.stage_timings.items()
+            if timing.finished_at is not None
+        },
         "error_message": run.error_message,
     }

@@ -14,9 +14,7 @@ import {
 } from "@/components/ui/Sheet"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { Spinner } from "@/components/ui/Spinner"
-import { Textarea } from "@/components/ui/Textarea"
 import { AddToProjectMenu } from "@/components/papers/AddToProjectMenu"
-import { PaperStatusBadge } from "@/components/papers/PaperStatus"
 import { useApi } from "@/components/providers/ApiProvider"
 import { useAgentUi } from "@/components/providers/AgentUiProvider"
 import { describeError, notifyError } from "@/lib/errors"
@@ -85,10 +83,6 @@ export function PaperDetailSheet({
           ) : paper ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <PaperStatusBadge
-                  capabilities={paper.capabilities}
-                  runStatus={paper.run_status}
-                />
                 {paper.doi ? <Badge variant="outline">DOI {paper.doi}</Badge> : null}
                 {paper.arxiv_id ? (
                   <Badge variant="outline">arXiv {paper.arxiv_id}</Badge>
@@ -106,11 +100,9 @@ export function PaperDetailSheet({
                   <dd>{paper.pdf.page_count ?? "—"}</dd>
                 </dl>
                 {paper.abstract ? (
-                  <Textarea
-                    readOnly
-                    value={paper.abstract}
-                    className="max-h-40 min-h-24 resize-none text-sm"
-                  />
+                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                    {paper.abstract}
+                  </p>
                 ) : null}
               </section>
 

@@ -1,9 +1,10 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { FileText, Search } from "lucide-react";
+import { FileText, Plus, Search } from "lucide-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
+import { AddPapersDialog } from "@/components/projects/AddPapersDialog";
 import { useApi } from "@/components/providers/ApiProvider";
 import { useDebouncedValue } from "@/lib/hooks/useDebouncedValue";
 import { PaperReadingPage } from "@/pages/PaperReadingPage";
@@ -20,6 +21,7 @@ export function ConversationPapersPanel({
   onReadingChange?: (reading: boolean) => void;
 }) {
   const { api } = useApi();
+  const [adding, setAdding] = useState(false);
   const [query, setQuery] = useState("");
   const searchQuery = useDebouncedValue(query.trim());
   const listRef = useRef<HTMLDivElement>(null);
@@ -115,21 +117,45 @@ export function ConversationPapersPanel({
     >
       {
         <div className="shrink-0 border-b p-2">
-          <div className="relative">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              aria-label={projectId ? "搜索项目文献" : "搜索个人文献库"}
-              placeholder={projectId ? "搜索项目文献" : "搜索个人文献库"}
-              className="pl-9"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                if (listRef.current) listRef.current.scrollTop = 0;
-              }}
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                aria-label={projectId ? "搜索项目文献" : "搜索个人文献库"}
+                placeholder={projectId ? "搜索项目文献" : "搜索个人文献库"}
+                className="pl-9"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  if (listRef.current) listRef.current.scrollTop = 0;
+                }}
+              />
+            </div>
+            {/* Adding papers only makes sense inside a project. */}
+            {projectId && (
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label="添加文献到项目"
+                title="添加文献到项目"
+                onClick={() => setAdding(true)}
+              >
+                <Plus />
+              </Button>
+            )}
           </div>
         </div>
       }
+      {projectId && adding && (
+        <AddPapersDialog
+          projectId={projectId}
+          existingPaperIds={items.map((item) => item.id)}
+          open
+          onOpenChange={(next) => {
+            if (!next) setAdding(false);
+          }}
+        />
+      )}
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto p-2"

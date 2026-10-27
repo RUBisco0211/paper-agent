@@ -115,6 +115,8 @@ export interface UserPaperSummary {
   doi?: string | null
   arxiv_id?: string | null
   added_at: string
+  /** Projects this entry belongs to; empty when it is only in the library. */
+  project_ids?: Uuid[]
   capabilities: Capabilities
   run_status?: RunStatus | null
 }
@@ -356,6 +358,8 @@ export type IdentifierType = "doi" | "arxiv"
 export interface QueueRun {
   status: RunStatus
   stage?: RunStage | null
+  /** Stage name → ISO timestamp, for the stages that already finished. */
+  stage_finished_at?: Record<string, string>
   error_message?: string | null
 }
 
