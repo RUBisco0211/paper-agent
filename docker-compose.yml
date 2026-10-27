@@ -28,11 +28,13 @@ services:
       retries: 10
 
   # 仅保存验证码、一次性凭证与冷却/限流；持久邮件 outbox 在 PostgreSQL。
-  # 不持久化：状态丢失后须重新验证；不作为 Celery 或邮件任务队列。
+  # 允许丢失最近几十秒的写入（用户重新收一次验证码），因此不做 AOF；
+  # 不作为 Celery 或邮件任务队列。
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # 验证码与限流计数重启后应当还在：60 秒内至少 1000 次写入就存一次快照。
+    command: ["redis-server", "--save", "60", "1000", "--appendonly", "no"]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
