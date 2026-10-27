@@ -6,14 +6,14 @@ from pathlib import Path
 from threading import Thread
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.library.repo import PaperRepository
 from app.literature_support.importing.mineru import MineruArtifact, MineruParser
 from app.pipelines.domain import RunStage, RunStatus
 from app.pipelines.pipeline import CONTENT_LIST_OBJECT, MANIFEST_OBJECT, RunPipeline
-from app.pipelines.repo import RunRepository
+from app.pipelines.repo import RunRepository, UserRunRecord
 from app.pipelines.runs import RunService
 from app.platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
@@ -94,6 +94,46 @@ def pipeline(session_factory, storage):
     )
 
 
+def _run_to_completion(runner, session_factory, run_id) -> None:
+    """Drive a run through every stage the way the worker does.
+
+    The executor handles one stage per call, so a test that wants a finished
+    paper asks for each stage in order.
+    """
+    for _ in range(len(RunStage)):
+        with session_factory() as session:
+            stored = RunRepository(session).get(run_id)
+            if stored is None or stored.status is not RunStatus.PENDING:
+                return
+            stage = stored.current_stage
+        if stage is None:
+            return
+        runner.run_sync(run_id, stage=stage)
+        with session_factory() as session:
+            after = RunRepository(session).get(run_id)
+        # A failed stage stays where it is (waiting out a backoff): stop here
+        # rather than pretending the next stage is ready.
+        if after is not None and after.current_stage is stage:
+            return
+
+
+def _exhaust_retries(runner, session_factory, run_id, *, attempts: int = 3) -> None:
+    """Drive a failing stage until its retries are used up."""
+    for _ in range(attempts):
+        runner.run_sync(run_id, stage=RunStage.PARSE)
+        with session_factory() as session:
+            stored = RunRepository(session).get(run_id)
+            if stored is None or stored.status is RunStatus.FAILED:
+                return
+            # Retries wait out a backoff; clear it so the test does not sleep.
+            if stored.next_attempt_at is not None:
+                from app.pipelines.repo import RunRecord
+
+                record = session.get(RunRecord, run_id)
+                record.next_attempt_at = None
+                session.commit()
+
+
 def _start_run(session_factory, paper_id) -> object:
     with session_factory() as session:
         run = RunRepository(session).add(paper_id)
@@ -105,7 +145,7 @@ def test_a_run_parses_then_chunks_then_embeds(paper, pipeline, session_factory) 
     runs, mineru = pipeline
     run = _start_run(session_factory, paper)
 
-    runs.run_sync(run.id)
+    _run_to_completion(runs, session_factory, run.id)
 
     with session_factory() as session:
         finished = RunRepository(session).get(run.id)
@@ -122,10 +162,10 @@ def test_a_second_run_reuses_the_verified_artifacts(
     """Retrying after a crash must not pay for parsing twice."""
     runs, mineru = pipeline
     first = _start_run(session_factory, paper)
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     second = _start_run(session_factory, paper)
-    runs.run_sync(second.id)
+    _run_to_completion(runs, session_factory, second.id)
 
     with session_factory() as session:
         finished = RunRepository(session).get(second.id)
@@ -140,13 +180,13 @@ def test_a_truncated_artifact_is_reparsed_instead_of_failing(
     """A half-written file must be repaired, not reported as a dead end."""
     runs, mineru = pipeline
     first = _start_run(session_factory, paper)
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     key = mineru_artifact_key("b" * 64, CONTENT_LIST_OBJECT)
     storage.put_bytes(key, b'[{"type": "title", "tex')
 
     second = _start_run(session_factory, paper)
-    runs.run_sync(second.id)
+    _run_to_completion(runs, session_factory, second.id)
 
     with session_factory() as session:
         finished = RunRepository(session).get(second.id)
@@ -160,12 +200,12 @@ def test_a_missing_artifact_file_is_reparsed(
 ) -> None:
     runs, mineru = pipeline
     first = _start_run(session_factory, paper)
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     storage.delete_prefix(mineru_artifact_key("b" * 64, ""))
 
     second = _start_run(session_factory, paper)
-    runs.run_sync(second.id)
+    _run_to_completion(runs, session_factory, second.id)
 
     with session_factory() as session:
         finished = RunRepository(session).get(second.id)
@@ -179,7 +219,7 @@ def test_a_manifest_from_another_file_is_not_trusted(
 ) -> None:
     runs, mineru = pipeline
     first = _start_run(session_factory, paper)
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     manifest_key = mineru_artifact_key("b" * 64, MANIFEST_OBJECT)
     manifest = json.loads(storage.read_text(manifest_key))
@@ -187,7 +227,7 @@ def test_a_manifest_from_another_file_is_not_trusted(
     storage.put_bytes(manifest_key, json.dumps(manifest).encode("utf-8"))
 
     second = _start_run(session_factory, paper)
-    runs.run_sync(second.id)
+    _run_to_completion(runs, session_factory, second.id)
 
     with session_factory() as session:
         finished = RunRepository(session).get(second.id)
@@ -217,14 +257,17 @@ def test_a_failed_run_names_the_stage_it_stopped_at(
         embeddings=StubEmbeddings(),
     )
     run = _start_run(session_factory, paper)
-    runs.run_sync(run.id)
+    _run_to_completion(runs, session_factory, run.id)
 
     with session_factory() as session:
         failed = RunRepository(session).get(run.id)
         assert failed is not None
-        assert failed.status is RunStatus.FAILED
+        # One failure is retried later, so the run waits rather than dying.
+        assert failed.status is RunStatus.PENDING
         assert failed.current_stage is RunStage.PARSE
+        assert failed.attempts_for(RunStage.PARSE) == 1
         assert failed.error_message == "MinerU 解析失败：文件格式不支持"
+        assert failed.next_attempt_at is not None
 
 
 def test_every_user_who_asked_gets_an_entry_when_the_run_succeeds(
@@ -239,7 +282,7 @@ def test_every_user_who_asked_gets_an_entry_when_the_run_succeeds(
     second = service.request(user_id=bob, paper_id=paper)
     assert first.id == second.id, "两个用户应共用同一条 run"
 
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     with session_factory() as session:
         papers = PaperRepository(session)
@@ -271,7 +314,7 @@ def test_a_failed_run_grants_no_entry_to_anyone(
     run = service.request(user_id=alice, paper_id=paper)
     service.request(user_id=bob, paper_id=paper)
 
-    runs.run_sync(run.id)
+    _exhaust_retries(runs, session_factory, run.id)
 
     with session_factory() as session:
         papers = PaperRepository(session)
@@ -289,10 +332,10 @@ def test_a_finished_paper_is_not_processed_again_for_a_later_request(
     service = RunService(session_factory=session_factory)
 
     first = service.request(user_id=alice, paper_id=paper)
-    runs.run_sync(first.id)
+    _run_to_completion(runs, session_factory, first.id)
 
     joined = service.request(user_id=bob, paper_id=paper)
-    runs.run_sync(joined.id)
+    _run_to_completion(runs, session_factory, joined.id)
 
     with session_factory() as session:
         assert RunRepository(session).get(first.id).status is RunStatus.SUCCESS
@@ -348,12 +391,15 @@ def _override_services(
             mineru=mineru,
             embeddings=embeddings,
         )
-        while True:
-            with session_factory() as session:
-                run_id = RunRepository(session).claim_next(lease_seconds=300)
-            if run_id is None:
-                break
-            runs.run_sync(run_id)
+        for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
+            while True:
+                with session_factory() as session:
+                    run_id = RunRepository(session).claim_next(
+                        stage=stage, lease_seconds=300
+                    )
+                if run_id is None:
+                    break
+                runs.run_sync(run_id, stage=stage)
 
     original_upload = library_service_module.PaperLibraryService.upload_pdf
 
@@ -394,63 +440,75 @@ def test_success_is_rolled_back_when_granting_entries_is_interrupted(
 
     monkeypatch.setattr(runner, "_grant_entries", interrupt)
     with pytest.raises(RuntimeError, match="injected grant interruption"):
-        runner.run_sync(run.id)
+        _run_to_completion(runner, session_factory, run.id)
     with session_factory() as session:
-        # The run never became success: it rolled back to where it started.
+        # The run never became success. It stays leased so the reclaim path
+        # fails it, rather than leaving "success without entries".
         stored = RunRepository(session).get(run.id)
-        assert stored.status is RunStatus.PENDING
-        # Stage progress is recorded per stage; it is not rolled back, so the
-        # entry point stays visible and a retry resumes from there.
+        assert stored.status is RunStatus.RUNNING
         assert stored.current_stage is RunStage.EMBED
         assert PaperRepository(session).get_user_paper_for_paper(
             user_id=user_id, paper_id=paper
         ) is None
 
 
-def test_finishing_waits_for_a_request_when_it_has_already_found_the_active_run(
+def test_a_request_arriving_mid_run_gets_an_entry_when_it_finishes(
     paper, pipeline, session_factory, make_user, monkeypatch
 ):
-    from concurrent.futures import ThreadPoolExecutor
-    from threading import Event, current_thread
+    """A request may join while stages run; finishing must still reach it.
+
+    The request takes the paper lock before reading the active run, so it can
+    only join either before the finisher or after it — never in between.
+    """
+    from threading import Event
 
     runner, _ = pipeline
     alice, bob = make_user("a@test.example"), make_user("b@test.example")
     run = RunService(session_factory).request(user_id=alice, paper_id=paper)
-    found, release, finishing = Event(), Event(), Event()
-    original = RunRepository.active_for_paper
-    original_lock = PaperRepository.lock_paper
 
-    def signal_lock(self, paper_id):
-        if current_thread().name == "finisher":
-            finishing.set()
-        return original_lock(self, paper_id)
+    # Hold the run half way: parse is done, chunk has not started.
+    parsing_done = Event()
+    original_stage = runner._run_stage
 
-    def finish():
-        current_thread().name = "finisher"
-        runner.run_sync(run.id)
+    def stage_then_pause(stage, **kwargs):
+        if stage is RunStage.PARSE:
+            original_stage(stage, **kwargs)
+            parsing_done.set()
+            return
+        original_stage(stage, **kwargs)
 
-    def pause_after_lookup(self, paper_id):
-        snapshot = original(self, paper_id)
-        found.set()
-        assert release.wait(5)
-        return snapshot
+    monkeypatch.setattr(runner, "_run_stage", stage_then_pause)
+    runner.run_sync(run.id, stage=RunStage.PARSE)
+    assert parsing_done.is_set()
 
-    monkeypatch.setattr(RunRepository, "active_for_paper", pause_after_lookup)
-    monkeypatch.setattr(PaperRepository, "lock_paper", signal_lock)
-    # Exercise the publication boundary only: artifact writers themselves can
-    # take FK/UPDATE locks on the paper before the finisher reaches that point.
-    monkeypatch.setattr(runner, "_run_stage", lambda *args, **kwargs: None)
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        attached = executor.submit(
-            RunService(session_factory).request, user_id=bob, paper_id=paper
-        )
-        assert found.wait(5)
-        finished = executor.submit(finish)
-        assert finishing.wait(5)
-        release.set()
-        attached.result(timeout=10)
-        finished.result(timeout=10)
+    # The second request lands while the run is still pending on chunk.
+    joined = RunService(session_factory).request(user_id=bob, paper_id=paper)
+    assert joined.id == run.id
+
+    for stage in (RunStage.CHUNK, RunStage.EMBED):
+        runner.run_sync(run.id, stage=stage)
+
     with session_factory() as session:
+        assert RunRepository(session).get(run.id).status is RunStatus.SUCCESS
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=bob, paper_id=paper
+        ) is not None
+
+
+def test_a_request_after_success_gets_an_entry_without_a_new_run(
+    paper, pipeline, session_factory, make_user
+):
+    """Arriving after the run succeeded must not restart or wait on anything."""
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+    _run_to_completion(runner, session_factory, run.id)
+
+    later = RunService(session_factory).request(user_id=bob, paper_id=paper)
+
+    with session_factory() as session:
+        assert later.id == run.id
+        assert len(session.scalars(select(UserRunRecord)).all()) == 1
         assert PaperRepository(session).get_user_paper_for_paper(
             user_id=bob, paper_id=paper
         ) is not None

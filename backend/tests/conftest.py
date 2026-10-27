@@ -405,6 +405,7 @@ def completed_imports(
     from app.library.depends import get_metadata_resolver, get_pdf_fetcher
     from app.literature_support.scholar.metadata import build_default_resolver
     from app.literature_support.scholar.pdf_fetch import PdfFetcher
+    from app.pipelines.domain import RunStage
     from app.pipelines.download import DownloadService
     from app.pipelines.pipeline import RunPipeline
     from app.pipelines.repo import DownloadRepository, RunRepository
@@ -463,12 +464,15 @@ def completed_imports(
         while (download_id := downloads.claim_next()) is not None:
             downloads.run(download_id)
         runs = pipeline()
-        while True:
-            with session_factory() as session:
-                run_id = RunRepository(session).claim_next(lease_seconds=300)
-            if run_id is None:
-                break
-            runs.run_sync(run_id)
+        for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
+            while True:
+                with session_factory() as session:
+                    run_id = RunRepository(session).claim_next(
+                        stage=stage, lease_seconds=300
+                    )
+                if run_id is None:
+                    break
+                runs.run_sync(run_id, stage=stage)
 
     # A submitted request only records intent; the worker does the rest. The
     # wrapper keeps the API contract identical while running that worker now.

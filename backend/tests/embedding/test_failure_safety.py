@@ -69,7 +69,8 @@ def test_stage_error_and_logs_exclude_secrets_when_provider_echoes_request(
     with session_factory() as session:
         run = RunRepository(session).get(UUID(body["run_id"]))
         assert run is not None
-        assert run.status is RunStatus.FAILED
+        # The stage is retried later; only a secret leak would be a failure.
+        assert run.status is RunStatus.PENDING
         assert run.current_stage is not None
         assert run.current_stage.value == "embed"
         persisted = repr(run)

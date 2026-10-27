@@ -275,8 +275,11 @@ def test_a_failed_upload_leaves_no_entry_in_the_library(
 
     run = RunRepository(db_session).get(UUID(body["run_id"]))
     assert run is not None
-    assert run.status is RunStatus.FAILED
+    # One failed stage waits to be retried before it is declared dead.
+    assert run.status is RunStatus.PENDING
     assert run.current_stage is RunStage.PARSE
+    assert run.attempts_for(RunStage.PARSE) == 1
+    assert run.next_attempt_at is not None
     assert run.error_message is not None
 
     # The paper and its file exist; the entry does not, because no run succeeded.

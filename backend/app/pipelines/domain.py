@@ -99,11 +99,18 @@ class Run:
     status: RunStatus
     current_stage: RunStage | None
     stage_timings: dict[str, StageTiming]
+    #: Failures per stage, e.g. {"parse": 2}.
+    stage_attempts: dict[str, int]
+    #: When the current stage may be tried again; null means "right now".
+    next_attempt_at: datetime | None
     error_message: str | None
     leased_until: datetime | None
     created_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+
+    def attempts_for(self, stage: RunStage) -> int:
+        return int(self.stage_attempts.get(stage.value, 0))
 
     def timing(self, stage: RunStage) -> StageTiming:
         return self.stage_timings.get(stage.value, StageTiming())

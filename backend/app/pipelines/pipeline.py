@@ -59,6 +59,9 @@ class RunPipeline:
         embeddings: EmbeddingAdapter,
         target_tokens: int | None = None,
         max_chars: int | None = None,
+        max_stage_attempts: int | None = None,
+        retry_base_seconds: float | None = None,
+        retry_max_seconds: float | None = None,
     ) -> None:
         self._scheduler = scheduler
         self._session_factory = session_factory
@@ -67,6 +70,11 @@ class RunPipeline:
         self._embeddings = embeddings
         self._target_tokens = target_tokens or settings.chunk_token_num
         self._max_chars = max_chars or settings.chunk_max_chars
+        self._max_stage_attempts = max_stage_attempts or settings.stage_max_attempts
+        self._retry_base_seconds = (
+            retry_base_seconds or settings.stage_retry_base_seconds
+        )
+        self._retry_max_seconds = retry_max_seconds or settings.stage_retry_max_seconds
 
     def submit(self, run_id: UUID) -> None:
         self._schedule(run_id)
@@ -81,7 +89,7 @@ class RunPipeline:
         # and never blocks the event loop.
         await asyncio.to_thread(self.run_sync, run_id)
 
-    def run_sync(self, run_id: UUID) -> None:
+    def run_sync(self, run_id: UUID, *, stage: RunStage | None = None) -> None:
         # A session-level advisory lock survives stage commits, and is released
         # by PostgreSQL if this executor's connection/process dies.
         with (
@@ -124,7 +132,7 @@ class RunPipeline:
             thread = Thread(target=heartbeat, daemon=True)
             thread.start()
             try:
-                self._run_owned(run_id, lost, guard=connection)
+                self._run_owned(run_id, lost, guard=connection, stage=stage)
             finally:
                 stop.set()
                 thread.join()
@@ -133,7 +141,15 @@ class RunPipeline:
                     {"key": f"paper-run:{run_id}"},
                 )
 
-    def _run_owned(self, run_id: UUID, lost: Event, *, guard=None) -> None:
+    def _run_owned(
+        self,
+        run_id: UUID,
+        lost: Event,
+        *,
+        guard=None,
+        stage: RunStage | None = None,
+    ) -> None:
+        """Execute exactly one stage, then hand the run back to the queue."""
         guard_connection = guard
         session = self._session_factory()
         try:
@@ -144,93 +160,98 @@ class RunPipeline:
             run = runs.get(run_id)
             if run is None or not run.is_active:
                 return
+            current = stage or run.current_stage or RunStage.PARSE
             paper = papers.get_paper(run.paper_id)
             if paper is None:
                 runs.finish_failure(run_id, error_message="论文不存在")
                 session.commit()
                 return
 
-            stage = run.current_stage or RunStage.PARSE
-            while stage is not None:
-                # Losing the guard, or the lease it represents, ends this
-                # executor's right to publish anything.
-                if (
-                    lost.is_set()
-                    or not self._guard_alive(guard_connection)
-                    or not runs.hold_ownership(
-                        run_id, lease_seconds=LEASE_SECONDS
-                    )
-                ):
-                    session.rollback()
-                    lost.set()
-                    logger.warning("pipelines.run.guard_lost", run_id=str(run_id))
-                    return
-                if not runs.mark_stage_started(run_id, stage=stage):
-                    session.rollback()
-                    logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
-                    return
-                session.commit()
-                try:
-                    self._run_stage(stage, papers=papers, chunks=chunks, paper=paper)
-                except AppError as exc:
-                    session.rollback()
-                    if not runs.publish_stage(run_id, stage=stage):
-                        return
-                    runs.finish_failure(run_id, error_message=exc.message)
-                    session.commit()
-                    logger.info(
-                        "pipelines.run.stage_failed",
-                        run_id=str(run_id),
-                        stage=stage.value,
-                        error_code=str(exc.code),
-                    )
-                    return
-                except Exception as exc:  # unexpected: stop and record it
-                    session.rollback()
-                    if not runs.publish_stage(run_id, stage=stage):
-                        return
-                    runs.finish_failure(run_id, error_message=type(exc).__name__)
-                    session.commit()
-                    logger.exception(
-                        "pipelines.run.stage_crashed",
-                        run_id=str(run_id),
-                        stage=stage.value,
-                        error_type=type(exc).__name__,
-                    )
-                    return
-                if (
-                    lost.is_set()
-                    or not self._guard_alive(guard_connection)
-                    or not runs.hold_ownership(
-                        run_id, lease_seconds=LEASE_SECONDS
-                    )
-                    or not runs.publish_stage(run_id, stage=stage)
-                ):
-                    session.rollback()
-                    logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
-                    return
-                session.commit()
-                stage = next_stage(stage)
-
-            # Publication is the last point where the guard can still refuse.
+            # Losing the guard, or the lease it represents, ends this
+            # executor's right to publish anything.
             if (
                 lost.is_set()
                 or not self._guard_alive(guard_connection)
                 or not runs.hold_ownership(run_id, lease_seconds=LEASE_SECONDS)
             ):
                 session.rollback()
+                lost.set()
+                logger.warning("pipelines.run.guard_lost", run_id=str(run_id))
+                return
+            if not runs.mark_stage_started(run_id, stage=current):
+                session.rollback()
                 logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
                 return
-            papers.lock_paper(run.paper_id)
-            runs.finish_success(run_id)
-            self._grant_entries(
-                runs=runs, papers=papers, run_id=run_id, session=session
-            )
             session.commit()
-            logger.info("pipelines.run.finished", run_id=str(run_id))
+
+            failure: str | None = None
+            try:
+                self._run_stage(current, papers=papers, chunks=chunks, paper=paper)
+                # The stage recorded its own facts (manifest pointer, chunks).
+                # A later failure must not discard them: the artifact is real.
+                session.commit()
+            except AppError as exc:
+                failure = exc.message
+                logger.info(
+                    "pipelines.run.stage_failed",
+                    run_id=str(run_id),
+                    stage=current.value,
+                    error_code=str(exc.code),
+                )
+            except Exception as exc:  # unexpected: stop and record it
+                failure = type(exc).__name__
+                logger.exception(
+                    "pipelines.run.stage_crashed",
+                    run_id=str(run_id),
+                    stage=current.value,
+                    error_type=type(exc).__name__,
+                )
+            if failure is not None:
+                session.rollback()
+                if not runs.publish_stage(run_id, stage=current):
+                    return
+                attempts = runs.defer_stage(
+                    run_id,
+                    stage=current,
+                    error_message=failure,
+                    max_attempts=self._max_stage_attempts,
+                    base_seconds=self._retry_base_seconds,
+                    max_seconds=self._retry_max_seconds,
+                )
+                session.commit()
+                logger.info(
+                    "pipelines.run.stage_deferred",
+                    run_id=str(run_id),
+                    stage=current.value,
+                    attempts=attempts,
+                    exhausted=attempts >= self._max_stage_attempts,
+                )
+                return
+
+            if lost.is_set() or not self._guard_alive(guard_connection):
+                session.rollback()
+                return
+            if not runs.publish_stage(run_id, stage=current):
+                session.rollback()
+                logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
+                return
+
+            # Publish the stage result and either advance or finish, in one
+            # transaction: a run must never sit between "stage done" and
+            # "next stage queued".
+            # Take the paper's row lock the same way a joining request does, so
+            # nobody can attach to this run after its audience is read.
+            if next_stage(current) is None:
+                papers.lock_paper(run.paper_id)
+            finished = runs.advance_stage(run_id, completed=current)
+            if finished:
+                self._grant_entries(
+                    runs=runs, papers=papers, run_id=run_id, session=session
+                )
+            session.commit()
+            if finished:
+                logger.info("pipelines.run.finished", run_id=str(run_id))
         except BaseException:
-            # Nothing may be published on a half-done run; the transaction is
-            # one commit, so rollback leaves it exactly where it started.
             session.rollback()
             raise
         finally:

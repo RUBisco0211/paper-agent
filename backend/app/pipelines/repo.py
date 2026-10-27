@@ -31,6 +31,7 @@ from .domain import (
     RunStage,
     RunStatus,
     StageTiming,
+    next_stage,
 )
 
 logger = structlog.get_logger(__name__)
@@ -53,7 +54,7 @@ class DownloadRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     )
     identifier_type: Mapped[str] = mapped_column(String(16), nullable=False)
     identifier: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
     paper_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("papers.id", ondelete="CASCADE"),
@@ -101,6 +102,14 @@ class RunRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
             unique=True,
             postgresql_where=text("status IN ('pending', 'running')"),
         ),
+        Index(
+            "ix_runs_stage_queue",
+            "current_stage",
+            "created_at",
+            postgresql_where=text(
+                "status = 'pending' AND next_attempt_at IS NULL"
+            ),
+        ),
     )
 
     paper_id: Mapped[UUID] = mapped_column(
@@ -109,12 +118,20 @@ class RunRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         nullable=False,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
     current_stage: Mapped[str | None] = mapped_column(String(16), nullable=True)
     stage_timings: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Failures per stage, e.g. {"parse": 2}. Cleared when a run is retried.
+    stage_attempts: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    #: When the current stage may be tried again; null means "right now".
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     #: Lease deadline: a run whose lease expired belongs to a worker that died.
     leased_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -296,11 +313,24 @@ class RunRepository:
         )
 
     # Queue -----------------------------------------------------------------
-    def claim_next(self, *, lease_seconds: int) -> UUID | None:
-        """Take the oldest active run and hold a lease on it."""
+    def claim_next(self, *, stage: RunStage, lease_seconds: int) -> UUID | None:
+        """Take the oldest run waiting for this stage and lease it.
+
+        A run is claimed one stage at a time, so each stage gets its own share
+        of the executor pool. Rows still waiting out a backoff carry a
+        `next_attempt_at` and are skipped until it passes.
+        """
+        now = _now()
         record = self._session.scalar(
             select(RunRecord)
             .where(RunRecord.status == RunStatus.PENDING.value)
+            .where(RunRecord.current_stage == stage.value)
+            .where(
+                or_(
+                    RunRecord.next_attempt_at.is_(None),
+                    RunRecord.next_attempt_at <= now,
+                )
+            )
             .order_by(RunRecord.created_at, RunRecord.id)
             .with_for_update(skip_locked=True)
             .limit(1),
@@ -308,11 +338,84 @@ class RunRepository:
         if record is None:
             return None
         record.status = RunStatus.RUNNING.value
-        record.started_at = record.started_at or _now()
-        record.leased_until = _now() + timedelta(seconds=lease_seconds)
+        record.next_attempt_at = None
+        record.started_at = record.started_at or now
+        record.leased_until = now + timedelta(seconds=lease_seconds)
         run_id = record.id
         self._session.commit()
         return run_id
+
+    def defer_stage(
+        self,
+        run_id: UUID,
+        *,
+        stage: RunStage,
+        error_message: str,
+        max_attempts: int,
+        base_seconds: float,
+        max_seconds: float,
+    ) -> int:
+        """Record a failed stage and decide whether it may be retried.
+
+        Under the limit the run goes back to pending with a future
+        `next_attempt_at`; at the limit it fails for good and the error stays
+        for the reader. Returns the new attempt count.
+        """
+        from ..platform.backoff import next_attempt_at
+
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status != RunStatus.RUNNING.value:
+            self._session.rollback()
+            return 0
+        attempts = dict(record.stage_attempts or {})
+        count = int(attempts.get(stage.value, 0)) + 1
+        attempts[stage.value] = count
+        record.stage_attempts = attempts
+        record.error_message = error_message
+        record.leased_until = None
+        if count >= max_attempts:
+            record.status = RunStatus.FAILED.value
+            record.finished_at = _now()
+            record.next_attempt_at = None
+        else:
+            record.status = RunStatus.PENDING.value
+            record.current_stage = stage.value
+            record.next_attempt_at = next_attempt_at(
+                count,
+                base_seconds=base_seconds,
+                max_seconds=max_seconds,
+            )
+        self._session.flush()
+        return count
+
+    def advance_stage(self, run_id: UUID, *, completed: RunStage) -> bool:
+        """Move to the next stage, or finish the run when that was the last.
+
+        Returns whether the run is finished.
+        """
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status != RunStatus.RUNNING.value:
+            self._session.rollback()
+            return False
+        following = next_stage(completed)
+        # A new stage starts with a clean slate: no backoff to wait out.
+        record.next_attempt_at = None
+        record.leased_until = None
+        if following is None:
+            record.status = RunStatus.SUCCESS.value
+            record.current_stage = None
+            record.error_message = None
+            record.finished_at = _now()
+            self._session.flush()
+            return True
+        record.status = RunStatus.PENDING.value
+        record.current_stage = following.value
+        self._session.flush()
+        return False
 
     def renew_lease(self, run_id: UUID, *, lease_seconds: int) -> bool:
         record = self._session.scalar(
@@ -398,6 +501,7 @@ class RunRepository:
         timings[stage.value] = {"started_at": now.isoformat()}
         record.stage_timings = timings
         record.current_stage = stage.value
+        record.status = RunStatus.RUNNING.value
         record.started_at = record.started_at or now
         self._session.flush()
         return True
@@ -596,6 +700,8 @@ def _to_run(record: RunRecord) -> Run:
             RunStage(record.current_stage) if record.current_stage else None
         ),
         stage_timings=timings,
+        stage_attempts=dict(record.stage_attempts or {}),
+        next_attempt_at=record.next_attempt_at,
         error_message=record.error_message,
         leased_until=record.leased_until,
         created_at=record.created_at,

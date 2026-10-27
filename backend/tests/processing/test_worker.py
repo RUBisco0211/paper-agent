@@ -34,7 +34,9 @@ def test_a_run_carries_its_lease_so_a_dead_worker_is_detectable(
         session.commit()
 
     with session_factory() as session:
-        claimed = RunRepository(session).claim_next(lease_seconds=60)
+        claimed = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=60
+        )
 
     with session_factory() as session:
         run = RunRepository(session).get(claimed)
@@ -54,7 +56,7 @@ def test_an_expired_lease_is_failed_so_the_paper_can_run_again(
         session.commit()
 
     with session_factory() as session:
-        RunRepository(session).claim_next(lease_seconds=60)
+        RunRepository(session).claim_next(stage=RunStage.PARSE, lease_seconds=60)
 
     # Simulate a worker that stopped renewing its lease.
     from app.pipelines.repo import RunRecord
@@ -85,7 +87,7 @@ def test_a_renewed_lease_keeps_its_run_alive(
 
     with session_factory() as session:
         runs = RunRepository(session)
-        run_id = runs.claim_next(lease_seconds=60)
+        run_id = runs.claim_next(stage=RunStage.PARSE, lease_seconds=60)
     with session_factory() as session:
         RunRepository(session).renew_lease(run_id, lease_seconds=60)
 

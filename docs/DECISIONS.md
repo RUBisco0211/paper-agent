@@ -84,6 +84,7 @@
 | 0093 | data, ingest, storage, frontend | 删 user_papers.source 等无读取方的字段；产物改按 file_hash 扁平覆盖写；错误文案只由后端提供 | 当前 | [0093-column-pruning-and-flat-artifact-paths.md](decisions/0093-column-pruning-and-flat-artifact-paths.md) |
 | 0094 | data, ingest, product | 下载(downloads)与处理(runs)分成两条记录；下载异步、按用户建行不按 URL 去重；阶段并入 runs；删 user_papers.ready；界面合并为一个队列 | 当前 | [0094-download-and-run-are-separate-stages.md](decisions/0094-download-and-run-are-separate-stages.md) |
 | 0095 | data, ingest, product, frontend | 队列合并 downloads 与 user_runs，仅消除跨表重复并保留历史 run；项目归属随请求，成功授权原子提交；列表看状态、详情看步骤 | 当前 | [0095-queue-is-requests-not-downloads.md](decisions/0095-queue-is-requests-not-downloads.md) |
+| 0096 | ingest, data, arch | 领取粒度改为阶段，各阶段独立并发；阶段失败按次数指数退避后自动重试；重试计数与退避时间存 runs 并随状态同事务 | 当前 | [0096-stage-level-concurrency.md](decisions/0096-stage-level-concurrency.md) |
 
 状态取值：`当前` / `已被 NNNN 取代` / `已废弃`；合并来源见下表，原文仍可从 Git 历史读取。
 标签：`ingest` / `agent` / `arch` / `security` / `api` / `data` / `product` / `frontend`

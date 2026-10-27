@@ -5,6 +5,7 @@ from uuid import UUID
 import pytest
 
 from app.library.repo import PaperRepository
+from app.pipelines.domain import RunStage
 from app.pipelines.repo import RunRepository
 from app.pipelines.runs import RunService
 
@@ -22,9 +23,15 @@ def test_claim_returns_nothing_when_the_only_run_is_already_leased(session_facto
         RunRepository(session).add(paper.id)
         session.commit()
     with session_factory() as session:
-        assert RunRepository(session).claim_next(lease_seconds=300) is not None
+        assert (
+            RunRepository(session).claim_next(stage=RunStage.PARSE, lease_seconds=300)
+            is not None
+        )
     with session_factory() as session:
-        assert RunRepository(session).claim_next(lease_seconds=300) is None
+        assert (
+            RunRepository(session).claim_next(stage=RunStage.PARSE, lease_seconds=300)
+            is None
+        )
 
 
 def test_claim_uses_distinct_slots_when_two_papers_are_pending(session_factory):
@@ -36,9 +43,13 @@ def test_claim_uses_distinct_slots_when_two_papers_are_pending(session_factory):
             RunRepository(session).add(paper.id)
         session.commit()
     with session_factory() as session:
-        first = RunRepository(session).claim_next(lease_seconds=300)
+        first = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
     with session_factory() as session:
-        second = RunRepository(session).claim_next(lease_seconds=300)
+        second = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
     assert first is not None and second is not None and first != second
 
 
@@ -203,7 +214,10 @@ def test_a_reclaimed_run_refuses_any_late_publish_from_its_old_executor(
         session.commit()
     run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
     with session_factory() as session:
-        assert RunRepository(session).claim_next(lease_seconds=300) == run.id
+        assert (
+            RunRepository(session).claim_next(stage=RunStage.PARSE, lease_seconds=300)
+            == run.id
+        )
     # The executor's guard connection died and its lease ran out.
     with session_factory() as session:
         record = session.get(RunRecord, run.id)

@@ -1,7 +1,9 @@
 """Run queued downloads and queued runs outside the HTTP process."""
 
+import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from uuid import UUID
 
 import structlog
 
@@ -9,6 +11,7 @@ from app.literature_support.scholar.enrichment import MetadataEnricher
 from app.literature_support.scholar.metadata import build_default_resolver
 from app.literature_support.scholar.pdf_fetch import PdfFetcher
 from app.literature_support.scholar.pdf_sources import DoiPdfLocator
+from app.pipelines.domain import RunStage
 from app.pipelines.download import DownloadService
 from app.pipelines.pipeline import LEASE_SECONDS, RunPipeline, build_run_pipeline
 from app.pipelines.repo import RunRepository
@@ -55,14 +58,17 @@ class PipelineWorker:
             done += 1
         return done
 
-    def run_runs(self, *, concurrency: int) -> int:
-        with self._session_factory() as session:
-            RunRepository(session).reclaim_expired()
-        run_ids: list = []
+    def run_stage(self, stage: RunStage, *, concurrency: int) -> int:
+        """Run up to `concurrency` runs of one stage, then give the threads back.
+
+        Each stage is claimed on its own, so a slow parse never holds a slot
+        that embedding could be using.
+        """
+        run_ids: list[UUID] = []
         for _ in range(concurrency):
             with self._session_factory() as session:
                 run_id = RunRepository(session).claim_next(
-                    lease_seconds=LEASE_SECONDS
+                    stage=stage, lease_seconds=LEASE_SECONDS
                 )
             if run_id is None:
                 break
@@ -71,11 +77,33 @@ class PipelineWorker:
             return 0
         with ThreadPoolExecutor(max_workers=len(run_ids)) as executor:
             futures = [
-                executor.submit(self._runs.run_sync, run_id) for run_id in run_ids
+                executor.submit(self._runs.run_sync, run_id, stage=stage)
+                for run_id in run_ids
             ]
             for future in futures:
                 future.result()
         return len(run_ids)
+
+    def run_all_stages(self) -> int:
+        """Drain every stage once, in dependency order."""
+        with self._session_factory() as session:
+            RunRepository(session).reclaim_expired()
+        total = 0
+        for stage, concurrency in (
+            (RunStage.PARSE, settings.parse_concurrency),
+            (RunStage.CHUNK, _chunk_concurrency()),
+            (RunStage.EMBED, settings.embed_concurrency),
+        ):
+            total += self.run_stage(stage, concurrency=concurrency)
+        return total
+
+
+def _chunk_concurrency() -> int:
+    """Chunking is local CPU work, so its ceiling is the machine's cores."""
+    configured = settings.chunk_concurrency
+    if configured > 0:
+        return configured
+    return max(1, (os.cpu_count() or 2))
 
 
 def main() -> None:
@@ -107,8 +135,8 @@ def main() -> None:
     worker.recover()
     logger.info("worker.started")
     while True:
-        fetched = worker.run_downloads(limit=settings.import_concurrency)
-        processed = worker.run_runs(concurrency=settings.import_concurrency)
+        fetched = worker.run_downloads(limit=settings.download_concurrency)
+        processed = worker.run_all_stages()
         if not fetched and not processed:
             time.sleep(0.5)
 
