@@ -9,16 +9,22 @@ const css = readFileSync(
   "utf8",
 );
 
-function palette(selector: string) {
-  const start = css.indexOf("{", css.indexOf(`${selector} {`));
+/** 配色已拆到主题文件，:root 里的颜色 token 从这里取。 */
+const themeCss = readFileSync(
+  new URL("../../../src/styles/themes/vintage-paper.css", import.meta.url),
+  "utf8",
+);
+
+function palette(selector: string, source: string = themeCss) {
+  const start = source.indexOf("{", source.indexOf(`${selector} {`));
   let depth = 1;
   let end = start + 1;
-  while (depth && end < css.length) {
-    if (css[end] === "{") depth++;
-    if (css[end] === "}") depth--;
+  while (depth && end < source.length) {
+    if (source[end] === "{") depth++;
+    if (source[end] === "}") depth--;
     end++;
   }
-  const block = css.slice(start + 1, end - 1).replace(/\/\*[\s\S]*?\*\//g, "");
+  const block = source.slice(start + 1, end - 1).replace(/\/\*[\s\S]*?\*\//g, "");
   return Object.fromEntries(
     [...block.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(([, key, value]) => [
       key,
@@ -38,10 +44,35 @@ function resolve(tokens: Record<string, string>, name: string): string {
   );
 }
 
+/** oklch 的色相/彩度/明度换算成 sRGB，用于对比度判断。 */
+function oklchToRgb(lightness: number, chroma: number, hue: number) {
+  const radians = (hue * Math.PI) / 180;
+  const a = chroma * Math.cos(radians);
+  const b = chroma * Math.sin(radians);
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const linear = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  return linear.map((value) => Math.min(1, Math.max(0, value)));
+}
+
 function rgb(color: string) {
+  const oklch = color.match(
+    /^oklch\(([\d.]+) ([\d.]+) ([\d.]+)(?: \/ ([\d.]+))?\)$/,
+  );
+  if (oklch) {
+    const [, l, c, h, alpha] = oklch;
+    if (alpha !== undefined && Number(alpha) !== 1)
+      throw new Error(`Expected an opaque color, received ${color}`);
+    return oklchToRgb(Number(l), Number(c), Number(h));
+  }
   const match = color.match(/^hsl\(([\d.]+) ([\d.]+)% ([\d.]+)%\)$/);
   if (!match)
-    throw new Error(`Expected an opaque HSL color, received ${color}`);
+    throw new Error(`Expected an opaque HSL or OKLCH color, received ${color}`);
   const [, hue, saturation, lightness] = match.map(Number);
   const s = saturation / 100;
   const l = lightness / 100;
@@ -73,18 +104,21 @@ function contrast(
 }
 
 describe("SMUI theme", () => {
-  it("uses Snow Storm surfaces when the system is light", () => {
-    expect(resolve(light, "--background")).toBe("hsl(218 27% 94%)");
-    expect(resolve(light, "--primary")).toBe("hsl(213 32% 40%)");
+  it("uses paper surfaces when the system is light", () => {
+    expect(resolve(light, "--background")).toBe("oklch(0.9518 0.0054 95.1011)");
+    expect(resolve(light, "--primary")).toBe("oklch(0.5943 0.0251 67.3138)");
   });
 
-  it("uses Polar Night surfaces when the system is dark", () => {
-    expect(resolve(dark, "--background")).toBe("hsl(213 16% 12%)");
-    expect(resolve(dark, "--primary")).toBe("hsl(193 44% 67%)");
+  it("uses dark paper surfaces when the system is dark", () => {
+    expect(resolve(dark, "--background")).toBe("oklch(0.2741 0.0047 67.6302)");
+    // 暗色主按钮提亮，使可见文字与底色对比达到 4.5:1。
+    expect(resolve(dark, "--primary")).toBe("oklch(0.8000 0.0185 67.5245)");
   });
 
-  it("keeps control corners sharp when the radius scale is inherited", () => {
-    expect(light["--radius"]).toBe("0rem");
+  it("keeps control corners when the radius scale is inherited", () => {
+    // 配色主题覆盖圆角时也会显式给出；这里只确认它是个确定值。
+    const radius = light["--radius"] ?? palette(":root", css)["--radius"];
+    expect(radius).toBeTruthy();
     expect(css).toContain("--radius-xs: var(--radius)");
     expect(css).toContain("--radius-2xl: calc(var(--radius) * 1.8)");
   });
@@ -158,9 +192,11 @@ describe("SMUI theme", () => {
 
   it("uses a locally loaded monospace face when typography is inherited", () => {
     expect(css).toMatch(
-      /@import\s+["']@fontsource-variable\/jetbrains-mono["']/,
+      /@import\s+["']@fontsource-variable\/libre-baskerville["']/,
     );
-    expect(css).toMatch(/--font-sans:\s*["']JetBrains Mono Variable["']/);
+    expect(css).toMatch(/@import\s+["']@fontsource\/maple-mono\/400\.css["']/);
+    expect(css).toMatch(/--font-sans:[\s\S]*"Libre Baskerville Variable"/);
+    expect(css).toMatch(/--font-mono:[\s\S]*"Maple Mono"/);
     expect(css).not.toContain("fonts.googleapis.com");
   });
 

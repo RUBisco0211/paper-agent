@@ -1,0 +1,125 @@
+/* 主题：vintage paper（暖调米白纸感，衬线界面）。
+ *
+ * 只提供颜色相关的 token；字体由 index.css 的字体块统一决定，
+ * 因此换主题不会改掉排版。
+ *
+ * 配色取自 vintager_paper（oklch，携带 60–95 的轻微暖色相）；
+ * 这里保留 oklch 原值，不做 hsl 换算，避免手算误差。
+ *
+ * 唯一例外：--destructive 取纯红。原色板的 chroma 只有 0.04，
+ * 渲染出来接近灰褐，失败状态在界面上无法与普通文字区分。
+ */
+:root {
+    color-scheme: light;
+    --background: oklch(0.9518 0.0054 95.1011);
+    --foreground: oklch(0.3706 0.0075 59.4565);
+    --card: oklch(0.9883 0.0029 84.5588);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: oklch(0.5943 0.0251 67.3138);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.8706 0.0088 84.5752);
+    --secondary-foreground: oklch(0.4237 0.0093 61.2603);
+    --muted: oklch(0.9163 0.0058 84.5672);
+    --muted-foreground: oklch(0.5270 0.0112 72.5647);
+    --accent: oklch(0.8139 0.0129 91.5418);
+    --accent-foreground: var(--foreground);
+    --destructive: oklch(0.4900 0.2450 27.325);
+    --destructive-foreground: oklch(1 0 0);
+    --border: oklch(0.8459 0.0089 84.5759);
+    --input: var(--border);
+    --ring: var(--primary);
+    --chart-1: oklch(0.5943 0.0251 67.3138);
+    --chart-2: oklch(0.5400 0.0190 70.3374);
+    --chart-3: oklch(0.4640 0.0182 76.9168);
+    --chart-4: oklch(0.6624 0.0188 67.4946);
+    --chart-5: oklch(0.7114 0.0185 67.5245);
+    --sidebar: var(--muted);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    /* 表面是暖米色，状态色保持纯色，绿黄红一眼可辨。 */
+    --smui-frost-1: 0 0% 45%;
+    --smui-frost-2: 0 0% 50%;
+    --smui-frost-3: 0 0% 40%;
+    --smui-frost-4: 0 0% 44%;
+    --smui-red: 0 72% 48%;
+    --smui-orange: 24 80% 46%;
+    --smui-yellow: 42 92% 40%;
+    --smui-green: 142 62% 34%;
+    --smui-purple: 300 15% 40%;
+    --smui-surface-0: 0 0% 95%;
+    --smui-surface-1: 0 0% 99%;
+    --smui-surface-2: 0 0% 91%;
+    --smui-surface-3: 0 0% 84%;
+    --smui-border-hover: 0 0% 55%;
+
+    --success: hsl(142 62% 20%);
+    --warning: hsl(42 95% 19%);
+    --info: hsl(300 12% 32%);
+    --paper-quote-accent: hsl(40 60% 32%);
+    --paper-quote-fill: hsl(40 60% 70% / 0.45);
+}
+
+.dark {
+    color-scheme: dark;
+    --background: oklch(0.2741 0.0047 67.6302);
+    --foreground: oklch(0.9163 0.0058 84.5672);
+    --card: oklch(0.3224 0.0045 67.6664);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: oklch(0.8000 0.0185 67.5245);
+    --primary-foreground: oklch(0.2200 0.0047 67.6302);
+    --secondary: oklch(0.3776 0.0053 56.2392);
+    --secondary-foreground: var(--foreground);
+    --muted: oklch(0.2908 0.0034 48.6078);
+    --muted-foreground: oklch(0.7891 0.0073 88.6548);
+    --accent: oklch(0.4164 0.0094 61.2535);
+    --accent-foreground: var(--foreground);
+    --destructive: oklch(0.7600 0.1800 22.216);
+    --destructive-foreground: oklch(1 0 0);
+    --border: oklch(0.3776 0.0053 56.2392);
+    --input: var(--border);
+    --ring: var(--primary);
+    --chart-1: oklch(0.7114 0.0185 67.5245);
+    --chart-2: oklch(0.6624 0.0188 67.4946);
+    --chart-3: oklch(0.5943 0.0251 67.3138);
+    --chart-4: oklch(0.5400 0.0190 70.3374);
+    --chart-5: oklch(0.4640 0.0182 76.9168);
+    --sidebar: var(--background);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    --smui-frost-1: 0 0% 62%;
+    --smui-frost-2: 0 0% 68%;
+    --smui-frost-3: 0 0% 58%;
+    --smui-frost-4: 0 0% 52%;
+    --smui-red: 0 78% 66%;
+    --smui-orange: 24 85% 64%;
+    --smui-yellow: 42 92% 62%;
+    --smui-green: 142 58% 55%;
+    --smui-purple: 300 14% 60%;
+    --smui-surface-0: 0 0% 22%;
+    --smui-surface-1: 0 0% 28%;
+    --smui-surface-2: 0 0% 25%;
+    --smui-surface-3: 0 0% 34%;
+    --smui-border-hover: 0 0% 48%;
+
+    --success: hsl(142 58% 68%);
+    --warning: hsl(42 92% 72%);
+    --info: hsl(300 14% 68%);
+    --paper-quote-accent: hsl(40 60% 66%);
+    --paper-quote-fill: hsl(40 60% 70% / 0.25);
+}

@@ -100,9 +100,10 @@ describe("SMUI business primitives", () => {
 
   it("Checkbox uses theme radius when rendered", () => {
     render(<Checkbox aria-label="Select" />);
-    expect(
-      screen.getByRole("checkbox").classList.contains("rounded-[4px]"),
-    ).toBe(true);
+    // 圆角来自 --checkbox-radius，组件只引用变量。
+    expect(screen.getByRole("checkbox").className).toContain(
+      "rounded-(--checkbox-radius)",
+    );
     expect(screen.getByRole("checkbox").className).not.toContain(
       "rounded-full",
     );

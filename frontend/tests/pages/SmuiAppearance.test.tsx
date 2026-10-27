@@ -128,8 +128,9 @@ it("the message preview inherits the theme radius when the navigation rail expan
   render(<MessageNavigationRail messages={[
     UserMsg({ id: "question", name: "user", content: "提问" }),
     AssistantMsg({ id: "answer", name: "assistant", content: "回答" }),
+    UserMsg({ id: "question-2", name: "user", content: "追问" }),
   ]} />)
-  await userEvent.hover(screen.getByRole("button", { name: "跳转到第 1 条消息" }))
+  await userEvent.hover(screen.getByRole("button", { name: "跳转到第 1 个提问" }))
   const surface = screen.getByRole("navigation", { name: "会话消息导航" }).parentElement!
   expect(surface.classList.contains("rounded-lg")).toBe(true)
 })

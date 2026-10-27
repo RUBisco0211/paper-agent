@@ -4,19 +4,29 @@ import { Checkbox as CheckboxPrimitive } from 'radix-ui';
 import { cn } from '@/lib/utils';
 import { CheckIcon } from 'lucide-react';
 
+/*
+ * 取值全部来自 index.css 的 --checkbox-* 语义变量：
+ * 尺寸、圆角、描边和选中态都由主题集中维护，这里只描述状态。
+ */
 function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
 	return (
 		<CheckboxPrimitive.Root
 			data-slot="checkbox"
 			className={cn(
-				'peer relative flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary',
+				'peer relative flex size-(--checkbox-size) shrink-0 items-center justify-center rounded-(--checkbox-radius) border-(length:--checkbox-border-width) border-(--checkbox-border) bg-(--checkbox-background) text-current transition-colors outline-none',
+				'hover:bg-(--checkbox-hover-background)',
+				'after:absolute after:-inset-x-3 after:-inset-y-2',
+				'focus-visible:border-(--checkbox-checked-border) focus-visible:ring-3 focus-visible:ring-(--focus-ring-color)',
+				'disabled:cursor-not-allowed disabled:opacity-50 group-has-disabled/field:opacity-50',
+				'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-(--destructive-ring)',
+				'data-checked:border-(--checkbox-checked-border) data-checked:bg-(--checkbox-checked-background) data-checked:text-(--checkbox-checked-foreground)',
 				className,
 			)}
 			{...props}
 		>
 			<CheckboxPrimitive.Indicator
 				data-slot="checkbox-indicator"
-				className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
+				className="grid place-content-center text-current transition-none [&>svg]:size-(--checkbox-icon-size)"
 			>
 				<CheckIcon />
 			</CheckboxPrimitive.Indicator>
