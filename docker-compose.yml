@@ -33,10 +33,19 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # 验证码与限流计数重启后应当还在：60 秒内至少 1000 次写入就存一次快照。
-    command: ["redis-server", "--save", "60", "1000", "--appendonly", "no"]
+    # 验证码与限流计数重启后应当还在。任一条满足即落盘：
+    # 900 秒内有 1 次写入（低流量下也能存下来）、300 秒内 10 次、60 秒内 1 万次。
+    command:
+      [
+        "redis-server",
+        "--save", "900 1 300 10 60 10000",
+        "--appendonly", "no",
+        "--dir", "/data",
+      ]
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -81,4 +90,5 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
   storage-data:
