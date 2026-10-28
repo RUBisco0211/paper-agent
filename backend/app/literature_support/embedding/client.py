@@ -5,10 +5,12 @@
 适配器只负责组装请求、解析响应并把失败映射成稳定错误码。
 """
 
+import hashlib
 import math
 import struct
 import time
 from collections.abc import Callable, Sequence
+from urllib.parse import urlsplit
 
 import httpx
 import structlog
@@ -62,9 +64,13 @@ class OpenAICompatibleEmbeddingAdapter:
         self._sleeper = sleeper
         # The provider meters requests and tokens; spending them here is what
         # keeps a burst of papers from turning into 429s and retries.
+        #
+        # The quota belongs to one API key, so the bucket is keyed by provider
+        # and a fingerprint of that key: ingestion on the platform key must not
+        # make a search running on the user's own key wait.
         self._bucket = bucket or TokenBucket(
             client=get_redis(),
-            name="embedding",
+            name=_bucket_name(self._base_url, self._api_key),
             requests_per_minute=settings.embedding_rpm,
             tokens_per_minute=settings.embedding_tpm,
         )
@@ -123,7 +129,7 @@ class OpenAICompatibleEmbeddingAdapter:
 
     # Provider call --------------------------------------------------------
     def _post_with_retry(
-        self, url: str, *, json: dict, headers: dict
+        self, url: str, *, json: dict, headers: dict, cost: float = 0
     ) -> httpx.Response:
         """POST once, retrying only failures that a second attempt can fix.
 
@@ -135,6 +141,9 @@ class OpenAICompatibleEmbeddingAdapter:
         delay = self._retry_backoff
         for attempt in range(self._max_retries + 1):
             last = attempt == self._max_retries
+            # Every attempt is a request the provider counts, retries included.
+            if attempt:
+                self._bucket.acquire(tokens=cost)
             try:
                 with self._client_factory() as client:
                     timeout = httpx.Timeout(
@@ -181,9 +190,22 @@ class OpenAICompatibleEmbeddingAdapter:
     def _embed(self, texts: Sequence[str]) -> list[list[float]]:
         if not texts:
             return []
-        self._bucket.acquire(
-            tokens=estimate_tokens(sum(len(text) for text in texts))
-        )
+        cost = sum(estimate_tokens(text) for text in texts)
+        try:
+            self._bucket.acquire(tokens=cost)
+        except ValueError:
+            # One batch larger than the whole minute's allowance: send it in
+            # pieces rather than waiting for a request that can never go out.
+            if len(texts) == 1:
+                # A single passage that cannot fit will never go through either;
+                # say so instead of retrying it as an unknown failure.
+                raise AppError(
+                    "单个片段超出向量服务的每分钟额度，请调高额度或缩短片段",
+                    code=ErrorCode.EMBEDDING_INPUT_TOO_LARGE,
+                    status_code=422,
+                ) from None
+            middle = len(texts) // 2
+            return self._embed(texts[:middle]) + self._embed(texts[middle:])
         base_url = self._base_url
         if not base_url:
             raise AppError(
@@ -201,6 +223,7 @@ class OpenAICompatibleEmbeddingAdapter:
             f"{base_url.rstrip('/')}/embeddings",
             json=payload,
             headers=headers,
+            cost=cost,
         )
 
         # Never use the response body in error messages or details: providers
@@ -292,6 +315,19 @@ RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
 def _is_retryable(status_code: int) -> bool:
     return status_code in RETRYABLE_STATUS
+
+
+def _bucket_name(base_url: str | None, api_key: str | None) -> str:
+    """One bucket per provider credential, never one shared pot.
+
+    Only a fingerprint of the key is used, so the meter cannot be read back as
+    the secret itself.
+    """
+    host = urlsplit(base_url).hostname or "local" if base_url else "local"
+    if not api_key:
+        return f"embedding:{host}:anonymous"
+    digest = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    return f"embedding:{host}:{digest}"
 
 
 def _split_batches(

@@ -86,6 +86,9 @@ class ErrorCode(StrEnum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
     PROVIDER_QUOTA_EXHAUSTED = "provider_quota_exhausted"
+    #: One input cannot fit the provider's per-minute allowance, so retrying it
+    #: is pointless until the allowance or the input size changes.
+    EMBEDDING_INPUT_TOO_LARGE = "embedding_input_too_large"
 
 
 class DomainValidationError(ValueError):

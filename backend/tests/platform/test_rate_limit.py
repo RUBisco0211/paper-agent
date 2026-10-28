@@ -93,8 +93,47 @@ class TestUnlimited:
 
 
 class TestEstimating:
-    def test_estimates_tokens_pessimistically(self) -> None:
-        assert estimate_tokens(3000) == 1000
+    def test_latin_text_uses_four_characters_per_token(self) -> None:
+        assert estimate_tokens("a" * 400) == 100
+
+    def test_chinese_text_is_counted_conservatively(self) -> None:
+        """CJK packs more meaning per character, so it must not be undercounted."""
+        assert estimate_tokens("中" * 300) == 300
+
+    def test_mixed_text_counts_each_script_separately(self) -> None:
+        assert estimate_tokens("中" * 150 + "a" * 200) == 200
 
     def test_never_returns_zero_tokens(self) -> None:
-        assert estimate_tokens(0) == 1
+        assert estimate_tokens("") == 1
+
+
+class TestOversizedRequest:
+    def test_a_call_larger_than_the_bucket_is_refused(self, bucket_factory) -> None:
+        """Waiting for more than the bucket can hold would never finish."""
+        bucket, clock = bucket_factory("oversized", tpm=1000)
+
+        with pytest.raises(ValueError):
+            bucket.acquire(tokens=2000)
+
+        # It must fail fast rather than block the calling thread.
+        assert clock.slept == []
+
+
+class TestSingleOversizedInput:
+    def test_a_single_passage_too_large_is_a_stable_error(self) -> None:
+        """The adapter must not leak a bare ValueError into the stage failure."""
+        from app.literature_support.embedding.client import (
+            OpenAICompatibleEmbeddingAdapter,
+        )
+        from app.platform.errors import AppError, ErrorCode
+        from app.platform.rate_limit import TokenBucket
+
+        bucket = TokenBucket(client=None, name="tiny", tokens_per_minute=10)
+        client = OpenAICompatibleEmbeddingAdapter(
+            base_url="https://example.test/v1",
+            api_key="k",
+            bucket=bucket,
+        )
+        with pytest.raises(AppError) as caught:
+            client._embed(["中" * 2000])
+        assert caught.value.code is ErrorCode.EMBEDDING_INPUT_TOO_LARGE
