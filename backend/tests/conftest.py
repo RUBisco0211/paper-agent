@@ -467,12 +467,12 @@ def completed_imports(
         for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
             while True:
                 with session_factory() as session:
-                    run_id = RunRepository(session).claim_next(
+                    claim = RunRepository(session).claim_next(
                         stage=stage, lease_seconds=300
                     )
-                if run_id is None:
+                if claim is None:
                     break
-                runs.run_sync(run_id, stage=stage)
+                runs.run_sync(claim[0], stage=stage, token=claim[1])
 
     # A submitted request only records intent; the worker does the rest. The
     # wrapper keeps the API contract identical while running that worker now.

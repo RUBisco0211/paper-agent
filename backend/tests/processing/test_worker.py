@@ -36,7 +36,7 @@ def test_a_run_carries_its_lease_so_a_dead_worker_is_detectable(
     with session_factory() as session:
         claimed = RunRepository(session).claim_next(
             stage=RunStage.PARSE, lease_seconds=60
-        )
+        )[0]
 
     with session_factory() as session:
         run = RunRepository(session).get(claimed)
@@ -87,7 +87,7 @@ def test_a_renewed_lease_keeps_its_run_alive(
 
     with session_factory() as session:
         runs = RunRepository(session)
-        run_id = runs.claim_next(stage=RunStage.PARSE, lease_seconds=60)
+        run_id = runs.claim_next(stage=RunStage.PARSE, lease_seconds=60)[0]
     with session_factory() as session:
         RunRepository(session).renew_lease(run_id, lease_seconds=60)
 
@@ -212,3 +212,34 @@ def _user_id(session: Session):
         session.add(user)
         session.flush()
     return user.id
+
+
+def test_the_worker_returns_how_many_stages_it_ran(
+    session_factory: sessionmaker[Session], storage
+) -> None:
+    """The worker itself must survive a successful claim.
+
+    Driving the pipeline directly hid a NameError on the worker's return path;
+    only calling the worker's own loop proves it runs and reports a count.
+    """
+    from app.literature_support.importing.worker import PipelineWorker
+    from app.pipelines.pipeline import build_run_pipeline
+    from app.platform.tasks import InlineTaskScheduler
+
+    worker = PipelineWorker(
+        session_factory=session_factory,
+        downloads=object(),
+        runs=build_run_pipeline(
+            storage=storage,
+            session_factory=session_factory,
+            scheduler=InlineTaskScheduler(),
+        ),
+    )
+    paper = _add_paper(session_factory)
+    with session_factory() as session:
+        RunRepository(session).add(paper.id)
+        session.commit()
+
+    ran = worker.run_stage(RunStage.PARSE, concurrency=2)
+
+    assert ran == 1

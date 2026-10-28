@@ -3,6 +3,7 @@
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from uuid import UUID
 
 import structlog
@@ -49,14 +50,23 @@ class PipelineWorker:
             logger.warning("worker.runs_reclaimed", count=expired)
 
     def run_downloads(self, *, limit: int) -> int:
-        done = 0
+        """Fetch up to `limit` files at once; each download is network bound."""
+        download_ids: list[UUID] = []
         for _ in range(limit):
             download_id = self._downloads.claim_next()
             if download_id is None:
                 break
-            self._downloads.run(download_id)
-            done += 1
-        return done
+            download_ids.append(download_id)
+        if not download_ids:
+            return 0
+        with ThreadPoolExecutor(max_workers=len(download_ids)) as executor:
+            futures = [
+                executor.submit(self._downloads.run, download_id)
+                for download_id in download_ids
+            ]
+            for future in futures:
+                future.result()
+        return len(download_ids)
 
     def run_stage(self, stage: RunStage, *, concurrency: int) -> int:
         """Run up to `concurrency` runs of one stage, then give the threads back.
@@ -64,25 +74,27 @@ class PipelineWorker:
         Each stage is claimed on its own, so a slow parse never holds a slot
         that embedding could be using.
         """
-        run_ids: list[UUID] = []
+        claims: list[tuple[UUID, datetime]] = []
         for _ in range(concurrency):
             with self._session_factory() as session:
-                run_id = RunRepository(session).claim_next(
+                claim = RunRepository(session).claim_next(
                     stage=stage, lease_seconds=LEASE_SECONDS
                 )
-            if run_id is None:
+            if claim is None:
                 break
-            run_ids.append(run_id)
-        if not run_ids:
+            claims.append(claim)
+        if not claims:
             return 0
-        with ThreadPoolExecutor(max_workers=len(run_ids)) as executor:
+        with ThreadPoolExecutor(max_workers=len(claims)) as executor:
             futures = [
-                executor.submit(self._runs.run_sync, run_id, stage=stage)
-                for run_id in run_ids
+                executor.submit(
+                    self._runs.run_sync, run_id, stage=stage, token=token
+                )
+                for run_id, token in claims
             ]
             for future in futures:
                 future.result()
-        return len(run_ids)
+        return len(claims)
 
     def run_all_stages(self) -> int:
         """Drain every stage once, in dependency order."""

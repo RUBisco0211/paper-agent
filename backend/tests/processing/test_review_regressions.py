@@ -1,11 +1,12 @@
 """Regression cases for PR #9's state and publication boundaries."""
 
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
 
 from app.library.repo import PaperRepository
-from app.pipelines.domain import RunStage
+from app.pipelines.domain import RunStage, RunStatus
 from app.pipelines.repo import RunRepository
 from app.pipelines.runs import RunService
 
@@ -50,7 +51,8 @@ def test_claim_uses_distinct_slots_when_two_papers_are_pending(session_factory):
         second = RunRepository(session).claim_next(
             stage=RunStage.PARSE, lease_seconds=300
         )
-    assert first is not None and second is not None and first != second
+    assert first is not None and second is not None
+    assert first[0] != second[0]
 
 
 def test_upload_title_stays_empty_when_a_private_filename_is_supplied(
@@ -216,8 +218,7 @@ def test_a_reclaimed_run_refuses_any_late_publish_from_its_old_executor(
     with session_factory() as session:
         assert (
             RunRepository(session).claim_next(stage=RunStage.PARSE, lease_seconds=300)
-            == run.id
-        )
+        )[0] == run.id
     # The executor's guard connection died and its lease ran out.
     with session_factory() as session:
         record = session.get(RunRecord, run.id)
@@ -233,3 +234,205 @@ def test_a_reclaimed_run_refuses_any_late_publish_from_its_old_executor(
         assert not runs.mark_stage_started(run.id, stage="parse")
         assert not runs.publish_stage(run.id, stage="parse")
         assert runs.get(run.id).status.value == "failed"
+
+
+def test_finishing_hands_the_run_back_when_another_executor_holds_it(
+    session_factory, make_user
+):
+    """A claim that cannot execute must not leave a running row behind."""
+    from app.pipelines.repo import RunRecord
+
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="5" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+    with session_factory() as session:
+        assert (
+            RunRepository(session).claim_next(
+                stage=RunStage.PARSE, lease_seconds=300
+            )[0] == run.id
+        )
+    # The executor gives its own claim back when it never got the lock.
+    with session_factory() as session:
+        claimed_at = session.get(RunRecord, run.id).claim_token
+    with session_factory() as session:
+        assert RunRepository(session).release_claim(run.id, token=claimed_at)
+        record = session.get(RunRecord, run.id)
+        assert record.status == "pending"
+        assert record.leased_until is None
+
+
+def test_releasing_a_claim_is_refused_when_the_stage_moved_on(
+    session_factory, make_user
+):
+    """Returning a claim must not undo work another executor already did."""
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="6" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        runs.claim_next(stage=RunStage.PARSE, lease_seconds=300)
+        runs.mark_stage_started(run.id, stage=RunStage.PARSE)
+        runs.publish_stage(run.id, stage=RunStage.PARSE)
+        runs.advance_stage(run.id, completed=RunStage.PARSE)
+        session.commit()
+
+    with session_factory() as session:
+        # A stale stamp cannot undo work that moved on.
+        assert not RunRepository(session).release_claim(run.id, token=uuid4())
+        assert RunRepository(session).get(run.id).current_stage is RunStage.CHUNK
+
+
+def test_a_stage_is_not_claimed_while_its_backoff_runs(
+    session_factory, make_user
+):
+    """A deferred stage must wait: claiming it early burns the retry budget."""
+    from app.pipelines.repo import RunRecord
+
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="7" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+    with session_factory() as session:
+        runs = RunRepository(session)
+        runs.claim_next(stage=RunStage.PARSE, lease_seconds=300)
+        runs.mark_stage_started(run.id, stage=RunStage.PARSE)
+        runs.defer_stage(
+            run.id,
+            stage=RunStage.PARSE,
+            error_message="boom",
+            max_attempts=3,
+            base_seconds=60,
+            max_seconds=300,
+        )
+        session.commit()
+
+    with session_factory() as session:
+        assert (
+            RunRepository(session).claim_next(
+                stage=RunStage.PARSE, lease_seconds=300
+            )
+            is None
+        )
+
+    # Once the backoff has passed the run becomes claimable again.
+    with session_factory() as session:
+        record = session.get(RunRecord, run.id)
+        record.next_attempt_at = datetime.now(UTC) - timedelta(seconds=1)
+        session.commit()
+    with session_factory() as session:
+        assert (
+            RunRepository(session).claim_next(
+                stage=RunStage.PARSE, lease_seconds=300
+            )[0] == run.id
+        )
+
+
+def test_each_stage_keeps_its_own_failure_count(session_factory, make_user):
+    """One stage's failures must not consume another stage's budget."""
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="8" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+
+    with session_factory() as session:
+        runs = RunRepository(session)
+        runs.claim_next(stage=RunStage.PARSE, lease_seconds=300)
+        runs.mark_stage_started(run.id, stage=RunStage.PARSE)
+        runs.defer_stage(
+            run.id,
+            stage=RunStage.PARSE,
+            error_message="boom",
+            max_attempts=3,
+            base_seconds=60,
+            max_seconds=300,
+        )
+        session.commit()
+
+    with session_factory() as session:
+        stored = RunRepository(session).get(run.id)
+        assert stored.attempts_for(RunStage.PARSE) == 1
+        assert stored.attempts_for(RunStage.CHUNK) == 0
+        assert stored.status is RunStatus.PENDING
+
+
+def test_a_heartbeat_cannot_invalidate_another_executors_claim(
+    session_factory, make_user
+):
+    """The claim token must not move when the lease is renewed.
+
+    A replaced claim's heartbeat keeps renewing the old lease; using the
+    deadline as the claim identity would then make the live holder unable to
+    give its claim back.
+    """
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="b9" * 32, byte_size=100, page_count=1
+        )
+        session.commit()
+    RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+
+    with session_factory() as session:
+        runs = RunRepository(session)
+        claimed = runs.claim_next(stage=RunStage.PARSE, lease_seconds=60)
+    assert claimed is not None
+    run_id, token = claimed
+
+    # The heartbeat renews the lease: only the deadline moves.
+    with session_factory() as session:
+        assert RunRepository(session).renew_lease(
+            run_id, lease_seconds=300, token=token
+        )
+
+    with session_factory() as session:
+        stored = RunRepository(session).get(run_id)
+        assert stored.claim_token == token
+
+    # The holder can still give its claim back with the unchanged token.
+    with session_factory() as session:
+        assert RunRepository(session).release_claim(run_id, token=token)
+        assert RunRepository(session).get(run_id).status is RunStatus.PENDING
+
+
+def test_a_replaced_claim_cannot_renew_its_lease(session_factory, make_user):
+    """An old heartbeat must not keep a run alive after its claim was replaced."""
+    from app.pipelines.repo import RunRecord
+    user_id = make_user()
+    with session_factory() as session:
+        paper = PaperRepository(session).get_or_add_paper(
+            file_hash="a" * 64, byte_size=100, page_count=1
+        )
+        session.commit()
+    RunService(session_factory).request(user_id=user_id, paper_id=paper.id)
+
+    with session_factory() as session:
+        claimed = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=60
+        )
+    assert claimed is not None
+    run_id, first_token = claimed
+
+    # Someone else takes the run over with a fresh token.
+    with session_factory() as session:
+        record = session.get(RunRecord, run_id)
+        record.claim_token = uuid4()
+        session.commit()
+
+    with session_factory() as session:
+        assert not RunRepository(session).renew_lease(
+            run_id, lease_seconds=300, token=first_token
+        )

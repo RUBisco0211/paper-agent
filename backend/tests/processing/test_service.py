@@ -13,7 +13,7 @@ from app.library.repo import PaperRepository
 from app.literature_support.importing.mineru import MineruArtifact, MineruParser
 from app.pipelines.domain import RunStage, RunStatus
 from app.pipelines.pipeline import CONTENT_LIST_OBJECT, MANIFEST_OBJECT, RunPipeline
-from app.pipelines.repo import RunRepository, UserRunRecord
+from app.pipelines.repo import RunRecord, RunRepository, UserRunRecord
 from app.pipelines.runs import RunService
 from app.platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
@@ -394,12 +394,12 @@ def _override_services(
         for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
             while True:
                 with session_factory() as session:
-                    run_id = RunRepository(session).claim_next(
+                    claim = RunRepository(session).claim_next(
                         stage=stage, lease_seconds=300
                     )
-                if run_id is None:
+                if claim is None:
                     break
-                runs.run_sync(run_id, stage=stage)
+                runs.run_sync(claim[0], stage=stage, token=claim[1])
 
     original_upload = library_service_module.PaperLibraryService.upload_pdf
 
@@ -629,3 +629,83 @@ def test_a_live_lease_does_not_let_a_lost_guard_connection_publish_success(
         stored = RunRepository(session).get(run.id)
         assert stored is not None
         assert stored.status is not RunStatus.SUCCESS
+
+
+def test_a_second_executor_cannot_undo_the_running_stage(
+    paper, pipeline, session_factory, make_user
+):
+    """Only the holder of a claim may release it.
+
+    A second executor can claim the same run and fail to take the advisory
+    lock. Releasing on run+stage alone would undo the first executor's state
+    and strand its finished stage.
+    """
+
+    runner, _ = pipeline
+    alice = make_user("a@test.example")
+    RunService(session_factory).request(user_id=alice, paper_id=paper)
+
+    # First executor takes the claim and starts parsing.
+    with session_factory() as session:
+        first_claim = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
+    assert first_claim is not None
+    first_run_id, first_lease = first_claim
+
+    # A competing claim carries a different stamp.
+    with session_factory() as session:
+        record = session.get(RunRecord, first_run_id)
+        record.status = "pending"
+        record.leased_until = None
+        session.commit()
+    with session_factory() as session:
+        second_claim = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
+    assert second_claim is not None and second_claim[1] != first_lease
+
+    # The stale release is refused, so the real executor keeps its lease.
+    with session_factory() as session:
+        assert not RunRepository(session).release_claim(
+            first_run_id, token=first_lease
+        )
+        assert RunRepository(session).get(first_run_id).status is RunStatus.RUNNING
+
+
+def test_publishing_does_not_deadlock_with_a_joining_request(
+    paper, pipeline, session_factory, make_user
+):
+    """Publishing and joining take the same locks, so they cannot cross.
+
+    The publisher locks the paper and then touches the run; a joining request
+    does the same. Both orders running at once must complete, not deadlock.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+    for stage in (RunStage.PARSE, RunStage.CHUNK):
+        runner.run_sync(run.id, stage=stage)
+
+    def publish():
+        runner.run_sync(run.id, stage=RunStage.EMBED)
+
+    def join():
+        RunService(session_factory).request(user_id=bob, paper_id=paper)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(publish), executor.submit(join)]
+        # A deadlock would leave these hanging until the timeout.
+        for future in futures:
+            future.result(timeout=15)
+
+    # The embed stage must have finished and both users must own the paper.
+    with session_factory() as session:
+        stored = RunRepository(session).get(run.id)
+        assert stored is not None
+        assert stored.status is RunStatus.SUCCESS
+        papers = PaperRepository(session)
+        assert papers.get_user_paper_for_paper(user_id=alice, paper_id=paper)
+        assert papers.get_user_paper_for_paper(user_id=bob, paper_id=paper)

@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from sqlalchemy import (
@@ -133,6 +133,11 @@ class RunRecord(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     #: Lease deadline: a run whose lease expired belongs to a worker that died.
+    #: Opaque stamp for the current claim. Unlike the lease deadline it never
+    #: changes while the claim is held, so it can identify the holder.
+    claim_token: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True
+    )
     leased_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -313,12 +318,17 @@ class RunRepository:
         )
 
     # Queue -----------------------------------------------------------------
-    def claim_next(self, *, stage: RunStage, lease_seconds: int) -> UUID | None:
+    def claim_next(
+        self, *, stage: RunStage, lease_seconds: int
+    ) -> tuple[UUID, datetime] | None:
         """Take the oldest run waiting for this stage and lease it.
 
         A run is claimed one stage at a time, so each stage gets its own share
         of the executor pool. Rows still waiting out a backoff carry a
         `next_attempt_at` and are skipped until it passes.
+
+        Returns the run and the lease stamp that identifies this claim: only
+        the holder of that stamp may give the claim back.
         """
         now = _now()
         record = self._session.scalar(
@@ -341,9 +351,33 @@ class RunRepository:
         record.next_attempt_at = None
         record.started_at = record.started_at or now
         record.leased_until = now + timedelta(seconds=lease_seconds)
+        token = uuid4()
+        record.claim_token = token
         run_id = record.id
         self._session.commit()
-        return run_id
+        return run_id, token
+
+    def release_claim(self, run_id: UUID, *, token: UUID) -> bool:
+        """Give back a claim this executor took but could not execute.
+
+        Only the holder of the lease stamp may release: the previous stage's
+        executor is still running under the same run and stage, and undoing
+        its state would strand a stage that is about to finish.
+        """
+        record = self._session.scalar(
+            select(RunRecord).where(RunRecord.id == run_id).with_for_update()
+        )
+        if record is None or record.status != RunStatus.RUNNING.value:
+            self._session.rollback()
+            return False
+        if record.claim_token != token:
+            self._session.rollback()
+            return False
+        record.status = RunStatus.PENDING.value
+        record.leased_until = None
+        record.claim_token = None
+        self._session.commit()
+        return True
 
     def defer_stage(
         self,
@@ -417,11 +451,17 @@ class RunRepository:
         self._session.flush()
         return False
 
-    def renew_lease(self, run_id: UUID, *, lease_seconds: int) -> bool:
+    def renew_lease(
+        self, run_id: UUID, *, lease_seconds: int, token: UUID | None = None
+    ) -> bool:
         record = self._session.scalar(
             select(RunRecord).where(RunRecord.id == run_id).with_for_update()
         )
         if record is None or record.status != RunStatus.RUNNING.value:
+            return False
+        # A heartbeat from a replaced claim must not keep the old lease alive.
+        if token is not None and record.claim_token != token:
+            self._session.rollback()
             return False
         record.leased_until = _now() + timedelta(seconds=lease_seconds)
         self._session.commit()
@@ -450,6 +490,7 @@ class RunRepository:
             record.error_message = "处理中断，请重试"
             record.finished_at = _now()
             record.leased_until = None
+            record.claim_token = None
             reclaimed += 1
         self._session.commit()
         return reclaimed
@@ -702,6 +743,7 @@ def _to_run(record: RunRecord) -> Run:
         stage_timings=timings,
         stage_attempts=dict(record.stage_attempts or {}),
         next_attempt_at=record.next_attempt_at,
+        claim_token=record.claim_token,
         error_message=record.error_message,
         leased_until=record.leased_until,
         created_at=record.created_at,

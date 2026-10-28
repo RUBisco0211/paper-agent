@@ -89,7 +89,13 @@ class RunPipeline:
         # and never blocks the event loop.
         await asyncio.to_thread(self.run_sync, run_id)
 
-    def run_sync(self, run_id: UUID, *, stage: RunStage | None = None) -> None:
+    def run_sync(
+        self,
+        run_id: UUID,
+        *,
+        stage: RunStage | None = None,
+        token: UUID | None = None,
+    ) -> None:
         # A session-level advisory lock survives stage commits, and is released
         # by PostgreSQL if this executor's connection/process dies.
         with (
@@ -101,6 +107,12 @@ class RunPipeline:
                 {"key": f"paper-run:{run_id}"},
             )
             if not acquired:
+                # Someone else still owns this run: the previous stage was just
+                # handed over. Give the claim back instead of leaving a
+                # ``running`` row nobody will execute.
+                if token is not None:
+                    with self._session_factory() as session:
+                        RunRepository(session).release_claim(run_id, token=token)
                 return
             connection.commit()
             stop = Event()
@@ -116,7 +128,11 @@ class RunPipeline:
                     try:
                         with self._session_factory() as session:
                             renew = RunRepository(session).renew_lease
-                            if not renew(run_id, lease_seconds=LEASE_SECONDS):
+                            if not renew(
+                                run_id,
+                                lease_seconds=LEASE_SECONDS,
+                                token=token,
+                            ):
                                 lost.set()
                                 return
                     except Exception as exc:
@@ -132,7 +148,9 @@ class RunPipeline:
             thread = Thread(target=heartbeat, daemon=True)
             thread.start()
             try:
-                self._run_owned(run_id, lost, guard=connection, stage=stage)
+                self._run_owned(
+                    run_id, lost, guard=connection, stage=stage, token=token
+                )
             finally:
                 stop.set()
                 thread.join()
@@ -148,6 +166,7 @@ class RunPipeline:
         *,
         guard=None,
         stage: RunStage | None = None,
+        token: UUID | None = None,
     ) -> None:
         """Execute exactly one stage, then hand the run back to the queue."""
         guard_connection = guard
@@ -231,6 +250,13 @@ class RunPipeline:
             if lost.is_set() or not self._guard_alive(guard_connection):
                 session.rollback()
                 return
+
+            # Lock order matters: a joining request takes the paper first and
+            # then touches this run through a foreign key, so publishing must
+            # do the same. Taking the run first here would deadlock the two.
+            last_stage = next_stage(current) is None
+            if last_stage:
+                papers.lock_paper(run.paper_id)
             if not runs.publish_stage(run_id, stage=current):
                 session.rollback()
                 logger.warning("pipelines.run.ownership_lost", run_id=str(run_id))
@@ -239,10 +265,6 @@ class RunPipeline:
             # Publish the stage result and either advance or finish, in one
             # transaction: a run must never sit between "stage done" and
             # "next stage queued".
-            # Take the paper's row lock the same way a joining request does, so
-            # nobody can attach to this run after its audience is read.
-            if next_stage(current) is None:
-                papers.lock_paper(run.paper_id)
             finished = runs.advance_stage(run_id, completed=current)
             if finished:
                 self._grant_entries(

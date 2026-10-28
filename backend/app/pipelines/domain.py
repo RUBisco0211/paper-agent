@@ -103,6 +103,8 @@ class Run:
     stage_attempts: dict[str, int]
     #: When the current stage may be tried again; null means "right now".
     next_attempt_at: datetime | None
+    #: Opaque stamp identifying the current claim; survives lease renewals.
+    claim_token: UUID | None
     error_message: str | None
     leased_until: datetime | None
     created_at: datetime
