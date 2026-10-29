@@ -4,11 +4,9 @@ from fastapi import Depends
 
 from app.literature_support.scholar.pdf_sources import DoiPdfLocator
 
-from ..library.depends import MetadataResolverDep, PdfFetcherDep
-from ..platform.database import SessionDep, SessionFactoryDep
+from ..platform.database import SessionFactoryDep
 from ..platform.discovery import DiscoveryAggregator
 from ..platform.storage import StorageDep
-from ..platform.tasks import TaskSchedulerDep
 from ..sessions.depends import SessionBindingServiceDep
 from .ports import PdfSourceLocator
 from .service import DiscoveryService, ImportApprovalService, ImportService
@@ -38,25 +36,20 @@ PdfSourceLocatorDep = Annotated[PdfSourceLocator, Depends(get_pdf_locator)]
 
 
 def get_import_service(
-    session: SessionDep,
-    storage: StorageDep,
     session_factory: SessionFactoryDep,
-    scheduler: TaskSchedulerDep,
-    resolver: MetadataResolverDep,
-    pdf_fetcher: PdfFetcherDep,
-    pdf_locator: PdfSourceLocatorDep,
+    storage: StorageDep,
 ) -> ImportService:
-    """Wire identifier imports to the shared processing factory."""
-    from app.literature_support.processing.pipeline import build_ingestion_service
+    """Queue identifier downloads, or reuse a paper whose file is already here.
+
+    The runs service is built from the same factory so a reused paper joins its
+    run without going through the download worker.
+    """
+    from app.pipelines.runs import RunService
 
     return ImportService(
         session_factory=session_factory,
         storage=storage,
-        resolver=resolver,
-        pdf_fetcher=pdf_fetcher,
-        pdf_locator=pdf_locator,
-        scheduler=scheduler,
-        ingestion_starter_factory=build_ingestion_service,
+        runs=RunService(session_factory=session_factory),
     )
 
 

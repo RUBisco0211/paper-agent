@@ -11,7 +11,6 @@ from app.literature_support.embedding.base import EmbeddingProfile
 from app.literature_support.scholar.metadata import MetadataResolver
 from app.platform.config import settings
 from app.platform.errors import AppError
-from app.processing.repo import IngestionRepository
 from tests.conftest import auth_headers, build_pdf_with_text
 from tests.processing.test_service import FakeMineruParser, _override_services
 
@@ -46,12 +45,14 @@ def test_adapter_never_exposes_response_text_when_provider_echoes_secrets(
 
 def test_stage_error_and_logs_exclude_secrets_when_provider_echoes_request(
     client, api_prefix, register_user, session_factory, storage, caplog,
+    monkeypatch, request,
 ):
     caplog.set_level(logging.INFO)
     _override_services(
         client, session_factory=session_factory, storage=storage,
         mineru=FakeMineruParser(), resolver=MetadataResolver([]),
         embeddings=rejecting_adapter(401),
+        monkeypatch=monkeypatch, request=request,
     )
     user = register_user(email="safe-errors@example.com")
     uploaded = client.post(
@@ -62,11 +63,17 @@ def test_stage_error_and_logs_exclude_secrets_when_provider_echoes_request(
     )
     assert uploaded.status_code == 202
     body = uploaded.json()
-    stages = {stage["stage"]: stage for stage in body["ingestion_job"]["stages"]}
-    assert stages["embedding"]["status"] == "failed"
+    from app.pipelines.domain import RunStatus
+    from app.pipelines.repo import RunRepository
+
     with session_factory() as session:
-        job = IngestionRepository(session).get_job(UUID(body["ingestion_job"]["id"]))
-        persisted = repr(job)
+        run = RunRepository(session).get(UUID(body["run_id"]))
+        assert run is not None
+        # The stage is retried later; only a secret leak would be a failure.
+        assert run.status is RunStatus.PENDING
+        assert run.current_stage is not None
+        assert run.current_stage.value == "embed"
+        persisted = repr(run)
     for text in (uploaded.text, persisted, caplog.text):
         assert SECRET not in text
         assert SOURCE not in text

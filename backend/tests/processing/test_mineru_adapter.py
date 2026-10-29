@@ -13,7 +13,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.literature_support.processing.mineru import MineruParser, _normalize_base_url
+from app.literature_support.importing.mineru import MineruParser, _normalize_base_url
 from app.platform.errors import AppError
 
 UPLOAD_URL = "https://oss.test/upload/probe.pdf"
@@ -177,5 +177,5 @@ def test_failed_state_surfaces_the_provider_message(tmp_path: Path) -> None:
     with pytest.raises(AppError) as excinfo:
         _parser(transport).parse(pdf_path=pdf)
 
-    assert excinfo.value.code == "ingestion_stage_failed"
+    assert excinfo.value.code == "import_stage_failed"
     assert "boom" in excinfo.value.message

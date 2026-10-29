@@ -181,7 +181,7 @@ class BoundPaperService:
                 }:
                     raise ValueError("image_unsupported")
                 return {
-                    "title": entry.user_paper.title,
+                    "title": entry.paper.title if entry.paper else None,
                     "page": page,
                     "image_base64": base64.b64encode(payload).decode("ascii"),
                     "image_media_type": media_type,
@@ -197,7 +197,7 @@ class BoundPaperService:
                 raise ValueError("page_out_of_range")
         else:
             raise ValueError("unsupported_quote_kind")
-        return {"title": entry.user_paper.title, "page": page}
+        return {"title": entry.paper.title if entry.paper else None, "page": page}
 
     def list_papers(
         self,
@@ -230,11 +230,11 @@ class BoundPaperService:
             [
                 {
                     "paper_id": str(entry.user_paper.id),
-                    "title": entry.user_paper.title,
-                    "authors": entry.user_paper.authors[:5],
-                    "year": entry.user_paper.year,
-                    "venue": entry.user_paper.venue,
-                    "has_fulltext": entry.capabilities.has_fulltext,
+                    "title": entry.paper.title if entry.paper else None,
+                    "authors": entry.paper.authors[:5] if entry.paper else [],
+                    "year": entry.paper.year if entry.paper else None,
+                    "venue": entry.paper.venue if entry.paper else None,
+                    "has_parsed": entry.capabilities.has_parsed,
                 }
                 for entry in entries
             ],

@@ -29,6 +29,21 @@ AGENT_SERVICE_PORT="${AGENT_SERVICE_PORT:-8001}"
 FRONTEND_HOST="${FRONTEND_HOST:-127.0.0.1}"
 FRONTEND_PORT="${FRONTEND_PORT:-5173}"
 
+# 宿主机端口：compose 与 backend/.env 必须一致，否则会连到别的 checkout 的库。
+# 载入仓库根 .env（若存在），它记录本工作树选定的端口与数据库地址。
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT_DIR/.env"
+  set +a
+fi
+POSTGRES_PORT="${POSTGRES_PORT:-5432}"
+REDIS_PORT="${REDIS_PORT:-6379}"
+STORAGE_PORT="${STORAGE_PORT:-9000}"
+DATABASE_URL_DEFAULT="postgresql+psycopg://paper_agent:paper_agent_dev@127.0.0.1:${POSTGRES_PORT}/paper_agent"
+TEST_DATABASE_URL_DEFAULT="postgresql+psycopg://paper_agent:paper_agent_dev@127.0.0.1:${POSTGRES_PORT}/paper_agent_test"
+REDIS_URL_DEFAULT="redis://127.0.0.1:${REDIS_PORT}/0"
+
 START_DB=1
 START_BACKEND=1
 START_FRONTEND=1
@@ -244,7 +259,7 @@ if [[ "$START_DB" -eq 1 ]]; then
       (cd "$ROOT_DIR" && docker compose exec -T postgres \
         psql -U paper_agent -d postgres -c 'CREATE DATABASE paper_agent_as') >/dev/null
   fi
-  ok "PostgreSQL 已就绪（localhost:5432）"
+  ok "PostgreSQL 已就绪（localhost:${POSTGRES_PORT}）"
   echo
 fi
 
@@ -260,9 +275,9 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
     || die "Redis 未就绪，请查看 docker compose logs redis"
   if command -v redis-cli >/dev/null 2>&1; then
     compose_run_id="$(cd "$ROOT_DIR" && docker compose exec -T redis redis-cli INFO server | sed -n 's/^run_id://p' | tr -d '\r')"
-    host_run_id="$(redis-cli -p 6379 INFO server 2>/dev/null | sed -n 's/^run_id://p' | tr -d '\r')"
+    host_run_id="$(redis-cli -p "$REDIS_PORT" INFO server 2>/dev/null | sed -n 's/^run_id://p' | tr -d '\r')"
     [[ -n "$compose_run_id" && "$compose_run_id" == "$host_run_id" ]] \
-      || die "Redis 不是 Compose 实例，请停止占用 6379 的其他进程"
+      || die "Redis 不是 Compose 实例，请停止占用 ${REDIS_PORT} 的其他进程"
   fi
   ok "Redis 已就绪"
   echo
@@ -293,7 +308,13 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
 
   if [[ ! -f .env ]]; then
     cp .env.example .env
-    warn "已从 .env.example 生成 backend/.env，请按需修改数据库连接与 Provider 配置"
+    # 端口来自仓库根 .env（或默认值），保证与 compose 一致。
+    sed -i.bak \
+      -e "s|^DATABASE_URL=.*|DATABASE_URL=${DATABASE_URL_DEFAULT}|" \
+      -e "s|^TEST_DATABASE_URL=.*|TEST_DATABASE_URL=${TEST_DATABASE_URL_DEFAULT}|" \
+      -e "s|^REDIS_URL=.*|REDIS_URL=${REDIS_URL_DEFAULT}|" \
+      .env && rm -f .env.bak
+    warn "已从 .env.example 生成 backend/.env，请按需修改 Provider 配置"
   fi
 
   if ! grep -q '^AGENT_INTERNAL_KEY=.' .env; then
@@ -343,7 +364,7 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   echo
 
   step "启动文献解析 worker"
-  uv run python -m app.literature_support.processing.worker >"$LOG_DIR/worker.log" 2>&1 &
+  uv run python -m app.literature_support.importing.worker >"$LOG_DIR/worker.log" 2>&1 &
   WORKER_PID=$!
   sleep 0.5
   if ! kill -0 "$WORKER_PID" 2>/dev/null; then

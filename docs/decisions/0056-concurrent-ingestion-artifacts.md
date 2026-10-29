@@ -2,8 +2,9 @@
 
 - DATE: 2026-10-07（2026-10-09 合并整理）
 - TAGS: ingest, storage, citation
-- STATUS: 当前
+- STATUS: 部分失效
 - SUPERSEDES: 0012、0044 的 worker 条款；其项目删除顺序合并进 0043
+- 部分失效：条目可先于全文存在的条款由 0091 取代，其余仍有效
 
 ## DECISION
 

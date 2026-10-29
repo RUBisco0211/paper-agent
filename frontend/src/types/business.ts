@@ -87,7 +87,6 @@ export interface LoginInput {
 }
 
 // --- Library --------------------------------------------------------------
-export type PaperSource = "upload" | "doi" | "arxiv" | "manual"
 export type MetadataStatus =
   | "recognized"
   | "partial"
@@ -96,46 +95,16 @@ export type MetadataStatus =
   | "user_provided"
 
 export interface Capabilities {
-  has_pdf: boolean
+  has_source: boolean
   has_metadata: boolean
-  has_fulltext: boolean
-  has_keyword_index: boolean
+  has_parsed: boolean
+  has_index: boolean
   has_embedding: boolean
 }
 
-export type IngestionStage = "metadata" | "fulltext" | "chunking" | "embedding"
-export type IngestionStatus = "queued" | "running" | "succeeded" | "failed"
-export type StageStatus = "pending" | "running" | "succeeded" | "failed"
-
-export interface IngestionStageState {
-  stage: IngestionStage
-  status: StageStatus
-  attempt: number
-  error_code?: string | null
-  error_message?: string | null
-  progress?: Record<string, unknown> | null
-  started_at?: string | null
-  finished_at?: string | null
-}
-
-export interface IngestionJob {
-  id: Uuid
-  paper_id: Uuid
-  status: IngestionStatus
-  current_stage?: IngestionStage | null
-  error_code?: string | null
-  created_at: string
-  started_at?: string | null
-  finished_at?: string | null
-  stages: IngestionStageState[]
-}
-
-export interface ProcessingState {
-  job_id?: Uuid | null
-  status?: IngestionStatus | null
-  current_stage?: IngestionStage | null
-  error_code?: string | null
-}
+export type RunStage = "parse" | "chunk" | "embed"
+export type RunStatus = "pending" | "running" | "success" | "failed"
+export type DownloadStatus = "pending" | "running" | "success" | "failed"
 
 export interface UserPaperSummary {
   id: Uuid
@@ -145,16 +114,15 @@ export interface UserPaperSummary {
   venue?: string | null
   doi?: string | null
   arxiv_id?: string | null
-  source: PaperSource
-  original_filename?: string | null
   added_at: string
+  /** Projects this entry belongs to; empty when it is only in the library. */
+  project_ids?: Uuid[]
   capabilities: Capabilities
-  processing: ProcessingState
+  run_status?: RunStatus | null
 }
 
 export interface UserPaperDetail extends UserPaperSummary {
   abstract?: string | null
-  metadata_status: MetadataStatus
   metadata?: Record<string, unknown> | null
   metadata_sources?: Array<Record<string, unknown>> | null
   pdf: {
@@ -187,18 +155,8 @@ export interface PaperBlocksResponse {
 }
 
 export interface UploadResponse {
-  paper: UserPaperSummary
-  ingestion_job?: IngestionJob | null
-}
-
-export interface PaperInfoInput {
-  title?: string
-  authors?: string[]
-  abstract?: string
-  doi?: string
-  arxiv_id?: string
-  year?: number
-  venue?: string
+  run_id: Uuid
+  status: RunStatus
 }
 
 export interface MetadataFetchResult {
@@ -206,15 +164,6 @@ export interface MetadataFetchResult {
   source?: string | null
   error_code?: string | null
   applied_fields: string[]
-}
-
-export interface FetchPdfResponse extends UploadResponse {
-  metadata: MetadataFetchResult
-}
-
-export interface FetchMetadataResponse {
-  paper: UserPaperDetail
-  metadata: MetadataFetchResult
 }
 
 export interface PaperListParams {
@@ -403,26 +352,48 @@ export interface SearchInput {
 }
 
 // --- Imports --------------------------------------------------------------
-export type ImportStatus =
-  | "queued"
-  | "resolving"
-  | "metadata_ready"
-  | "pdf_unavailable"
-  | "ready"
-  | "failed"
+export type IdentifierType = "doi" | "arxiv"
 
-export interface PaperImport {
+/** The processing run a download joined, as the queue shows it. */
+export interface QueueRun {
+  status: RunStatus
+  stage?: RunStage | null
+  /** Stage name → ISO timestamp, for the stages that already finished. */
+  stage_finished_at?: Record<string, string>
+  error_message?: string | null
+}
+
+/**
+ * One request the user made: fetching a file, then processing it.
+ * A successful download is stitched to its run so both read as one process.
+ */
+export interface ImportQueueItem {
+  /** Whether the request carried a download, or the file arrived with it. */
+  source: "download" | "request"
   id: Uuid
-  status: ImportStatus
-  identifier_type: "doi" | "arxiv"
   identifier: string
+  /** An upload has no identifier, so the type records where it came from. */
+  identifier_type: IdentifierType | "upload"
+  status: DownloadStatus
   paper_id?: Uuid | null
+  /** The current user's entry, usable with the library detail endpoint. */
+  user_paper_id?: Uuid | null
+  run_id?: Uuid | null
   project_id?: Uuid | null
-  metadata_source?: string | null
-  error_code?: string | null
+  source_url?: string | null
+  error_message?: string | null
   created_at: string
-  updated_at: string
   finished_at?: string | null
+  run?: QueueRun | null
+}
+
+/** The request just queued; processing happens in the background. */
+export interface DownloadRead {
+  id: Uuid
+  identifier_type: IdentifierType
+  identifier: string
+  status: DownloadStatus
+  created_at: string
 }
 
 export interface ImportApprovalPreview {
@@ -433,31 +404,3 @@ export interface ImportApprovalPreview {
   }>
 }
 
-export interface ImportQueueItem {
-  id: Uuid
-  kind: "import" | "processing"
-  identifier?: string | null
-  title?: string | null
-  paper_id?: Uuid | null
-  status: string
-  stage?: IngestionStage | null
-  created_at: string
-  error_code?: string | null
-}
-
-
-/** 界面上展示的中文标签（内部枚举不外露）。 */
-export const PAPER_SOURCE_LABEL: Record<PaperSource, string> = {
-  upload: "上传",
-  doi: "DOI 导入",
-  arxiv: "arXiv 导入",
-  manual: "手动录入",
-}
-
-export const METADATA_STATUS_LABEL: Record<MetadataStatus, string> = {
-  recognized: "已识别",
-  partial: "部分识别",
-  unrecognized: "未识别",
-  provider_failed: "元数据服务失败",
-  user_provided: "已手动修正",
-}

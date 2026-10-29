@@ -1,9 +1,13 @@
 # Paper Agent 单机开发/部署依赖。
 # 使用 `docker compose up -d postgres redis` 启动数据库与邮件验证临时状态；pgvector 扩展由 Alembic 迁移创建。
+#
+# 容器名由 compose project 前缀决定（默认取目录名），不写死：
+#   主仓库          → paper-agent-postgres-1
+#   某个 worktree   → <worktree 目录名>-postgres-1
+# 写死名字会让第二个 checkout 因重名启动失败，或者更糟：两边悄悄连同一个库。
 services:
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: paper-agent-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: paper_agent
@@ -12,8 +16,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-paper_agent_dev}
 
     ports:
-      # 只绑本机：Postgres 不应在局域网可见
-      - "127.0.0.1:5432:5432"
+      # 只绑本机：Postgres 不应在局域网可见。
+      # 主机端口可覆盖：多个 checkout 并存时各用各的端口，避免连到别人的库。
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,14 +28,24 @@ services:
       retries: 10
 
   # 仅保存验证码、一次性凭证与冷却/限流；持久邮件 outbox 在 PostgreSQL。
-  # 不持久化：状态丢失后须重新验证；不作为 Celery 或邮件任务队列。
+  # 允许丢失最近几十秒的写入（用户重新收一次验证码），因此不做 AOF；
+  # 不作为 Celery 或邮件任务队列。
   redis:
     image: redis:7-alpine
-    container_name: paper-agent-redis
     restart: unless-stopped
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # 验证码与限流计数重启后应当还在。任一条满足即落盘：
+    # 900 秒内有 1 次写入（低流量下也能存下来）、300 秒内 10 次、60 秒内 1 万次。
+    command:
+      [
+        "redis-server",
+        "--save", "900 1 300 10 60 10000",
+        "--appendonly", "no",
+        "--dir", "/data",
+      ]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -47,7 +62,6 @@ services:
   # 生产配置受信任的 S3 兼容服务或云对象存储，并设置 STORAGE_BACKEND=s3。
   storage:
     image: ${RUSTFS_IMAGE:-rustfs/rustfs:latest}
-    container_name: paper-agent-storage
     profiles: ["storage"]
     restart: unless-stopped
     # 数据目录由位置参数给出；容器以 uid 10001 运行（命名卷无需手工 chown）
@@ -62,8 +76,8 @@ services:
       RUSTFS_OBS_LOGGER_LEVEL: ${RUSTFS_LOG_LEVEL:-warn}
     ports:
       # 只绑本机：对象存储自身鉴权较弱，服务器上让后端走内网访问
-      - "127.0.0.1:9000:9000"   # S3 API
-      - "127.0.0.1:9001:9001"   # 控制台（用上面的 Access/Secret 登录）
+      - "127.0.0.1:${STORAGE_PORT:-9000}:9000"   # S3 API
+      - "127.0.0.1:${STORAGE_CONSOLE_PORT:-9001}:9001"   # 控制台
     volumes:
       - storage-data:/data
     healthcheck:
@@ -76,4 +90,5 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
   storage-data:

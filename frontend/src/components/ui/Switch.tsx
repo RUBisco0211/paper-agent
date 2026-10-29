@@ -3,6 +3,10 @@ import { Switch as SwitchPrimitive } from 'radix-ui';
 
 import { cn } from '@/lib/utils';
 
+/*
+ * 取值全部来自 index.css 的 --switch-* 语义变量：轨道两个尺寸、滑块大小
+ * 与两种状态的配色都由主题集中维护，这里只描述状态。
+ */
 function Switch({
 	className,
 	size = 'default',
@@ -10,19 +14,43 @@ function Switch({
 }: React.ComponentProps<typeof SwitchPrimitive.Root> & {
 	size?: 'sm' | 'default';
 }) {
+	const compact = size === 'sm';
 	return (
 		<SwitchPrimitive.Root
 			data-slot="switch"
 			data-size={size}
+			style={{
+				height: compact
+					? 'var(--switch-height-sm)'
+					: 'var(--switch-height-default)',
+				width: compact
+					? 'var(--switch-width-sm)'
+					: 'var(--switch-width-default)',
+			}}
 			className={cn(
-				'peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-all outline-none after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=default]:h-[18.4px] data-[size=default]:w-[32px] data-[size=sm]:h-[14px] data-[size=sm]:w-[24px] dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:bg-primary data-unchecked:bg-input dark:data-unchecked:bg-input/80 data-disabled:cursor-not-allowed data-disabled:opacity-50',
+				'peer group/switch relative inline-flex shrink-0 items-center rounded-full border border-transparent transition-all outline-none',
+				'after:absolute after:-inset-x-3 after:-inset-y-2',
+				'focus-visible:border-(--switch-track-checked) focus-visible:ring-3 focus-visible:ring-(--focus-ring-color)',
+				'aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-(--destructive-ring)',
+				'data-unchecked:bg-(--switch-track-unchecked) data-checked:bg-(--switch-track-checked)',
+				'disabled:cursor-not-allowed disabled:opacity-50',
 				className,
 			)}
 			{...props}
 		>
 			<SwitchPrimitive.Thumb
 				data-slot="switch-thumb"
-				className="pointer-events-none block rounded-full bg-background ring-0 transition-transform group-data-[size=default]/switch:size-4 group-data-[size=sm]/switch:size-3 group-data-[size=default]/switch:data-checked:translate-x-[calc(100%-2px)] group-data-[size=sm]/switch:data-checked:translate-x-[calc(100%-2px)] dark:data-checked:bg-primary-foreground group-data-[size=default]/switch:data-unchecked:translate-x-0 group-data-[size=sm]/switch:data-unchecked:translate-x-0 dark:data-unchecked:bg-foreground"
+				className={cn(
+					// 滑块贴左留出 inset；选中时推到轨道右端，位移由轨道宽度与滑块宽度决定。
+					'pointer-events-none block rounded-full ring-0 transition-transform',
+					'bg-(--switch-thumb) dark:data-checked:bg-(--switch-thumb-checked)',
+					size === 'sm'
+						? 'size-(--switch-thumb-size-sm)'
+						: 'size-(--switch-thumb-size-default)',
+					'data-unchecked:translate-x-(--switch-thumb-inset)',
+					'data-checked:data-[size=default]:translate-x-[calc(var(--switch-width-default)-var(--switch-thumb-size-default)-var(--switch-thumb-inset))]',
+					'data-checked:data-[size=sm]:translate-x-[calc(var(--switch-width-sm)-var(--switch-thumb-size-sm)-var(--switch-thumb-inset))]',
+				)}
 			/>
 		</SwitchPrimitive.Root>
 	);

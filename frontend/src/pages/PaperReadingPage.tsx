@@ -125,7 +125,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
   const overview = useQuery({
     queryKey: ["paper-blocks", paperId, "types"],
     queryFn: () => api.library.blocks(paperId, { limit: 1 }),
-    enabled: Boolean(paperId && paper.data?.capabilities.has_fulltext),
+    enabled: Boolean(paperId && paper.data?.capabilities.has_parsed),
   })
   const linkedBlock = useQuery({
     queryKey: ["paper-block", paperId, linkedBlockId],
@@ -208,7 +208,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" size="icon-sm" aria-label={embedded ? "返回文献列表" : "返回"} onClick={() => onBack ? onBack() : navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate font-medium">{paper.data?.title || paper.data?.original_filename || "文献"}</h1>
+        <h1 className="truncate font-medium">{paper.data?.title || "文献"}</h1>
         {paper.data && <p className="text-muted-foreground truncate text-xs">{paper.data.authors.join("、") || "作者未知"}{paper.data.year ? ` · ${paper.data.year}` : ""}</p>}
       </div>
       <Button variant="ghost" size="icon-sm" aria-label="文献信息" title="文献信息" onClick={() => setInfoOpen(true)}><Info /></Button>
@@ -257,7 +257,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
             })}
             {blocks.hasNextPage && <Button className="mt-2 w-full" variant="ghost" size="sm" disabled={blocks.isFetchingNextPage} onClick={() => void blocks.fetchNextPage()}>加载更多</Button>}
           </div></TooltipProvider>
-        </Tabs> : <p className="p-4 text-sm text-muted-foreground">{overview.isError ? describeError(overview.error) : paper.data?.capabilities.has_fulltext ? "暂无原文片段" : "文献尚未完成解析"}</p>}
+        </Tabs> : <p className="p-4 text-sm text-muted-foreground">{overview.isError ? describeError(overview.error) : paper.data?.capabilities.has_parsed ? "暂无原文片段" : "文献尚未完成解析"}</p>}
           </aside>
         </ResizablePanel>
       </>

@@ -1,32 +1,22 @@
-"""End-to-end pipeline tests with deterministic stand-in providers."""
+"""End-to-end processing tests with deterministic stand-in providers."""
 
-import hashlib
-from collections.abc import Iterator, Sequence
+import json
+import time
 from pathlib import Path
-from threading import Barrier
-from typing import cast
-from uuid import UUID
+from threading import Thread
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+import pytest
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.library.depends import get_ingestion_starter
 from app.library.repo import PaperRepository
-from app.literature_support.processing.mineru import MineruArtifact, MineruParser
-from app.literature_support.processing.pipeline import IngestionPipeline
-from app.literature_support.processing.worker import IngestionWorker
-from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
-from app.platform.config import settings
-from app.platform.storage import ObjectStorage, paper_pdf_key
+from app.literature_support.importing.mineru import MineruArtifact, MineruParser
+from app.pipelines.domain import RunStage, RunStatus
+from app.pipelines.pipeline import CONTENT_LIST_OBJECT, MANIFEST_OBJECT, RunPipeline
+from app.pipelines.repo import RunRecord, RunRepository, UserRunRecord
+from app.pipelines.runs import RunService
+from app.platform.storage import ObjectStorage, mineru_artifact_key, paper_pdf_key
 from app.platform.tasks import InlineTaskScheduler
-from app.processing.depends import get_ingestion_service
-from app.processing.domain import IngestionStage
-from app.processing.repo import IngestionRepository
-from app.processing.service import IngestionService
-from app.retrieval.depends import get_search_embedding_factory
-from tests.conftest import ListedObjectStorage, auth_headers, build_pdf_with_text
-from tests.library.test_pdf_and_metadata import FakeProvider
 
 CONTENT_LIST = [
     {
@@ -46,491 +36,676 @@ CONTENT_LIST = [
         "text": "We use scaled dot product attention in every attention head.",
         "page_idx": 1,
     },
-    {
-        "type": "table",
-        "table_body": "<table><tr><td>BLEU 41.8</td></tr></table>",
-        "page_idx": 2,
-    },
 ]
 
 
-def test_two_papers_complete_fulltext_and_indexing_in_parallel(
-    session_factory: sessionmaker[Session],
-    db_session: Session,
-    storage: ObjectStorage,
-    make_pdf,
-) -> None:
-    gate = Barrier(2, timeout=5)
+class CountingMineru(MineruParser):
+    """Counts parses so the tests can tell a re-parse from a skip."""
 
-    class ConcurrentMineru(FakeMineruParser):
-        def parse(self, *, pdf_path: Path) -> MineruArtifact:
-            gate.wait()
-            return super().parse(pdf_path=pdf_path)
-
-    with session_factory() as session:
-        papers = PaperRepository(session)
-        ingestion = IngestionRepository(session)
-        job_ids = []
-        for count in (1, 2):
-            pdf = make_pdf(count)
-            file_hash = hashlib.sha256(pdf).hexdigest()
-            storage.put_bytes(paper_pdf_key(file_hash), pdf)
-            paper = papers.add_paper(
-                file_hash=file_hash, byte_size=len(pdf), page_count=count
-            )
-            job_ids.append(
-                ingestion.create_job(
-                    paper_id=paper.id,
-                    stages=(
-                        IngestionStage.FULLTEXT,
-                        IngestionStage.CHUNKING,
-                        IngestionStage.EMBEDDING,
-                    ),
-                ).id
-            )
-        session.commit()
-    pipeline = IngestionPipeline(
-        scheduler=None,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=ConcurrentMineru(),
-        resolver=MetadataResolver([]),
-        embeddings=FakeEmbeddingAdapter(),
-    )
-    worker = IngestionWorker(session_factory=session_factory, pipeline=pipeline)
-    assert worker.run_batch(max_concurrent_jobs=2) == 2
-    with session_factory() as session:
-        ingestion = IngestionRepository(session)
-        papers = PaperRepository(session)
-        for job_id in job_ids:
-            job = ingestion.get_job(job_id)
-            assert job is not None
-            assert job.status.value == "succeeded"
-            paper = papers.get_paper(job.paper_id)
-            assert paper is not None
-            assert paper.artifact_manifest_key is not None
-            assert paper.has_keyword_index and paper.has_embedding
-
-
-class FakeMineruParser(MineruParser):
-    def __init__(self, artifact: MineruArtifact | None = None) -> None:
-        super().__init__(base_url="https://mineru.invalid", api_key="test")
-        self.artifact = artifact or MineruArtifact(
-            content_list=CONTENT_LIST,
-            markdown="# Attention Is All You Need",
-            images={"images/figure-1.png": b"\x89PNG-fake"},
-            version="2.1.0",
-        )
-        self.calls: list[Path] = []
+    def __init__(self) -> None:
+        self.calls = 0
 
     def parse(self, *, pdf_path: Path) -> MineruArtifact:
-        self.calls.append(pdf_path)
-        return self.artifact
+        self.calls += 1
+        return MineruArtifact(
+            content_list=[dict(item) for item in CONTENT_LIST],
+            images={},
+            markdown="# paper",
+            version="2.1.0",
+        )
 
 
-class FakeEmbeddingAdapter:
-    """实现 EmbeddingAdapter：可切换"已配置/未配置"，返回固定维度向量。"""
+class StubEmbeddings:
+    """Vectors must match the pgvector column width."""
 
-    name = "fake"
-    model = settings.embedding_model
+    is_configured = True
+    model = "stub"
+    dimensions = 1024
 
-    def __init__(self, *, configured: bool = True) -> None:
-        self.enabled = configured
-        self.vectors: list[list[float]] = []
-        self.documents: list[str] = []
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.01] * 1024 for _ in texts]
 
-    def configure(self) -> None:
-        self.enabled = True
 
-    @property
-    def dimensions(self) -> int:
-        return settings.embedding_dimensions
+@pytest.fixture
+def paper(session_factory: sessionmaker[Session], storage: ObjectStorage, clean_tables):
+    """A stored paper with its PDF already in the object store."""
+    with session_factory() as session:
+        record = PaperRepository(session).get_or_add_paper(
+            file_hash="b" * 64, byte_size=2048, page_count=2
+        )
+        session.commit()
+        paper_id = record.id
+    storage.put_bytes(paper_pdf_key("b" * 64), b"%PDF-1.7 stub")
+    return paper_id
 
-    @property
-    def is_configured(self) -> bool:
-        return self.enabled
 
-    def embed_documents(self, texts: Sequence[str]) -> list[list[float]]:
-        self.documents.extend(texts)
-        vectors = [
-            [0.1 + index * 0.001 for index in range(self.dimensions)] for _ in texts
-        ]
-        self.vectors.extend(vectors)
-        return vectors
+@pytest.fixture
+def pipeline(session_factory, storage):
+    mineru = CountingMineru()
+    return (
+        RunPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=StubEmbeddings(),
+        ),
+        mineru,
+    )
 
-    def embed_query(self, text: str) -> list[float]:
-        return self.embed_documents([text])[0]
+
+def _run_to_completion(runner, session_factory, run_id) -> None:
+    """Drive a run through every stage the way the worker does.
+
+    The executor handles one stage per call, so a test that wants a finished
+    paper asks for each stage in order.
+    """
+    for _ in range(len(RunStage)):
+        with session_factory() as session:
+            stored = RunRepository(session).get(run_id)
+            if stored is None or stored.status is not RunStatus.PENDING:
+                return
+            stage = stored.current_stage
+        if stage is None:
+            return
+        runner.run_sync(run_id, stage=stage)
+        with session_factory() as session:
+            after = RunRepository(session).get(run_id)
+        # A failed stage stays where it is (waiting out a backoff): stop here
+        # rather than pretending the next stage is ready.
+        if after is not None and after.current_stage is stage:
+            return
+
+
+def _exhaust_retries(runner, session_factory, run_id, *, attempts: int = 3) -> None:
+    """Drive a failing stage until its retries are used up."""
+    for _ in range(attempts):
+        runner.run_sync(run_id, stage=RunStage.PARSE)
+        with session_factory() as session:
+            stored = RunRepository(session).get(run_id)
+            if stored is None or stored.status is RunStatus.FAILED:
+                return
+            # Retries wait out a backoff; clear it so the test does not sleep.
+            if stored.next_attempt_at is not None:
+                from app.pipelines.repo import RunRecord
+
+                record = session.get(RunRecord, run_id)
+                record.next_attempt_at = None
+                session.commit()
+
+
+def _start_run(session_factory, paper_id) -> object:
+    with session_factory() as session:
+        run = RunRepository(session).add(paper_id)
+        session.commit()
+        return run
+
+
+def test_a_run_parses_then_chunks_then_embeds(paper, pipeline, session_factory) -> None:
+    runs, mineru = pipeline
+    run = _start_run(session_factory, paper)
+
+    _run_to_completion(runs, session_factory, run.id)
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(run.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+        assert finished.current_stage is None
+        assert finished.error_message is None
+    assert mineru.calls == 1
+
+
+def test_a_second_run_reuses_the_verified_artifacts(
+    paper, pipeline, session_factory
+) -> None:
+    """Retrying after a crash must not pay for parsing twice."""
+    runs, mineru = pipeline
+    first = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, first.id)
+
+    second = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, second.id)
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(second.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+    assert mineru.calls == 1
+
+
+def test_a_truncated_artifact_is_reparsed_instead_of_failing(
+    paper, pipeline, session_factory, storage
+) -> None:
+    """A half-written file must be repaired, not reported as a dead end."""
+    runs, mineru = pipeline
+    first = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, first.id)
+
+    key = mineru_artifact_key("b" * 64, CONTENT_LIST_OBJECT)
+    storage.put_bytes(key, b'[{"type": "title", "tex')
+
+    second = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, second.id)
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(second.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+    assert mineru.calls == 2
+
+
+def test_a_missing_artifact_file_is_reparsed(
+    paper, pipeline, session_factory, storage
+) -> None:
+    runs, mineru = pipeline
+    first = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, first.id)
+
+    storage.delete_prefix(mineru_artifact_key("b" * 64, ""))
+
+    second = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, second.id)
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(second.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+    assert mineru.calls == 2
+
+
+def test_a_manifest_from_another_file_is_not_trusted(
+    paper, pipeline, session_factory, storage
+) -> None:
+    runs, mineru = pipeline
+    first = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, first.id)
+
+    manifest_key = mineru_artifact_key("b" * 64, MANIFEST_OBJECT)
+    manifest = json.loads(storage.read_text(manifest_key))
+    manifest["file_hash"] = "c" * 64
+    storage.put_bytes(manifest_key, json.dumps(manifest).encode("utf-8"))
+
+    second = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, second.id)
+
+    with session_factory() as session:
+        finished = RunRepository(session).get(second.id)
+        assert finished is not None
+        assert finished.status is RunStatus.SUCCESS
+    assert mineru.calls == 2
+
+
+def test_a_failed_run_names_the_stage_it_stopped_at(
+    paper, session_factory, storage
+) -> None:
+    class ExplodingMineru(MineruParser):
+        def parse(self, *, pdf_path: Path) -> MineruArtifact:
+            from app.platform.errors import AppError, ErrorCode
+
+            raise AppError(
+                "MinerU 解析失败：文件格式不支持",
+                code=ErrorCode.PROVIDER_UNAVAILABLE,
+                status_code=502,
+            )
+
+    runs = RunPipeline(
+        scheduler=InlineTaskScheduler(),
+        session_factory=session_factory,
+        storage=storage,
+        mineru=ExplodingMineru(),
+        embeddings=StubEmbeddings(),
+    )
+    run = _start_run(session_factory, paper)
+    _run_to_completion(runs, session_factory, run.id)
+
+    with session_factory() as session:
+        failed = RunRepository(session).get(run.id)
+        assert failed is not None
+        # One failure is retried later, so the run waits rather than dying.
+        assert failed.status is RunStatus.PENDING
+        assert failed.current_stage is RunStage.PARSE
+        assert failed.attempts_for(RunStage.PARSE) == 1
+        assert failed.error_message == "MinerU 解析失败：文件格式不支持"
+        assert failed.next_attempt_at is not None
+
+
+def test_every_user_who_asked_gets_an_entry_when_the_run_succeeds(
+    paper, pipeline, session_factory, make_user
+) -> None:
+    runs, _ = pipeline
+    alice = make_user("alice@example.com")
+    bob = make_user("bob@example.com")
+
+    service = RunService(session_factory=session_factory)
+    first = service.request(user_id=alice, paper_id=paper)
+    second = service.request(user_id=bob, paper_id=paper)
+    assert first.id == second.id, "两个用户应共用同一条 run"
+
+    _run_to_completion(runs, session_factory, first.id)
+
+    with session_factory() as session:
+        papers = PaperRepository(session)
+        assert papers.get_user_paper_for_paper(user_id=alice, paper_id=paper)
+        assert papers.get_user_paper_for_paper(user_id=bob, paper_id=paper)
+
+
+def test_a_failed_run_grants_no_entry_to_anyone(
+    paper, session_factory, storage, make_user
+) -> None:
+    class ExplodingMineru(MineruParser):
+        def parse(self, *, pdf_path: Path) -> MineruArtifact:
+            from app.platform.errors import AppError, ErrorCode
+
+            raise AppError(
+                "解析失败", code=ErrorCode.PROVIDER_UNAVAILABLE, status_code=502
+            )
+
+    runs = RunPipeline(
+        scheduler=InlineTaskScheduler(),
+        session_factory=session_factory,
+        storage=storage,
+        mineru=ExplodingMineru(),
+        embeddings=StubEmbeddings(),
+    )
+    alice = make_user("alice@example.com")
+    bob = make_user("bob@example.com")
+    service = RunService(session_factory=session_factory)
+    run = service.request(user_id=alice, paper_id=paper)
+    service.request(user_id=bob, paper_id=paper)
+
+    _exhaust_retries(runs, session_factory, run.id)
+
+    with session_factory() as session:
+        papers = PaperRepository(session)
+        assert papers.get_user_paper_for_paper(user_id=alice, paper_id=paper) is None
+        assert papers.get_user_paper_for_paper(user_id=bob, paper_id=paper) is None
+
+
+def test_a_finished_paper_is_not_processed_again_for_a_later_request(
+    paper, pipeline, session_factory, make_user
+) -> None:
+    """A second user who arrives after success waits for nothing."""
+    runs, mineru = pipeline
+    alice = make_user("alice@example.com")
+    bob = make_user("bob@example.com")
+    service = RunService(session_factory=session_factory)
+
+    first = service.request(user_id=alice, paper_id=paper)
+    _run_to_completion(runs, session_factory, first.id)
+
+    joined = service.request(user_id=bob, paper_id=paper)
+    _run_to_completion(runs, session_factory, joined.id)
+
+    with session_factory() as session:
+        assert RunRepository(session).get(first.id).status is RunStatus.SUCCESS
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=bob, paper_id=paper
+        )
+    assert mineru.calls == 1, "已完成的论文不应重新解析"
+
+
+class FakeMineruParser(CountingMineru):
+    """Alias kept for tests that only need a working parser."""
 
 
 def _override_services(
-    client: TestClient,
+    client,
     *,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-    mineru: MineruParser,
-    embeddings: FakeEmbeddingAdapter,
-    resolver: MetadataResolver,
-) -> None:
-    storage = storage
-
-    def build_ingestion() -> Iterator[IngestionService]:
-        session = session_factory()
-        try:
-            papers = PaperRepository(session)
-            pipeline = IngestionPipeline(
-                scheduler=InlineTaskScheduler(),
-                session_factory=session_factory,
-                storage=storage,
-                mineru=mineru,
-                resolver=resolver,
-                embeddings=embeddings,
-            )
-            yield IngestionService(
-                IngestionRepository(session),
-                papers,
-                runner=pipeline,
-            )
-        finally:
-            session.close()
-
-    # Both the upload path (library) and the retry path (ingestion API) must
-    # use the same stand-in providers.
-    overrides = cast(FastAPI, client.app).dependency_overrides
-    overrides[get_ingestion_starter] = build_ingestion
-    overrides[get_ingestion_service] = build_ingestion
-    overrides[get_search_embedding_factory] = lambda: (
-        lambda _user_id: embeddings
-    )
-
-
-def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes):
-    return client.post(
-        f"{api_prefix}/papers",
-        headers=auth_headers(token),
-        files={"file": ("attention.pdf", pdf, "application/pdf")},
-    )
-
-
-def test_failed_artifact_write_never_publishes_orphaned_fulltext(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ListedObjectStorage,
+    session_factory,
+    storage,
+    mineru,
+    embeddings,
+    resolver,
     monkeypatch,
-) -> None:
-    original_put = storage.put_bytes
+    request,
+):
+    """Drain both queues inline after each submitted request.
 
-    def fail_markdown(key: str, data: bytes) -> None:
-        if key.endswith("full.md"):
-            raise OSError("storage write failed")
-        original_put(key, data)
+    Tests that assert on a failure need the worker to run without the
+    ``completed_imports`` fixture, so this installs the same behaviour for one
+    case and hands its sessions back for teardown.
+    """
+    import app.library.service as library_service_module
+    from app.pipelines.repo import RunRepository
 
-    monkeypatch.setattr(storage, "put_bytes", fail_markdown)
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingAdapter(),
-        resolver=MetadataResolver([]),
-    )
-    token = register_user(email="artifact-failure@example.com")["access_token"]
-    response = _upload(
-        client, api_prefix, token, build_pdf_with_text("artifact failure")
-    )
-    assert response.status_code == 202
-    assert response.json()["paper"]["capabilities"]["has_fulltext"] is False
-    assert not list(storage.files("mineru/"))
+    opened: list[Session] = []
 
+    def run_worker() -> None:
+        from app.literature_support.scholar.pdf_fetch import PdfFetcher
+        from app.pipelines.download import DownloadService
 
-def test_pipeline_runs_every_stage_and_makes_evidence_searchable(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ListedObjectStorage,
-) -> None:
-    mineru = FakeMineruParser()
-    embeddings = FakeEmbeddingAdapter()
-    provider = FakeProvider(
-        ProviderMetadata(
-            source="fake",
-            title="Attention Is All You Need",
-            authors=["Ashish Vaswani"],
-            abstract="The dominant sequence transduction models.",
-            arxiv_id="1706.03762",
-            year=2017,
-        ),
-    )
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=mineru,
-        embeddings=embeddings,
-        resolver=MetadataResolver([provider]),
-    )
-    token = register_user(email="reader@example.com")["access_token"]
-    pdf = build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need")
-
-    uploaded = _upload(client, api_prefix, token, pdf)
-
-    assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    paper_id = body["paper"]["id"]
-    assert body["paper"]["capabilities"] == {
-        "has_pdf": True,
-        "has_metadata": True,
-        "has_fulltext": True,
-        "has_keyword_index": True,
-        "has_embedding": True,
-    }
-    job = body["ingestion_job"]
-    assert job["status"] == "succeeded"
-    assert job["error_code"] is None
-    stages = {stage["stage"]: stage["status"] for stage in job["stages"]}
-    assert stages == {
-        "metadata": "succeeded",
-        "fulltext": "succeeded",
-        "chunking": "succeeded",
-        "embedding": "succeeded",
-    }
-
-    detail = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert detail["title"] == "Attention Is All You Need"
-    assert detail["metadata_status"] == "recognized"
-    assert detail["capabilities"]["has_fulltext"] is True
-
-    # Only paper text and block indexes were sent to the recognizer; the
-    # original PDF and MinerU artifacts stay in object storage.
-    stored = {key.rsplit("/", 1)[-1] for key in storage.files("mineru/")}
-    assert "content_list.json" in stored
-    assert "full.md" in stored
-    assert "manifest.json" in stored
-    assert "figure-1.png" in stored
-    assert mineru.calls and mineru.calls[0].suffix == ".pdf"
-    with session_factory() as session:
-        from app.library.repo import UserPaperRecord
-
-        user_paper = session.get(UserPaperRecord, UUID(paper_id))
-        assert user_paper is not None and user_paper.paper_id is not None
-        paper = PaperRepository(session).get_paper(user_paper.paper_id)
-        assert paper is not None
-        assert paper.artifact_manifest_key is not None
-        manifest = __import__("json").loads(
-            storage.read_text(paper.artifact_manifest_key)
+        downloads = DownloadService(
+            session_factory=session_factory,
+            storage=storage,
+            fetcher=PdfFetcher(max_bytes=1024 * 1024 * 64),
+            resolver=resolver,
+            locator=_EmptyLocator(),
         )
-        assert manifest["parser_version"] == "2.1.0"
-        assert manifest["files"]["content_list.json"]["sha256"]
+        while (download_id := downloads.claim_next()) is not None:
+            downloads.run(download_id)
+        runs = RunPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=embeddings,
+        )
+        for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
+            while True:
+                with session_factory() as session:
+                    claim = RunRepository(session).claim_next(
+                        stage=stage, lease_seconds=300
+                    )
+                if claim is None:
+                    break
+                runs.run_sync(claim[0], stage=stage, token=claim[1])
 
-    search = client.post(
-        f"{api_prefix}/search",
-        headers=auth_headers(token),
-        json={"query": "scaled dot product attention", "limit": 3},
+    original_upload = library_service_module.PaperLibraryService.upload_pdf
+
+    def upload_then_work(self, *, user_id, filename, stream, project_id=None):
+        run = original_upload(
+            self,
+            user_id=user_id,
+            filename=filename,
+            stream=stream,
+            project_id=project_id,
+        )
+        run_worker()
+        return run
+
+    monkeypatch.setattr(
+        library_service_module.PaperLibraryService, "upload_pdf", upload_then_work
     )
-    assert search.status_code == 200, search.text
-    payload = search.json()
-    assert payload["status"] == "ok"
-    assert payload["channels"]["keyword"]["status"] == "ok"
-    assert payload["channels"]["vector"]["status"] == "ok"
-    assert payload["evidence"]
-    top = payload["evidence"][0]
-    assert top["paper_id"] == paper_id
-    # The blocks of this short paper fit one chunk spanning pages 1-3.
-    assert top["page_start"] == 1
-    assert top["page_end"] == 3
-    assert "scaled dot product attention" in top["snippet"]
-    assert "BLEU 41.8" in top["snippet"]
-    UUID(top["chunk_ids"][0])
+    request.addfinalizer(lambda: [session.close() for session in opened])
+    return None
 
 
-def test_fulltext_survives_an_unavailable_embedding_provider(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-) -> None:
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingAdapter(configured=False),
-        resolver=MetadataResolver([]),
-    )
-    token = register_user(email="reader@example.com")["access_token"]
-
-    uploaded = _upload(
-        client,
-        api_prefix,
-        token,
-        build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need"),
-    )
-
-    assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    capabilities = body["paper"]["capabilities"]
-    assert capabilities["has_fulltext"] is True
-    assert capabilities["has_keyword_index"] is True
-    assert capabilities["has_embedding"] is False
-    stages = {stage["stage"]: stage for stage in body["ingestion_job"]["stages"]}
-    assert stages["fulltext"]["status"] == "succeeded"
-    assert stages["chunking"]["status"] == "succeeded"
-    assert stages["embedding"]["status"] == "failed"
-    assert stages["embedding"]["error_code"] == "provider_not_configured"
-    assert body["ingestion_job"]["status"] == "failed"
-
-    search = client.post(
-        f"{api_prefix}/search",
-        headers=auth_headers(token),
-        json={"query": "scaled dot product attention"},
-    )
-    payload = search.json()
-    assert payload["channels"]["keyword"]["status"] == "ok"
-    assert payload["channels"]["vector"]["status"] == "unavailable"
-    assert payload["status"] == "degraded"
-    assert payload["evidence"]
+class _EmptyLocator:
+    def find(self, doi: str) -> list[str]:
+        return []
 
 
-def test_metadata_failure_does_not_block_fulltext(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-) -> None:
-    from app.platform.errors import AppError, ErrorCode
+def test_success_is_rolled_back_when_granting_entries_is_interrupted(
+    paper, pipeline, session_factory, make_user, monkeypatch
+):
+    runner, _ = pipeline
+    user_id = make_user()
+    run = RunService(session_factory).request(user_id=user_id, paper_id=paper)
+    original_grant = runner._grant_entries
 
-    provider = FakeProvider(
-        error=AppError(
-            "元数据服务暂时不可用",
-            code=ErrorCode.METADATA_PROVIDER_FAILED,
-            status_code=502,
-        ),
-    )
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingAdapter(),
-        resolver=MetadataResolver([provider]),
-    )
-    token = register_user(email="reader@example.com")["access_token"]
+    def interrupt(**kwargs):
+        original_grant(**kwargs)
+        raise RuntimeError("injected grant interruption")
 
-    uploaded = _upload(
-        client,
-        api_prefix,
-        token,
-        build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need"),
-    )
-
-    assert uploaded.status_code == 202, uploaded.text
-    body = uploaded.json()
-    stages = {stage["stage"]: stage for stage in body["ingestion_job"]["stages"]}
-    assert stages["metadata"]["status"] == "failed"
-    assert stages["metadata"]["error_code"] == "metadata_provider_failed"
-    # Non-blocking: the body is still parsed and indexed.
-    assert stages["fulltext"]["status"] == "succeeded"
-    assert stages["chunking"]["status"] == "succeeded"
-    assert body["paper"]["capabilities"]["has_fulltext"] is True
-    assert body["paper"]["capabilities"]["has_metadata"] is False
+    monkeypatch.setattr(runner, "_grant_entries", interrupt)
+    with pytest.raises(RuntimeError, match="injected grant interruption"):
+        _run_to_completion(runner, session_factory, run.id)
+    with session_factory() as session:
+        # The run never became success. It stays leased so the reclaim path
+        # fails it, rather than leaving "success without entries".
+        stored = RunRepository(session).get(run.id)
+        assert stored.status is RunStatus.RUNNING
+        assert stored.current_stage is RunStage.EMBED
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=user_id, paper_id=paper
+        ) is None
 
 
-def test_retry_after_a_successful_run_is_rejected(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-) -> None:
-    provider = FakeProvider(
-        ProviderMetadata(
-            source="fake",
-            title="Attention Is All You Need",
-            authors=["Ashish Vaswani"],
-            arxiv_id="1706.03762",
-        ),
-    )
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=FakeMineruParser(),
-        embeddings=FakeEmbeddingAdapter(),
-        resolver=MetadataResolver([provider]),
-    )
-    token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(
-        client,
-        api_prefix,
-        token,
-        build_pdf_with_text("arXiv:1706.03762 Attention Is All You Need"),
-    )
-    job_id = uploaded.json()["ingestion_job"]["id"]
-    assert uploaded.json()["ingestion_job"]["status"] == "succeeded"
+def test_a_request_arriving_mid_run_gets_an_entry_when_it_finishes(
+    paper, pipeline, session_factory, make_user, monkeypatch
+):
+    """A request may join while stages run; finishing must still reach it.
 
-    response = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
-        headers=auth_headers(token),
-    )
+    The request takes the paper lock before reading the active run, so it can
+    only join either before the finisher or after it — never in between.
+    """
+    from threading import Event
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "ingestion_nothing_to_retry"
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+
+    # Hold the run half way: parse is done, chunk has not started.
+    parsing_done = Event()
+    original_stage = runner._run_stage
+
+    def stage_then_pause(stage, **kwargs):
+        if stage is RunStage.PARSE:
+            original_stage(stage, **kwargs)
+            parsing_done.set()
+            return
+        original_stage(stage, **kwargs)
+
+    monkeypatch.setattr(runner, "_run_stage", stage_then_pause)
+    runner.run_sync(run.id, stage=RunStage.PARSE)
+    assert parsing_done.is_set()
+
+    # The second request lands while the run is still pending on chunk.
+    joined = RunService(session_factory).request(user_id=bob, paper_id=paper)
+    assert joined.id == run.id
+
+    for stage in (RunStage.CHUNK, RunStage.EMBED):
+        runner.run_sync(run.id, stage=stage)
+
+    with session_factory() as session:
+        assert RunRepository(session).get(run.id).status is RunStatus.SUCCESS
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=bob, paper_id=paper
+        ) is not None
 
 
-def test_reindexing_after_a_failed_embedding_stage_keeps_chunks(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    session_factory: sessionmaker[Session],
-    storage: ObjectStorage,
-) -> None:
-    embeddings = FakeEmbeddingAdapter(configured=False)
-    _override_services(
-        client,
-        session_factory=session_factory,
-        storage=storage,
-        mineru=FakeMineruParser(),
-        embeddings=embeddings,
-        resolver=MetadataResolver([]),
-    )
-    token = register_user(email="reader@example.com")["access_token"]
-    uploaded = _upload(
-        client,
-        api_prefix,
-        token,
-        build_pdf_with_text("arXiv:1706.03762 attention paper"),
-    )
-    job_id = uploaded.json()["ingestion_job"]["id"]
-    paper_id = UUID(uploaded.json()["paper"]["id"])
+def test_a_request_after_success_gets_an_entry_without_a_new_run(
+    paper, pipeline, session_factory, make_user
+):
+    """Arriving after the run succeeded must not restart or wait on anything."""
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+    _run_to_completion(runner, session_factory, run.id)
 
-    # The embedding provider comes back; only the missing stage must redo work.
-    embeddings.configure()
-    retried = client.post(
-        f"{api_prefix}/ingestion-jobs/{job_id}/retry",
-        headers=auth_headers(token),
-    )
+    later = RunService(session_factory).request(user_id=bob, paper_id=paper)
 
-    assert retried.status_code == 202, retried.text
-    body = retried.json()
-    stages = {stage["stage"]: stage["status"] for stage in body["stages"]}
-    # Only the missing embedding work is redone; verified stages stay succeeded.
-    assert stages == {
-        "metadata": "succeeded",
-        "fulltext": "succeeded",
-        "chunking": "succeeded",
-        "embedding": "succeeded",
-    }
-    assert body["status"] == "succeeded"
+    with session_factory() as session:
+        assert later.id == run.id
+        assert len(session.scalars(select(UserRunRecord)).all()) == 1
+        assert PaperRepository(session).get_user_paper_for_paper(
+            user_id=bob, paper_id=paper
+        ) is not None
 
-    detail = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert detail["capabilities"]["has_embedding"] is True
+
+def test_only_one_executor_parses_when_two_threads_execute_the_same_run(
+    paper, pipeline, session_factory, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    runner, parser = pipeline
+    run = _start_run(session_factory, paper)
+    entered, release = Event(), Event()
+    original = parser.parse
+
+    def pause_parse(**kwargs):
+        entered.set()
+        assert release.wait(5)
+        return original(**kwargs)
+
+    monkeypatch.setattr(parser, "parse", pause_parse)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(runner.run_sync, run.id)
+        assert entered.wait(5)
+        second = executor.submit(runner.run_sync, run.id)
+        second.result(timeout=5)
+        release.set()
+        first.result(timeout=10)
+    assert parser.calls == 1
+
+
+def test_heartbeat_renews_the_lease_when_parsing_outlasts_the_interval(
+    paper, pipeline, session_factory, monkeypatch
+):
+    from threading import Event, current_thread, main_thread
+
+    import app.pipelines.pipeline as module
+
+    runner, parser = pipeline
+    run = _start_run(session_factory, paper)
+    renewed = Event()
+    original_renew = RunRepository.renew_lease
+    original_parse = parser.parse
+
+    def renew(self, *args, **kwargs):
+        result = original_renew(self, *args, **kwargs)
+        if current_thread() is not main_thread():
+            renewed.set()
+        return result
+
+    def parse(**kwargs):
+        assert renewed.wait(5)
+        return original_parse(**kwargs)
+
+    monkeypatch.setattr(module, "LEASE_SECONDS", 0.3)
+    monkeypatch.setattr(RunRepository, "renew_lease", renew)
+    monkeypatch.setattr(parser, "parse", parse)
+    runner.run_sync(run.id)
+    assert renewed.is_set()
+
+
+def test_a_live_lease_does_not_let_a_lost_guard_connection_publish_success(
+    paper, pipeline, session_factory, monkeypatch
+):
+    """The lease can still be valid while the executor's own guard is gone."""
+    from threading import Event
+
+    import app.pipelines.pipeline as module
+
+    runner, _ = pipeline
+    run = _start_run(session_factory, paper)
+    parsing, release = Event(), Event()
+    holder: dict[str, int | None] = {"pid": None}
+
+    def drop_guard() -> None:
+        pid = holder["pid"]
+        assert pid is not None, "the executor never took its advisory lock"
+        with session_factory() as session:
+            session.execute(text("SELECT pg_terminate_backend(:pid)"), {"pid": pid})
+            session.commit()
+        # Backends end asynchronously; wait until that one is really gone.
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            with session_factory() as session:
+                alive = session.scalar(
+                    text("SELECT count(*) FROM pg_stat_activity WHERE pid = :pid"),
+                    {"pid": pid},
+                )
+            if not alive:
+                return
+            time.sleep(0.02)
+
+    def parse(*args, **kwargs):
+        # The stage begins only after the executor took its guard lock.
+        with session_factory() as session:
+            holder["pid"] = session.scalar(
+                text(
+                    "SELECT pid FROM pg_locks WHERE locktype = 'advisory' "
+                    "AND objsubid = 1 AND classid = 0 "
+                    "AND objid = (hashtextextended(:key, 0) & 4294967295)"
+                ),
+                {"key": f"paper-run:{run.id}"},
+            )
+        parsing.set()
+        assert release.wait(10)
+        drop_guard()
+        raise AssertionError("stage body must not run after the guard died")
+
+    monkeypatch.setattr(module, "LEASE_SECONDS", 600)
+    monkeypatch.setattr(runner._mineru, "parse", parse)
+    thread = Thread(target=lambda: runner.run_sync(run.id), daemon=True)
+    thread.start()
+    assert parsing.wait(5)
+    release.set()
+    thread.join(timeout=15)
+    with session_factory() as session:
+        stored = RunRepository(session).get(run.id)
+        assert stored is not None
+        assert stored.status is not RunStatus.SUCCESS
+
+
+def test_a_second_executor_cannot_undo_the_running_stage(
+    paper, pipeline, session_factory, make_user
+):
+    """Only the holder of a claim may release it.
+
+    A second executor can claim the same run and fail to take the advisory
+    lock. Releasing on run+stage alone would undo the first executor's state
+    and strand its finished stage.
+    """
+
+    runner, _ = pipeline
+    alice = make_user("a@test.example")
+    RunService(session_factory).request(user_id=alice, paper_id=paper)
+
+    # First executor takes the claim and starts parsing.
+    with session_factory() as session:
+        first_claim = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
+    assert first_claim is not None
+    first_run_id, first_lease = first_claim
+
+    # A competing claim carries a different stamp.
+    with session_factory() as session:
+        record = session.get(RunRecord, first_run_id)
+        record.status = "pending"
+        record.leased_until = None
+        session.commit()
+    with session_factory() as session:
+        second_claim = RunRepository(session).claim_next(
+            stage=RunStage.PARSE, lease_seconds=300
+        )
+    assert second_claim is not None and second_claim[1] != first_lease
+
+    # The stale release is refused, so the real executor keeps its lease.
+    with session_factory() as session:
+        assert not RunRepository(session).release_claim(
+            first_run_id, token=first_lease
+        )
+        assert RunRepository(session).get(first_run_id).status is RunStatus.RUNNING
+
+
+def test_publishing_does_not_deadlock_with_a_joining_request(
+    paper, pipeline, session_factory, make_user
+):
+    """Publishing and joining take the same locks, so they cannot cross.
+
+    The publisher locks the paper and then touches the run; a joining request
+    does the same. Both orders running at once must complete, not deadlock.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    runner, _ = pipeline
+    alice, bob = make_user("a@test.example"), make_user("b@test.example")
+    run = RunService(session_factory).request(user_id=alice, paper_id=paper)
+    for stage in (RunStage.PARSE, RunStage.CHUNK):
+        runner.run_sync(run.id, stage=stage)
+
+    def publish():
+        runner.run_sync(run.id, stage=RunStage.EMBED)
+
+    def join():
+        RunService(session_factory).request(user_id=bob, paper_id=paper)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(publish), executor.submit(join)]
+        # A deadlock would leave these hanging until the timeout.
+        for future in futures:
+            future.result(timeout=15)
+
+    # The embed stage must have finished and both users must own the paper.
+    with session_factory() as session:
+        stored = RunRepository(session).get(run.id)
+        assert stored is not None
+        assert stored.status is RunStatus.SUCCESS
+        papers = PaperRepository(session)
+        assert papers.get_user_paper_for_paper(user_id=alice, paper_id=paper)
+        assert papers.get_user_paper_for_paper(user_id=bob, paper_id=paper)

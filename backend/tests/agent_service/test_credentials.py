@@ -99,6 +99,33 @@ def test_credential_uses_the_registered_base_url_when_browser_omits_it(
     assert listed[0]["data"]["base_url"] == registered_url
 
 
+def test_credential_uses_the_registered_base_url_when_browser_sends_null(
+    tmp_path: Path, monkeypatch, agent_access_token
+) -> None:
+    registered_url = "https://llm.example.test/v1"
+    monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
+    monkeypatch.setattr(settings, "credential_base_urls", {"openai": registered_url})
+    with TestClient(
+        create_agent_service_app(_scope_database_url(), tmp_path)
+    ) as client:
+        headers = {"Authorization": f"Bearer {agent_access_token}"}
+        response = client.post(
+            "/credential/",
+            headers=headers,
+            json={
+                "data": {
+                    "type": "openai_credential",
+                    "api_key": "sk-fake-key",
+                    "base_url": None,
+                }
+            },
+        )
+        assert response.status_code == 201, response.text
+        listed = client.get("/credential/", headers=headers).json()["credentials"]
+
+    assert listed[0]["data"]["base_url"] == registered_url
+
+
 def test_credential_update_response_never_returns_the_key(
     tmp_path: Path, monkeypatch, agent_access_token
 ) -> None:

@@ -34,14 +34,6 @@ def mineru_artifact_key(file_hash: str, relative_path: str) -> str:
     return f"mineru/{file_hash[0:2]}/{file_hash[2:4]}/{file_hash}/{relative_path}"
 
 
-def mineru_job_artifact_key(file_hash: str, job_id: str, relative_path: str) -> str:
-    return mineru_artifact_key(file_hash, f"runs/{job_id}/{relative_path}")
-
-
-def mineru_artifact_prefix(file_hash: str) -> str:
-    return f"mineru/{file_hash[0:2]}/{file_hash[2:4]}/{file_hash}/"
-
-
 def session_entries_key(user_id: str, session_id: str) -> str:
     return f"sessions/{user_id}/{session_id}.jsonl"
 

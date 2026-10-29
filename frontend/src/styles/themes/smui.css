@@ -1,0 +1,104 @@
+/* 主题：smui（Nord 蓝灰）——默认配色。
+ *
+ * 只提供颜色相关的 token，不包含尺寸、间距或动效。
+ * 切换主题只需改 index.css 顶部这一行 @import。
+ */
+:root {
+    color-scheme: light;
+    --background: hsl(218 27% 94%);
+    --foreground: hsl(220 16% 22%);
+    --card: hsl(218 27% 89%);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: hsl(213 32% 40%);
+    --primary-foreground: hsl(0 0% 100%);
+    --secondary: hsl(219 28% 84%);
+    --secondary-foreground: var(--foreground);
+    --muted: var(--secondary);
+    --muted-foreground: hsl(220 17% 28%);
+    --accent: hsl(213 20% 86%);
+    --accent-foreground: hsl(var(--smui-frost-4));
+    --destructive: hsl(355 60% 34%);
+    --destructive-foreground: hsl(0 0% 100%);
+    --border: hsl(219 18% 72%);
+    --input: var(--border);
+    --ring: var(--primary);
+    --chart-1: hsl(213 32% 44%);
+    --chart-2: hsl(210 34% 42%);
+    --chart-3: hsl(92 30% 36%);
+    --chart-4: hsl(40 70% 35%);
+    --chart-5: hsl(311 28% 42%);
+    --sidebar: var(--card);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: var(--accent);
+    --sidebar-accent-foreground: var(--accent-foreground);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    --smui-frost-1: 176 30% 35%;
+    --smui-frost-2: 193 40% 38%;
+    --smui-frost-3: 210 34% 40%;
+    --smui-frost-4: 213 32% 36%;
+    --smui-red: 0 72% 48%;
+    --smui-orange: 24 80% 46%;
+    --smui-yellow: 42 92% 40%;
+    --smui-green: 142 62% 34%;
+    --smui-purple: 311 28% 40%;
+    --smui-surface-0: 218 27% 94%;
+    --smui-surface-1: 218 27% 89%;
+    --smui-surface-2: 219 28% 84%;
+    --smui-surface-3: 219 20% 76%;
+    --smui-border-hover: 220 17% 50%;
+
+    /* 状态文字须在普通背景及 10–20% 叠色表面保持可读。 */
+    --success: hsl(142 62% 30%);
+    --warning: hsl(42 92% 34%);
+    --info: hsl(311 28% 33%);
+    --paper-quote-accent: hsl(40 70% 34%);
+    --paper-quote-fill: hsl(40 71% 73% / 0.5);
+}
+
+.dark {
+    color-scheme: dark;
+    --background: hsl(213 16% 12%);
+    --foreground: hsl(213 27% 88%);
+    --card: hsl(217 16% 15.5%);
+    --primary: hsl(193 44% 67%);
+    --primary-foreground: hsl(213 16% 12%);
+    --secondary: hsl(216 15% 19%);
+    --muted-foreground: hsl(213 14% 65%);
+    --accent: hsl(193 10% 16%);
+    --destructive: hsl(355 52% 76%);
+    --destructive-foreground: var(--background);
+    --accent-foreground: var(--primary);
+    --border: hsl(217 17% 28%);
+    --chart-1: hsl(193 44% 67%);
+    --chart-2: hsl(213 32% 52%);
+    --chart-3: hsl(92 28% 65%);
+    --chart-4: hsl(40 71% 73%);
+    --chart-5: hsl(311 24% 63%);
+
+    --smui-frost-1: 176 25% 65%;
+    --smui-frost-2: 193 44% 67%;
+    --smui-frost-3: 210 34% 63%;
+    --smui-frost-4: 213 32% 52%;
+    --smui-red: 0 78% 66%;
+    --smui-orange: 24 85% 64%;
+    --smui-yellow: 42 92% 62%;
+    --smui-green: 142 58% 55%;
+    --smui-purple: 311 24% 63%;
+    --smui-surface-0: 213 16% 12%;
+    --smui-surface-1: 217 16% 15.5%;
+    --smui-surface-2: 216 15% 19%;
+    --smui-surface-3: 215 14% 22%;
+    --smui-border-hover: 216 12% 37%;
+
+    --success: hsl(var(--smui-green));
+    --warning: hsl(var(--smui-yellow));
+    --info: hsl(311 24% 72%);
+    --paper-quote-accent: hsl(40 71% 63%);
+    --paper-quote-fill: hsl(40 71% 73% / 0.28);
+}

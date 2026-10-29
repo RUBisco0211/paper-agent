@@ -11,7 +11,7 @@ import json
 import smtplib
 import ssl
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from email.message import EmailMessage
 from email.utils import formataddr
 from uuid import UUID, uuid4
@@ -22,6 +22,7 @@ from sqlalchemy import DateTime, Integer, String, Text, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
+from .backoff import next_attempt_at
 from .config import settings
 from .database import Base, CreatedAtMixin, SessionFactory, UUIDPrimaryKeyMixin
 from .errors import ProviderUnavailableError
@@ -197,8 +198,8 @@ def deliver_one(
                 if permanent or row.attempts >= settings.mail_max_attempts
                 else "pending"
             )
-            row.next_attempt_at = now + timedelta(
-                seconds=min(600, 15 * 2 ** (row.attempts - 1))
+            row.next_attempt_at = next_attempt_at(
+                row.attempts, base_seconds=15, max_seconds=600, now=now
             )
             logger.warning(
                 "mail.delivery_failed",

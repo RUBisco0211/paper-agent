@@ -25,6 +25,7 @@ def test_embedding_defaults_to_bge_m3_when_model_is_not_configured(monkeypatch):
 @pytest.mark.parametrize("internal", [False, True], ids=["public", "agent-internal"])
 def test_search_uses_user_key_and_returns_indexed_vectors_when_real_factory_is_wired(
     client, api_prefix, register_user, make_pdf, db_session, monkeypatch, internal,
+    completed_imports,
 ):
     monkeypatch.setattr(settings, "credential_master_key", SecretStr("a" * 64))
     monkeypatch.setattr(settings, "embedding_api_url", "https://embedding.test/v1")

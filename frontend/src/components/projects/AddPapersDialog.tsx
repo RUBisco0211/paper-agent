@@ -118,13 +118,13 @@ export function AddPapersDialog({
                   />
                   <label htmlFor={`paper-${paper.id}`} className="flex-1 cursor-pointer">
                     <p className="text-sm font-medium">
-                      {paper.title ?? paper.original_filename ?? "未命名条目"}
+                      {paper.title ?? "未命名条目"}
                     </p>
                     <p className="text-muted-foreground text-xs">
                       {paper.authors.slice(0, 3).join("、") || "作者未知"}
                     </p>
                     <div className="mt-1 flex gap-1">
-                      {paper.capabilities.has_fulltext ? (
+                      {paper.capabilities.has_parsed ? (
                         <Badge variant="secondary">可检索全文</Badge>
                       ) : (
                         <Badge variant="outline">待补全文</Badge>

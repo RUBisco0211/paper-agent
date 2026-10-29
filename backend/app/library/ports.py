@@ -1,25 +1,32 @@
 """Ports the library module needs from other domains.
 
-Kept as a protocol so the library never imports the ingestion implementation at
+Kept as protocols so the library never imports the pipelines implementation at
 module scope; wiring happens in ``library.depends``.
 """
 
 from typing import Protocol
 from uuid import UUID
 
-from app.processing.domain import IngestionJob
+from ..pipelines.domain import Run
 
 
-class IngestionStarter(Protocol):
-    def start_for_paper(self, paper_id: UUID) -> IngestionJob | None: ...
+class MetadataEnricherPort(Protocol):
+    """Fill a paper's bibliographic facts from its stored source file."""
 
-    def get_job(self, job_id: UUID) -> IngestionJob | None: ...
+    def submit(self, paper_id: UUID, identifiers: tuple = ()) -> None: ...
 
-    def retry_job(self, job_id: UUID) -> IngestionJob: ...
 
-    def active_job_for_paper(self, paper_id: UUID) -> IngestionJob | None: ...
+class RunStarter(Protocol):
+    """Join a user to a paper's processing, starting one when there is none."""
 
-    def latest_jobs_for_papers(
+    def request(
         self,
-        paper_ids: list[UUID],
-    ) -> dict[UUID, IngestionJob]: ...
+        *,
+        user_id: UUID,
+        paper_id: UUID,
+        project_id: UUID | None = None,
+    ) -> Run: ...
+
+    def latest_for_papers(self, paper_ids: list[UUID]) -> dict[UUID, Run]:
+        """The most recent run of each paper, whichever user asked for it."""
+        ...

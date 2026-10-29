@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from ..library.repo import UserPaperRecord
+from ..library.repo import PaperRecord, UserPaperRecord
 from ..platform.database import (
     Base,
     CreatedAtMixin,
@@ -187,12 +187,15 @@ class ProjectRepository:
         user_id: UUID,
         query: str | None = None,
     ) -> tuple[list[ProjectPaper], int]:
-        visible_papers = select(UserPaperRecord.id).where(
-            UserPaperRecord.user_id == user_id,
+        visible_papers = (
+            select(UserPaperRecord.id)
+            .join(PaperRecord, PaperRecord.id == UserPaperRecord.paper_id)
+            .where(UserPaperRecord.user_id == user_id)
         )
         if query:
+            # Bibliographic facts live on the shared paper, not the entry.
             visible_papers = visible_papers.where(
-                UserPaperRecord.title.ilike(f"%{query.strip()}%"),
+                PaperRecord.bibliographic["title"].astext.ilike(f"%{query.strip()}%"),
             )
         statement = select(ProjectPaperRecord).where(
             ProjectPaperRecord.project_id == project_id,

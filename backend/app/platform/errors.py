@@ -49,12 +49,12 @@ class ErrorCode(StrEnum):
     METADATA_CONFLICT = "metadata_conflict"
     DUPLICATE_IDENTIFIER = "duplicate_identifier"
 
-    # Ingestion
-    INGESTION_JOB_NOT_FOUND = "ingestion_job_not_found"
-    INGESTION_ALREADY_RUNNING = "ingestion_already_running"
-    INGESTION_STAGE_FAILED = "ingestion_stage_failed"
-    INGESTION_NOTHING_TO_RETRY = "ingestion_nothing_to_retry"
-    INGESTION_ARTIFACT_INVALID = "ingestion_artifact_invalid"
+    # Import workflow
+    IMPORT_ALREADY_RUNNING = "import_already_running"
+    IMPORT_NOTHING_TO_RETRY = "import_nothing_to_retry"
+    IMPORT_ARTIFACT_INVALID = "import_artifact_invalid"
+    IMPORT_SOURCE_UNAVAILABLE = "import_source_unavailable"
+    IMPORT_STAGE_FAILED = "import_stage_failed"
 
     # Projects
     PROJECT_NOT_FOUND = "project_not_found"
@@ -86,6 +86,9 @@ class ErrorCode(StrEnum):
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_RATE_LIMITED = "provider_rate_limited"
     PROVIDER_QUOTA_EXHAUSTED = "provider_quota_exhausted"
+    #: One input cannot fit the provider's per-minute allowance, so retrying it
+    #: is pointless until the allowance or the input size changes.
+    EMBEDDING_INPUT_TOO_LARGE = "embedding_input_too_large"
 
 
 class DomainValidationError(ValueError):

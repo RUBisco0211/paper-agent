@@ -64,5 +64,5 @@ export interface ToolListedPaper {
   authors?: string[] | null
   year?: number | null
   venue?: string | null
-  has_fulltext?: boolean
+  has_parsed?: boolean
 }

@@ -3,10 +3,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.literature_support.scholar.identifiers import IdentifierType
-
-from .domain import ImportStatus, PaperImport
-
 
 class ImportRequest(BaseModel):
     identifier: str = Field(
@@ -14,6 +10,7 @@ class ImportRequest(BaseModel):
         max_length=255,
         description="DOI、arXiv ID 或它们的规范链接",
     )
+    #: Also file the paper into this project once it is usable.
     project_id: UUID | None = None
 
 
@@ -40,20 +37,52 @@ class BatchImportRead(BaseModel):
     results: list[dict]
 
 
-class ImportQueueItem(BaseModel):
-    id: str
-    kind: str
-    identifier: str | None = None
-    title: str | None = None
-    paper_id: str | None = None
+class QueueRunRead(BaseModel):
+    """The processing run a download joined, as the queue shows it."""
+
     status: str
     stage: str | None = None
+    #: Stage name → ISO timestamp, for the stages that already finished.
+    stage_finished_at: dict[str, str] = Field(default_factory=dict)
+    error_message: str | None = None
+
+
+class DownloadQueueItem(BaseModel):
+    """One request the user made: fetching a file, then processing it.
+
+    ``source`` says whether the request carried a download (``download``) or
+    arrived with its file in hand (``request``); the list view does not have to
+    tell them apart, but the detail view lists the steps each one actually had.
+    """
+
+    source: str
+    id: str
+    identifier: str
+    identifier_type: str
+    status: str
+    paper_id: str | None = None
+    user_paper_id: str | None = None
+    run_id: str | None = None
+    project_id: str | None = None
+    source_url: str | None = None
+    error_message: str | None = None
     created_at: datetime
-    error_code: str | None = None
+    finished_at: datetime | None = None
+    run: QueueRunRead | None = None
 
 
 class ImportQueueRead(BaseModel):
-    items: list[ImportQueueItem]
+    items: list[DownloadQueueItem]
+
+
+class DownloadRead(BaseModel):
+    """The request just queued; processing happens in the background."""
+
+    id: UUID
+    identifier_type: str
+    identifier: str
+    status: str
+    created_at: datetime
 
 
 class DiscoveryRequest(BaseModel):
@@ -71,35 +100,3 @@ class ManualDiscoveryRequest(BaseModel):
 class DiscoveryResponse(BaseModel):
     papers: list[dict]
     failed_sources: list[str] = Field(default_factory=list)
-
-
-class ImportRead(BaseModel):
-    """Import progress; ``paper_id`` is the user's own entry id."""
-
-    id: UUID
-    status: ImportStatus
-    identifier_type: IdentifierType
-    identifier: str
-    paper_id: UUID | None = None
-    project_id: UUID | None = None
-    metadata_source: str | None = None
-    error_code: str | None = None
-    created_at: datetime
-    updated_at: datetime
-    finished_at: datetime | None = None
-
-    @classmethod
-    def from_domain(cls, record: PaperImport) -> "ImportRead":
-        return cls(
-            id=record.id,
-            status=record.status,
-            identifier_type=IdentifierType(record.identifier_type),
-            identifier=record.identifier,
-            paper_id=record.user_paper_id,
-            project_id=record.project_id,
-            metadata_source=record.metadata_source,
-            error_code=record.error_code,
-            created_at=record.created_at,
-            updated_at=record.updated_at,
-            finished_at=record.finished_at,
-        )

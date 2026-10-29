@@ -7,8 +7,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.library.depends import get_metadata_resolver, get_pdf_fetcher
-from app.library.domain import MetadataStatus, PaperSource
-from app.library.repo import PaperRepository
+from app.pipelines.repo import RunRepository
+from app.library.repo import PaperRepository, UserPaperRecord
 from app.literature_support.scholar.identifiers import Identifier
 from app.literature_support.scholar.metadata import MetadataResolver, ProviderMetadata
 from tests.conftest import auth_headers
@@ -53,261 +53,237 @@ class FakePdfFetcher:
         return DownloadedPdf(path=destination, byte_size=len(self.payload))
 
 
+class FailingPdfFetcher:
+    """Every source refuses, whatever URL an import offers."""
+
+    def __init__(self) -> None:
+        self.urls: list[str] = []
+
+    def download(self, url: str, *, destination: Path):
+        from app.platform.errors import AppError, ErrorCode
+
+        self.urls.append(url)
+        raise AppError(
+            "来源没有提供可下载的 PDF",
+            code=ErrorCode.PAPER_PDF_NOT_AVAILABLE,
+            status_code=422,
+        )
+
+
 @pytest.fixture
-def create_entry(
+def upload_paper(
     client: TestClient,
     api_prefix: str,
     db_session: Session,
+    make_pdf,
+    completed_imports,
 ) -> Callable[..., str]:
-    """Create a metadata-only library entry directly, as an import would."""
+    """Upload a PDF and return the entry it becomes once the import finishes."""
 
-    def _create(
+    def _upload(
         token: str,
         *,
-        title: str = "Attention Is All You Need",
-        doi: str | None = "10.5555/3295222.3295349",
-        arxiv_id: str | None = None,
-        source: PaperSource = PaperSource.DOI,
+        pdf: bytes | None = None,
+        filename: str = "paper.pdf",
     ) -> str:
-        user = client.get(
-            f"{api_prefix}/auth/me",
+        response = client.post(
+            f"{api_prefix}/papers",
             headers=auth_headers(token),
-        ).json()
-        user_paper = PaperRepository(db_session).add_user_paper(
-            user_id=UUID(user["id"]),
-            paper_id=None,
-            title=title,
-            source=source,
-            doi=doi,
-            arxiv_id=arxiv_id,
-            metadata_status=MetadataStatus.UNRECOGNIZED,
+            files={"file": (filename, pdf or make_pdf(), "application/pdf")},
         )
-        db_session.commit()
-        return str(user_paper.id)
+        assert response.status_code == 202, response.text
+        db_session.expire_all()
+        record = RunRepository(db_session).get(UUID(response.json()["run_id"]))
+        assert record is not None and record.paper_id is not None
+        entries = client.get(
+            f"{api_prefix}/papers", headers=auth_headers(token)
+        ).json()["items"]
+        for entry in entries:
+            user_paper = db_session.get(UserPaperRecord, UUID(entry["id"]))
+            if user_paper is not None and user_paper.paper_id == record.paper_id:
+                return str(entry["id"])
+        raise AssertionError("upload produced no library entry")
 
-    return _create
+    return _upload
 
 
-def test_attach_pdf_binds_entry_to_shared_paper(
+def test_uploaded_pdf_is_the_paper_source_and_the_entry_only_links_it(
     client: TestClient,
     api_prefix: str,
     register_user,
-    make_pdf,
-    create_entry,
+    upload_paper: Callable[..., str],
     db_session: Session,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token)
-
-    before = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert before["capabilities"]["has_pdf"] is False
-    assert before["pdf"] == {"available": False, "page_count": None, "byte_size": None}
-
-    attached = client.post(
-        f"{api_prefix}/papers/{paper_id}/pdf",
-        headers=auth_headers(token),
-        files={"file": ("fulltext.pdf", make_pdf(), "application/pdf")},
-    )
-
-    assert attached.status_code == 202, attached.text
-    body = attached.json()
-    assert body["paper"]["id"] == paper_id
-    assert body["paper"]["capabilities"]["has_pdf"] is True
-    assert body["paper"]["doi"] == "10.5555/3295222.3295349"
-    # Processing starts immediately; MinerU is not configured in tests.
-    assert body["ingestion_job"]["status"] == "failed"
-    assert body["ingestion_job"]["error_code"] == "provider_not_configured"
+    paper_id = upload_paper(token)
 
     detail = client.get(
         f"{api_prefix}/papers/{paper_id}",
         headers=auth_headers(token),
     ).json()
+
+    assert detail["capabilities"]["has_source"] is True
     assert detail["pdf"]["available"] is True
     assert detail["pdf"]["page_count"] == 1
 
-    downloaded = client.get(
-        f"{api_prefix}/papers/{paper_id}/pdf",
-        headers=auth_headers(token),
-    )
-    assert downloaded.status_code == 200
+    papers = PaperRepository(db_session).get_user_paper(UUID(paper_id))
+    assert papers is not None and papers.paper_id is not None
+    # The entry carries no bibliographic copy of its own.
+    assert not hasattr(papers, "title")
 
 
-def test_pdf_cache_revalidates_when_the_file_changes(
+def test_uploading_the_same_file_twice_shares_one_paper(
     client: TestClient,
     api_prefix: str,
     register_user,
+    upload_paper: Callable[..., str],
     make_pdf,
-    create_entry,
+    db_session: Session,
 ) -> None:
+    owner = register_user(email="owner@example.com")["access_token"]
+    stranger = register_user(email="stranger@example.com")["access_token"]
+    pdf = make_pdf()
+
+    owner_entry = upload_paper(owner, pdf=pdf)
+    stranger_entry = upload_paper(stranger, pdf=pdf)
+
+    owner_record = PaperRepository(db_session).get_user_paper(UUID(owner_entry))
+    stranger_record = PaperRepository(db_session).get_user_paper(UUID(stranger_entry))
+    assert owner_record is not None and stranger_record is not None
+    assert owner_record.paper_id == stranger_record.paper_id
+    assert owner_entry != stranger_entry
+
+
+def test_pdf_download_is_revalidated_per_owner(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    upload_paper: Callable[..., str],
+) -> None:
+    """The original file is cacheable per owner and unreadable to others."""
     owner = register_user(email="cache-owner@example.com")["access_token"]
     stranger = register_user(email="cache-stranger@example.com")["access_token"]
-    paper_id = create_entry(owner, doi=None)
+    paper_id = upload_paper(owner)
     url = f"{api_prefix}/papers/{paper_id}/pdf"
-    first = client.post(
-        url,
-        headers=auth_headers(owner),
-        files={"file": ("first.pdf", make_pdf(), "application/pdf")},
-    )
-    assert first.status_code == 202
+
     downloaded = client.get(url, headers=auth_headers(owner))
     assert downloaded.status_code == 200
     etag = downloaded.headers["etag"]
     assert downloaded.headers["cache-control"] == "private, no-cache"
+
     cached = client.get(url, headers={**auth_headers(owner), "If-None-Match": etag})
     assert cached.status_code == 304
     assert cached.content == b""
-    assert client.get(url, headers={**auth_headers(stranger), "If-None-Match": etag}).status_code == 404
 
-    from tests.conftest import build_pdf_with_text
-
-    second = client.post(
-        url,
-        headers=auth_headers(owner),
-        files={"file": ("second.pdf", build_pdf_with_text("Another version"), "application/pdf")},
-    )
-    assert second.status_code == 202
-    changed = client.get(url, headers={**auth_headers(owner), "If-None-Match": etag})
-    assert changed.status_code == 200
-    assert changed.headers["etag"] != etag
+    foreign = client.get(url, headers={**auth_headers(stranger), "If-None-Match": etag})
+    assert foreign.status_code == 404
 
 
-def test_attach_pdf_reports_identifier_conflict(
+def test_a_different_file_is_a_different_paper(
     client: TestClient,
     api_prefix: str,
     register_user,
-    make_pdf,
-    create_entry,
+    upload_paper: Callable[..., str],
 ) -> None:
-    token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, doi="10.5555/1111111.2222222")
     from tests.conftest import build_pdf_with_text
 
-    conflicting = build_pdf_with_text("See doi:10.1234/other-paper for details.")
+    owner = register_user(email="cache-two@example.com")["access_token"]
+    first = upload_paper(owner, pdf=build_pdf_with_text("First version"))
+    second = upload_paper(owner, pdf=build_pdf_with_text("Another version"))
+
+    assert first != second
+    first_etag = client.get(
+        f"{api_prefix}/papers/{first}/pdf", headers=auth_headers(owner)
+    ).headers["etag"]
+    second_etag = client.get(
+        f"{api_prefix}/papers/{second}/pdf", headers=auth_headers(owner)
+    ).headers["etag"]
+    assert first_etag != second_etag
+
+
+def test_the_pdf_replacement_entry_point_is_gone(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    upload_paper: Callable[..., str],
+    make_pdf,
+) -> None:
+    token = register_user(email="reader@example.com")["access_token"]
+    paper_id = upload_paper(token)
 
     response = client.post(
         f"{api_prefix}/papers/{paper_id}/pdf",
         headers=auth_headers(token),
-        files={"file": ("other.pdf", conflicting, "application/pdf")},
+        files={"file": ("other.pdf", make_pdf(2), "application/pdf")},
     )
 
-    assert response.status_code == 409
-    assert response.json()["code"] == "metadata_conflict"
-    assert response.json()["details"]["detected"] == "10.1234/other-paper"
-
-    detail = client.get(
-        f"{api_prefix}/papers/{paper_id}",
-        headers=auth_headers(token),
-    ).json()
-    assert detail["pdf"]["available"] is False
-    assert detail["doi"] == "10.5555/1111111.2222222"
+    assert response.status_code in {404, 405}
 
 
-def test_edit_info_records_user_provenance(
+def test_user_cannot_edit_bibliographic_fields_when_the_endpoint_is_gone(
     client: TestClient,
     api_prefix: str,
     register_user,
-    create_entry,
+    upload_paper: Callable[..., str],
 ) -> None:
+    """Editing was removed so a single provider record stays authoritative."""
     token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, title="placeholder", doi=None)
+    paper_id = upload_paper(token)
 
     patched = client.patch(
         f"{api_prefix}/papers/{paper_id}/info",
         headers=auth_headers(token),
-        json={
-            "title": "Corrected Title",
-            "doi": "10.1145/3290605.3300233",
-            "year": 2019,
-        },
+        json={"title": "Corrected Title", "year": 2019},
     )
 
-    assert patched.status_code == 200, patched.text
-    body = patched.json()
-    assert body["title"] == "Corrected Title"
-    assert body["doi"] == "10.1145/3290605.3300233"
-    assert body["year"] == 2019
-    assert body["metadata_status"] == "user_provided"
-    assert {(item["field"], item["source"]) for item in body["metadata_sources"]} == {
-        ("title", "user"),
-        ("doi", "user"),
-        ("year", "user"),
-    }
+    assert patched.status_code in {404, 405}
 
 
-def test_edit_info_rejects_a_mismatched_identifier(
+def test_user_cannot_trigger_a_metadata_lookup_when_the_endpoint_is_gone(
     client: TestClient,
     api_prefix: str,
     register_user,
-    create_entry,
+    upload_paper: Callable[..., str],
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token)
-
-    response = client.patch(
-        f"{api_prefix}/papers/{paper_id}/info",
-        headers=auth_headers(token),
-        json={"arxiv_id": "10.1145/3290605.3300233"},
-    )
-
-    assert response.status_code == 422
-    assert response.json()["code"] == "identifier_invalid"
-
-
-def test_fetch_metadata_fills_missing_fields(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    create_entry,
-) -> None:
-    token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, title=None, doi="10.1145/3290605.3300233")
-    provider = FakeProvider(
-        ProviderMetadata(
-            source="fake",
-            title="Learning to Rank",
-            authors=["Ada Lovelace"],
-            abstract="An abstract.",
-            doi="10.1145/3290605.3300233",
-            year=2019,
-            venue="CHI",
-        ),
-    )
-    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
-        [provider],
-    )
+    paper_id = upload_paper(token)
 
     response = client.post(
         f"{api_prefix}/papers/{paper_id}/fetch-metadata",
         headers=auth_headers(token),
     )
 
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["metadata"]["status"] == "recognized"
-    assert body["metadata"]["source"] == "fake"
-    assert set(body["metadata"]["applied_fields"]) >= {"title", "authors", "abstract"}
-    assert body["paper"]["title"] == "Learning to Rank"
-    assert body["paper"]["authors"] == ["Ada Lovelace"]
-    assert body["paper"]["venue"] == "CHI"
-    assert provider.calls[0].value == "10.1145/3290605.3300233"
+    assert response.status_code in {404, 405}
 
 
-def test_fetch_metadata_does_not_overwrite_user_edits(
+def test_pdf_operations_are_scoped_to_the_owner(
     client: TestClient,
     api_prefix: str,
     register_user,
-    create_entry,
+    upload_paper: Callable[..., str],
 ) -> None:
-    token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, doi="10.1145/3290605.3300233")
-    client.patch(
-        f"{api_prefix}/papers/{paper_id}/info",
-        headers=auth_headers(token),
-        json={"title": "My Title", "authors": ["Me"]},
+    owner = register_user(email="owner-pdf@example.com")
+    stranger = register_user(email="stranger-pdf@example.com")
+    paper_id = upload_paper(owner["access_token"])
+
+    response = client.get(
+        f"{api_prefix}/papers/{paper_id}/pdf",
+        headers=auth_headers(stranger["access_token"]),
     )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "paper_not_found"
+
+
+def test_metadata_resolution_fills_the_paper_from_a_single_provider(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    upload_paper: Callable[..., str],
+) -> None:
+    """Ingestion writes the one bibliographic record the library reads."""
+    token = register_user(email="reader@example.com")["access_token"]
+    paper_id = upload_paper(token)
     provider = FakeProvider(
         ProviderMetadata(
             source="fake",
@@ -320,156 +296,36 @@ def test_fetch_metadata_does_not_overwrite_user_edits(
         [provider],
     )
 
-    response = client.post(
-        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
+    detail = client.get(
+        f"{api_prefix}/papers/{paper_id}",
         headers=auth_headers(token),
-    )
+    ).json()
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["paper"]["title"] == "My Title"
-    assert body["paper"]["authors"] == ["Me"]
-    assert body["metadata"]["applied_fields"] == []
+    # No identifier was detected and no lookup ran. A private filename is not
+    # a bibliographic title and must not be published to the shared paper.
+    assert detail["title"] is None
 
 
 def test_resolve_metadata_surfaces_provider_failure_without_crashing(
     client: TestClient,
     api_prefix: str,
     register_user,
-    create_entry,
+    upload_paper: Callable[..., str],
 ) -> None:
     from app.platform.errors import AppError, ErrorCode
 
     token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token)
+    paper_id = upload_paper(token)
     provider = FakeProvider(
-        error=AppError(
-            "元数据服务暂时不可用",
-            code=ErrorCode.METADATA_PROVIDER_FAILED,
-            status_code=502,
-        ),
+        error=AppError("down", code=ErrorCode.METADATA_PROVIDER_FAILED, status_code=502),
     )
     client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
         [provider],
     )
-
-    response = client.post(
-        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
-        headers=auth_headers(token),
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["metadata"]["status"] == "provider_failed"
-    assert body["metadata"]["error_code"] == "metadata_provider_failed"
-    assert body["paper"]["title"] == "Attention Is All You Need"
-
-
-def test_fetch_pdf_downloads_and_binds_when_source_offers_a_file(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    create_entry,
-) -> None:
-    token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, doi="10.1145/3290605.3300233")
-    provider = FakeProvider(
-        ProviderMetadata(
-            source="fake",
-            title="Learning to Rank",
-            authors=["Ada Lovelace"],
-            doi="10.1145/3290605.3300233",
-            pdf_url="https://example.org/paper.pdf",
-        ),
-    )
-    fetcher = FakePdfFetcher(make_pdf())
-    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
-        [provider],
-    )
-    client.app.dependency_overrides[get_pdf_fetcher] = lambda: fetcher
-
-    response = client.post(
-        f"{api_prefix}/papers/{paper_id}/fetch-pdf",
-        headers=auth_headers(token),
-    )
-
-    assert response.status_code == 202, response.text
-    body = response.json()
-    assert body["paper"]["capabilities"]["has_pdf"] is True
-    assert body["metadata"]["status"] == "recognized"
-    assert fetcher.urls == ["https://example.org/paper.pdf"]
-
-    downloaded = client.get(
-        f"{api_prefix}/papers/{paper_id}/pdf",
-        headers=auth_headers(token),
-    )
-    assert downloaded.status_code == 200
-
-
-def test_fetch_pdf_reports_a_source_without_a_file(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    create_entry,
-) -> None:
-    token = register_user(email="reader@example.com")["access_token"]
-    paper_id = create_entry(token, doi="10.1145/3290605.3300233")
-    provider = FakeProvider(
-        ProviderMetadata(
-            source="fake",
-            title="Learning to Rank",
-            authors=["Ada Lovelace"],
-            doi="10.1145/3290605.3300233",
-        ),
-    )
-    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
-        [provider],
-    )
-    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(b"")
-
-    response = client.post(
-        f"{api_prefix}/papers/{paper_id}/fetch-pdf",
-        headers=auth_headers(token),
-    )
-
-    assert response.status_code == 422
-    assert response.json()["code"] == "paper_pdf_not_available"
 
     detail = client.get(
         f"{api_prefix}/papers/{paper_id}",
         headers=auth_headers(token),
-    ).json()
-    assert detail["pdf"]["available"] is False
-    assert detail["title"] == "Learning to Rank"
-
-
-def test_pdf_operations_are_scoped_to_the_owner(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    create_entry,
-) -> None:
-    owner = register_user(email="owner@example.com")
-    stranger = register_user(email="stranger@example.com")
-    paper_id = create_entry(owner["access_token"])
-
-    attach = client.post(
-        f"{api_prefix}/papers/{paper_id}/pdf",
-        headers=auth_headers(stranger["access_token"]),
-        files={"file": ("fulltext.pdf", make_pdf(), "application/pdf")},
-    )
-    patch = client.patch(
-        f"{api_prefix}/papers/{paper_id}/info",
-        headers=auth_headers(stranger["access_token"]),
-        json={"title": "Stolen"},
-    )
-    resolve = client.post(
-        f"{api_prefix}/papers/{paper_id}/fetch-metadata",
-        headers=auth_headers(stranger["access_token"]),
     )
 
-    for response in (attach, patch, resolve):
-        assert response.status_code == 404
-        assert response.json()["code"] == "paper_not_found"
+    assert detail.status_code == 200

@@ -1,100 +1,121 @@
 """Paper library domain: global Paper facts and user-visible entries."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
 PDF_MAGIC = b"%PDF-"
 TITLE_MAX_LENGTH = 512
 
 
-class PaperSource(StrEnum):
-    UPLOAD = "upload"
-    DOI = "doi"
-    ARXIV = "arxiv"
-    MANUAL = "manual"
-
-
-class MetadataStatus(StrEnum):
-    """How complete the bibliographic record currently is."""
-
-    RECOGNIZED = "recognized"
-    PARTIAL = "partial"
-    UNRECOGNIZED = "unrecognized"
-    PROVIDER_FAILED = "provider_failed"
-    USER_PROVIDED = "user_provided"
-
-
 @dataclass(frozen=True, slots=True)
 class Capabilities:
     """Independent capabilities of a user-visible paper entry."""
 
-    has_pdf: bool
+    has_source: bool
     has_metadata: bool
-    has_fulltext: bool
-    has_keyword_index: bool
+    has_parsed: bool
+    has_index: bool
     has_embedding: bool
 
 
 @dataclass(frozen=True, slots=True)
 class Paper:
-    """A PDF-identified paper; it carries shared parsing facts."""
+    """A paper with a stored source file; it owns every bibliographic fact."""
 
     id: UUID
     file_hash: str
     byte_size: int
     page_count: int
+    doi: str | None
+    arxiv_id: str | None
     bibliographic: dict | None
-    metadata_status: MetadataStatus
     metadata_sources: list | None
-    has_metadata: bool
-    has_fulltext: bool
-    has_keyword_index: bool
-    has_embedding: bool
     mineru_version: str | None
     artifact_manifest_key: str | None
     created_at: datetime
     updated_at: datetime
 
+    @property
+    def has_metadata(self) -> bool:
+        """Whether bibliographic facts came from a provider, not a placeholder.
+
+        A filename-derived placeholder title is not metadata: without this
+        distinction the enrichment stage would never run on an upload.
+        """
+        return bool(self.metadata_sources) and self.title is not None
+
+    @property
+    def was_checked_for_metadata(self) -> bool:
+        """Whether a provider was already asked; avoids repeat lookups."""
+        return bool(self.metadata_sources)
+
+    @property
+    def title(self) -> str | None:
+        value = (self.bibliographic or {}).get("title")
+        return value if isinstance(value, str) else None
+
+    @property
+    def authors(self) -> list[str]:
+        value = (self.bibliographic or {}).get("authors")
+        return [item for item in value if isinstance(item, str)] if value else []
+
+    @property
+    def abstract(self) -> str | None:
+        value = (self.bibliographic or {}).get("abstract")
+        return value if isinstance(value, str) else None
+
+    @property
+    def year(self) -> int | None:
+        value = (self.bibliographic or {}).get("year")
+        return value if isinstance(value, int) else None
+
+    @property
+    def venue(self) -> str | None:
+        value = (self.bibliographic or {}).get("venue")
+        return value if isinstance(value, str) else None
+
 
 @dataclass(frozen=True, slots=True)
 class UserPaper:
-    """A user's library entry; its identity survives gaining a PDF."""
+    """Which papers a user keeps; bibliographic facts live on the paper."""
 
     id: UUID
     user_id: UUID
-    paper_id: UUID | None
-    title: str | None
-    authors: list[str] = field(default_factory=list)
-    abstract: str | None = None
-    doi: str | None = None
-    arxiv_id: str | None = None
-    year: int | None = None
-    venue: str | None = None
-    source: PaperSource = PaperSource.UPLOAD
-    bibliographic: dict | None = None
-    metadata_status: MetadataStatus = MetadataStatus.UNRECOGNIZED
-    metadata_sources: list | None = None
-    original_filename: str | None = None
+    paper_id: UUID
+    #: Present means usable: entries are written only once a run succeeded.
     created_at: datetime | None = None
+    #: Projects this entry belongs to; empty when it is only in the library.
+    project_ids: tuple[UUID, ...] = ()
     updated_at: datetime | None = None
 
-    def capabilities(self, paper: Paper | None) -> Capabilities:
+    def capabilities(
+        self,
+        paper: Paper | None,
+        *,
+        has_index: bool = False,
+        has_embedding: bool = False,
+    ) -> Capabilities:
+        """Capabilities for the interface, from the paper and its artifacts.
+
+        ``has_parsed`` reads the published manifest pointer, which the import
+        sets only after the parse artifacts are complete. Chunk facts are
+        passed in by callers that already queried the chunk table.
+        """
         if paper is None:
             return Capabilities(
-                has_pdf=False,
+                has_source=False,
                 has_metadata=False,
-                has_fulltext=False,
-                has_keyword_index=False,
+                has_parsed=False,
+                has_index=False,
                 has_embedding=False,
             )
         return Capabilities(
-            has_pdf=True,
+            has_source=True,
             has_metadata=paper.has_metadata,
-            has_fulltext=paper.has_fulltext,
-            has_keyword_index=paper.has_keyword_index,
-            has_embedding=paper.has_embedding,
+            has_parsed=paper.artifact_manifest_key is not None,
+            has_index=has_index,
+            has_embedding=has_embedding,
         )
 
 
@@ -115,4 +136,4 @@ def placeholder_title_from_filename(filename: str | None) -> str | None:
 
 def paper_needs_processing(paper: Paper) -> bool:
     """Whether a newly linked PDF still has stages left to run."""
-    return not (paper.has_fulltext and paper.has_keyword_index)
+    return not (paper.has_parsed and paper.has_index)

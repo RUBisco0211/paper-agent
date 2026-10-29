@@ -16,7 +16,8 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes) -> str:
         files={"file": ("paper.pdf", pdf, "application/pdf")},
     )
     assert response.status_code == 202, response.text
-    return response.json()["paper"]["id"]
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    return items["items"][0]["id"]
 
 
 def _create_project(client: TestClient, api_prefix: str, token: str, name: str) -> str:
@@ -33,6 +34,7 @@ def test_project_lifecycle(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -77,7 +79,7 @@ def test_project_lifecycle(
 
 
 def test_project_deletion_waits_for_bound_agent_sessions_when_the_project_has_a_session(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     token = register_user(email="bound-project@example.com")["access_token"]
     project_id = _create_project(client, api_prefix, token, "Bound")
@@ -106,6 +108,7 @@ def test_invalid_project_name_is_rejected(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -123,6 +126,7 @@ def test_duplicate_names_are_allowed_but_identity_differs(
     client: TestClient,
     api_prefix: str,
     register_user,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
 
@@ -140,6 +144,7 @@ def test_adding_library_papers_to_a_project(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     first_paper = _upload(client, api_prefix, token, make_pdf(page_count=1))
@@ -178,7 +183,7 @@ def test_adding_library_papers_to_a_project(
         first_paper,
         second_paper,
     ]
-    assert listed.json()["items"][0]["capabilities"]["has_pdf"] is True
+    assert listed.json()["items"][0]["capabilities"]["has_source"] is True
 
     detail = client.get(
         f"{api_prefix}/projects/{project_id}",
@@ -192,6 +197,7 @@ def test_project_scope_does_not_leak_between_users(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")
@@ -233,6 +239,7 @@ def test_cannot_add_another_users_paper_to_a_project(
     api_prefix: str,
     register_user,
     make_pdf,
+    completed_imports,
 ) -> None:
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")
@@ -255,6 +262,7 @@ def test_deleting_a_project_keeps_library_entries(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     paper_id = _upload(client, api_prefix, token, make_pdf())

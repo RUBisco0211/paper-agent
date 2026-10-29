@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: 已知的占位符/示例密钥：出现在生产配置里意味着令牌可被伪造
@@ -30,6 +30,19 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator(
+        "embedding_max_input_chars",
+        "embedding_max_batch_items",
+        "embedding_max_batch_chars",
+        mode="before",
+    )
+    @classmethod
+    def _blank_means_unset(cls, value: object) -> object:
+        """`.env` 里留空表示「用模型档案默认值」，不是 0 也不是错误。"""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     app_name: str = "Paper Agent API"
     app_version: str = "0.1.0"
@@ -111,7 +124,25 @@ class Settings(BaseSettings):
     mineru_api_url: str | None = None
     mineru_api_key: str | None = None
     mineru_timeout_seconds: float = 600.0
-    ingestion_concurrency: int = 2
+
+    # 入库流水线的并发与重试。
+    #
+    # 领取粒度是「一个阶段」：跨论文并行，同一论文的解析 → 切块 → 向量化
+    # 仍按产物依赖串行。每个数字背后是不同来源的限制，改之前先看注释。
+    #
+    #: 下载。外部站点没有公开的速率标准，8 是按反爬耐受度估的经验值。
+    #: 注意 arXiv 官方要求每 3 秒一次且单连接，当前未单独约束。
+    download_concurrency: int = 8
+    #: 解析。MinerU 单账号允许 10+ 个并发任务，这里留两成余量。
+    parse_concurrency: int = 8
+    #: 切块。纯本机计算，0 表示按 os.cpu_count() 自动取。
+    chunk_concurrency: int = 0
+    #: 向量化。受供应商 TPM 约束（bge-m3 约 500k/分钟），令牌桶再压一道。
+    embed_concurrency: int = 2
+    #: 某个阶段连续失败几次后判死，以及指数退避的基数与上限。
+    stage_max_attempts: int = 3
+    stage_retry_base_seconds: float = 60.0
+    stage_retry_max_seconds: float = 300.0
     embedding_api_url: str | None = None
     embedding_api_key: str | None = None
     # 统一使用 bge-m3：1024 维、多语言、8192 token 上下文。
@@ -130,6 +161,10 @@ class Settings(BaseSettings):
     embedding_timeout_seconds: float = Field(default=120.0, gt=0)
     # 429 与 5xx 退避重试：一次限流不应让整篇论文的向量化阶段失败
     embedding_max_retries: int = Field(default=3, ge=0)
+    #: 供应商按分钟计的额度；0 表示不限（本地 TEI 等自建服务）。
+    #: 默认值取硅基流动 bge-m3 的公开额度：2000 RPM / 500k TPM。
+    embedding_rpm: float = Field(default=2000.0, ge=0)
+    embedding_tpm: float = Field(default=500_000.0, ge=0)
     embedding_retry_backoff_seconds: float = Field(default=1.0, ge=0)
     crossref_api_url: str = "https://api.crossref.org"
     openalex_api_key: SecretStr = SecretStr("")

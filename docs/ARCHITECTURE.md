@@ -8,14 +8,14 @@
 | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backend/app/main.py` → `app/api.py`                  | 业务 FastAPI，组合各业务包路由；持有业务 PostgreSQL、对象存储及摄取任务。                                                                                      |
 | `backend/agent_service/main.py`                       | 单独的 AgentScope HTTP 服务，使用自己的数据库；注入用户身份、加密凭据和受会话范围约束的工具；0081 要求认证逐请求经 HTTP 回查业务登录态，不直接访问业务用户表。 |
-| `backend/app/literature_support/processing/worker.py` | 独立摄取 worker，从业务数据库领取任务，按阶段处理文献。                                                                                                        |
+| `backend/app/literature_support/importing/worker.py` | 独立入库 worker，从业务数据库领取 `paper_imports`，按阶段处理文献。                                                                                                        |
 | `frontend/src/main.tsx` → `src/app/App.tsx`           | React 入口与当前路由表；业务 API 和 AgentScope API 分别调用。                                                                                                  |
 
 业务库与 AgentScope 库通过 `session_id` 和业务绑定关联；业务代码不直接 JOIN AgentScope 表。PDF 和 MinerU 产物存对象存储，业务库保存条目、处理状态、检索块及产物指针。
 
 ## 后端业务包
 
-`backend/app/{auth,imports,processing,library,projects,retrieval,schedules,sessions}/` 使用七文件形态（另有 `__init__.py`）：
+`backend/app/{auth,imports,library,projects,retrieval,schedules,sessions}/` 使用七文件形态（另有 `__init__.py`）：
 
 | 文件         | 作用与依赖边界                                                 |
 | ------------ | -------------------------------------------------------------- |
@@ -32,9 +32,8 @@
 | 包           | 管理内容                                                                               |
 | ------------ | -------------------------------------------------------------------------------------- |
 | `auth`       | 用户、JWT、刷新令牌、登录会话及每用户一行的 JSONB 配置；包含工具授权偏好与浏览器时区。 |
-| `library`    | 全局 Paper、用户文献条目、PDF、元数据和文献读取。                                      |
-| `imports`    | DOI/arXiv 导入、库外文献发现、元数据/PDF 来源、用户确认的批量导入和入库队列。          |
-| `processing` | 摄取 job 与阶段状态、重试入口；调用解析、分块、向量化流水线。                          |
+| `library`    | 文献（Paper）及其唯一书目记录、用户收藏条目、PDF 与文献读取；条目只保存归属关系。      |
+| `imports`    | 一次入库的全部经过：`paper_imports`（一篇一条，`source → parse → chunk → embed` 四阶段）、DOI/arXiv 导入、库外文献发现、用户确认的批量导入与入库队列。先取到原文才建文献，取不到即导入失败。 |
 | `projects`   | 项目及项目与用户文献条目的关系。                                                       |
 | `retrieval`  | 检索块存储、授权召回、证据、引用与原文片段读取。                                       |
 | `schedules`  | AgentScope schedule 与业务用户/项目范围绑定；Agent 创建入口继承会话范围。              |
@@ -45,8 +44,8 @@
 | 包或文件                                         | 管理内容                                                                                                            |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | `app/platform/`                                  | 配置、数据库、存储（local/S3）、任务调度、安全、错误、日志；不承载业务规则。                                        |
-| `app/literature_support/processing/`             | PDF/MinerU 解析（远程 API）、块生成、并发 worker 与阶段执行。                                                                   |
-| `app/literature_support/scholar/`                | 标识符解析、Crossref/arXiv/OpenAlex 元数据、开放 PDF 来源与下载。                                                   |
+| `app/literature_support/importing/`              | PDF/MinerU 解析（远程 API）、块生成、并发 worker 与阶段执行。                                                                   |
+| `app/literature_support/scholar/`                | 标识符解析、Crossref/arXiv/OpenAlex 元数据、开放 PDF 来源与下载；`enrichment.py` 在入库后静默补全书目。            |
 | `app/literature_support/embedding/`              | 模型档案、输入批处理和 OpenAI 兼容向量接口（远程 bge-m3）。                                                                        |
 | `app/literature_support/evidence/`               | 引用定位与证据排序的纯逻辑。                                                                                        |
 | `app/agent/`                                     | 业务侧模型目录支持。                                                                                                |

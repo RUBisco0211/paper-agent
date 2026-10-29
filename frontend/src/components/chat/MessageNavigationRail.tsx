@@ -16,7 +16,12 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
   const [previewId, setPreviewId] = useState<string | null>(null)
   const railRef = useRef<HTMLElement>(null)
   const activeRef = useRef<HTMLButtonElement>(null)
-  const activeId = currentAnchorId ?? visibleMessageIds[0] ?? messages.at(-1)?.id
+  // 导航只列提问：回复再多也只是对某个提问的展开，混在一起反而找不到换话题的位置。
+  const prompts = messages.filter((message) => message.role === "user")
+  const activeId =
+    currentAnchorId ?? visibleMessageIds.find((id) =>
+      prompts.some((prompt) => prompt.id === id),
+    ) ?? prompts.at(-1)?.id
 
   useEffect(() => {
     const rail = railRef.current
@@ -27,9 +32,9 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
     else if (top + active.offsetHeight > rail.scrollTop + rail.clientHeight) {
       rail.scrollTop = top + active.offsetHeight - rail.clientHeight
     }
-  }, [activeId, messages.length])
+  }, [activeId, prompts.length])
 
-  if (messages.length < 2) return null
+  if (prompts.length < 2) return null
 
   return (
     <div
@@ -42,7 +47,7 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
       }}
     >
       <nav ref={railRef} aria-label="会话消息导航" className="max-h-[min(18rem,calc(100vh-7rem))] overflow-y-auto overscroll-contain scrollbar-none [&::-webkit-scrollbar]:hidden">
-        {messages.map((message, index) => {
+        {prompts.map((message, index) => {
           const active = message.id === activeId
           const highlighted = message.id === (previewId ?? activeId)
           return (
@@ -50,7 +55,7 @@ export function MessageNavigationRail({ messages }: { messages: Msg[] }) {
               key={message.id}
               ref={active ? activeRef : undefined}
               type="button"
-              aria-label={`跳转到第 ${index + 1} 条消息`}
+              aria-label={`跳转到第 ${index + 1} 个提问`}
               aria-current={active ? "location" : undefined}
               onMouseEnter={() => setPreviewId(message.id)}
               onFocus={() => setPreviewId(message.id)}

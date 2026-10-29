@@ -10,11 +10,11 @@ from .schemas import (
     BoundBatchImportRequest,
     DiscoveryRequest,
     DiscoveryResponse,
+    DownloadRead,
     ImportApprovalPreview,
     ImportApprovalRead,
     ImportApprovalRequest,
     ImportQueueRead,
-    ImportRead,
     ImportRequest,
     ManualDiscoveryRequest,
 )
@@ -91,33 +91,24 @@ def import_approved_batch(
 
 @router.post(
     "",
-    response_model=ImportRead,
+    response_model=DownloadRead,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="按 DOI/arXiv 导入论文（先元数据，再尝试获取全文）",
+    summary="按 DOI/arXiv 请求获取原文",
 )
 def start_import(
     payload: ImportRequest,
     user: CurrentUser,
     service: ImportServiceDep,
-) -> ImportRead:
-    record = service.start(
+) -> DownloadRead:
+    download = service.start(
         user_id=user.id,
         identifier_text=payload.identifier,
         project_id=payload.project_id,
     )
-    return ImportRead.from_domain(record)
-
-
-@router.get(
-    "/{import_id}",
-    response_model=ImportRead,
-    summary="读取导入进度",
-)
-def read_import(
-    import_id: UUID,
-    user: CurrentUser,
-    service: ImportServiceDep,
-) -> ImportRead:
-    return ImportRead.from_domain(
-        service.get(user_id=user.id, import_id=import_id),
+    return DownloadRead(
+        id=download.id,
+        identifier_type=download.identifier_type,
+        identifier=download.identifier,
+        status=download.status,
+        created_at=download.created_at,
     )

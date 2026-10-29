@@ -1,40 +1,21 @@
-"""Identifier import: DOI/arXiv in, user library entry out."""
+"""Domain of the import entry points: request a download, approve a batch.
+
+The processing itself lives in ``app.pipelines``; this module only owns what a
+user asks for and the discovery results they were shown before asking.
+"""
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 from uuid import UUID
 
 
-class ImportStatus(StrEnum):
-    """Observable stages of one import request."""
-
-    QUEUED = "queued"
-    RESOLVING = "resolving"
-    METADATA_READY = "metadata_ready"
-    PDF_UNAVAILABLE = "pdf_unavailable"
-    READY = "ready"
-    FAILED = "failed"
-
-
-TERMINAL_STATUSES = {
-    ImportStatus.PDF_UNAVAILABLE,
-    ImportStatus.READY,
-    ImportStatus.FAILED,
-}
-
-
 @dataclass(frozen=True, slots=True)
-class PaperImport:
+class DownloadRequest:
+    """A queued request to turn an identifier into a stored file."""
+
     id: UUID
     user_id: UUID
-    project_id: UUID | None
-    user_paper_id: UUID | None
     identifier_type: str
     identifier: str
-    status: ImportStatus
-    error_code: str | None
-    metadata_source: str | None
+    status: str
     created_at: datetime
-    updated_at: datetime
-    finished_at: datetime | None

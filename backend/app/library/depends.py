@@ -11,8 +11,7 @@ from app.literature_support.scholar.pdf_fetch import PdfFetcher
 from ..platform.config import settings
 from ..platform.database import SessionDep, SessionFactoryDep
 from ..platform.storage import StorageDep
-from ..platform.tasks import TaskSchedulerDep
-from .ports import IngestionStarter
+from .ports import MetadataEnricherPort, RunStarter
 from .repo import PaperRepository
 from .service import PaperLibraryService
 
@@ -24,25 +23,14 @@ def get_paper_repository(session: SessionDep) -> PaperRepository:
 PaperRepositoryDep = Annotated[PaperRepository, Depends(get_paper_repository)]
 
 
-def get_ingestion_starter(
-    session: SessionDep,
-    storage: StorageDep,
-    session_factory: SessionFactoryDep,
-    scheduler: TaskSchedulerDep,
-) -> IngestionStarter:
-    """Build the shared ingestion service for this request.
-    """
-    from app.literature_support.processing.pipeline import build_ingestion_service
+def get_run_starter(session_factory: SessionFactoryDep) -> RunStarter:
+    """Join a user to a paper's processing; no download or parse happens here."""
+    from app.pipelines.runs import RunService
 
-    return build_ingestion_service(
-        session=session,
-        storage=storage,
-        session_factory=session_factory,
-        scheduler=scheduler,
-    )
+    return RunService(session_factory=session_factory)
 
 
-IngestionStarterDep = Annotated[IngestionStarter, Depends(get_ingestion_starter)]
+RunStarterDep = Annotated[RunStarter, Depends(get_run_starter)]
 
 
 def get_metadata_resolver() -> MetadataResolver:
@@ -60,14 +48,30 @@ def get_pdf_fetcher() -> PdfFetcher:
 PdfFetcherDep = Annotated[PdfFetcher, Depends(get_pdf_fetcher)]
 
 
-def get_paper_library_service(
-    papers: PaperRepositoryDep,
-    ingestion: IngestionStarterDep,
+def get_metadata_enricher(
     storage: StorageDep,
     resolver: MetadataResolverDep,
-    pdf_fetcher: PdfFetcherDep,
+    session_factory: SessionFactoryDep,
+) -> MetadataEnricherPort:
+    from app.literature_support.scholar.enrichment import MetadataEnricher
+
+    return MetadataEnricher(
+        storage=storage,
+        resolver=resolver,
+        session_factory=session_factory,
+    )
+
+
+MetadataEnricherDep = Annotated[MetadataEnricherPort, Depends(get_metadata_enricher)]
+
+
+def get_paper_library_service(
+    papers: PaperRepositoryDep,
+    runs: RunStarterDep,
+    enrichment: MetadataEnricherDep,
+    storage: StorageDep,
 ) -> PaperLibraryService:
-    return PaperLibraryService(papers, ingestion, storage, resolver, pdf_fetcher)
+    return PaperLibraryService(papers, runs, enrichment, storage)
 
 
 PaperLibraryServiceDep = Annotated[

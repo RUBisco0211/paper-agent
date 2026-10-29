@@ -1,4 +1,4 @@
-from app.literature_support.processing.blocks import build_block_index
+from app.literature_support.importing.blocks import build_block_index
 
 
 def test_block_index_retains_mineru_types_and_reliable_page_geometry() -> None:

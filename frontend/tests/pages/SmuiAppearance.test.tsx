@@ -7,7 +7,7 @@ import { MemoryRouter, Outlet, Route, Routes } from "react-router-dom"
 import { expect, it, vi } from "vitest"
 
 import { createQueryClient } from "@/app/query"
-import type { ImportQueueItem } from "@/types/business"
+import type { DownloadStatus, ImportQueueItem, RunStatus } from "@/types/business"
 import { ImportQueuePanel } from "@/components/imports/ImportQueuePanel"
 import { NewChatPage } from "@/pages/chat/NewChatPage"
 import { MessageNavigationRail } from "@/components/chat/MessageNavigationRail"
@@ -33,16 +33,90 @@ vi.mock("@/components/ui/MessageScroller", () => ({
   useMessageScrollerVisibility: () => ({ currentAnchorId: null, visibleMessageIds: [] }),
 }))
 
-it.each([
-  ["metadata", "text-info"], ["fulltext", "text-info"],
-  ["chunking", "text-info"], ["embedding", "text-info"],
-  ["ready", "text-success"], ["succeeded", "text-success"],
-  ["pdf_unavailable", "text-warning"],
-])("the import queue uses %s semantic color when that stage is displayed", (stage, color) => {
-  queue.items = [{ id: "job-1", kind: "import", title: "测试文献", status: stage, created_at: "2026-10-09T00:00:00Z" }]
-  render(<ImportQueuePanel />)
-  const label = screen.getByText("测试文献").parentElement!.lastElementChild!
-  expect(label.classList.contains(color)).toBe(true)
+it.each<[DownloadStatus, RunStatus | null, string]>([
+  ["pending", null, "等待中"],
+  ["running", null, "处理中"],
+  ["success", "running", "处理中"],
+  ["success", "success", "已完成"],
+  ["failed", null, "失败"],
+])('the import queue list reads a %s request with a %s run as one state', (status, runStatus, label) => {
+  queue.items = [{
+    source: "download",
+    id: "import-1",
+    identifier: "10.1234/example",
+    identifier_type: "doi",
+    status,
+    created_at: "2026-10-09T00:00:00Z",
+    run: runStatus ? { status: runStatus, stage: "parse", error_message: null } : null,
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText(label)).toBeTruthy()
+})
+
+it("the import queue lists no steps until the request is opened", () => {
+  queue.items = [{
+    source: "download",
+    id: "import-2",
+    identifier: "10.1234/example",
+    identifier_type: "doi",
+    status: "success",
+    created_at: "2026-10-09T00:00:00Z",
+    run: { status: "running", stage: "chunk", error_message: null },
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  // The list only reports state; which steps ran is a detail of the request.
+  expect(screen.queryByText("获取原文")).toBeNull()
+  expect(screen.queryByText("切分片段")).toBeNull()
+})
+
+it("an upload shows its own first step, since it never fetched anything", async () => {
+  queue.items = [{
+    source: "request",
+    id: "run-1",
+    identifier: "",
+    identifier_type: "upload",
+    status: "running",
+    created_at: "2026-10-09T00:00:00Z",
+    run: { status: "running", stage: "parse", error_message: null },
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole("button", { name: /本地上传/ }))
+  expect(screen.getByText("文件上传")).toBeTruthy()
+  expect(screen.getByText("解析正文")).toBeTruthy()
+  expect(screen.queryByText("获取原文")).toBeNull()
+})
+
+it("a failed fetch reports its reason instead of a processing step", async () => {
+  queue.items = [{
+    source: "download",
+    id: "import-3",
+    identifier: "10.1234/missing",
+    identifier_type: "doi",
+    status: "failed",
+    error_message: "没有找到可用的原文",
+    created_at: "2026-10-09T00:00:00Z",
+    run: null,
+  }]
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <ImportQueuePanel />
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole("button", { name: /10.1234\/missing/ }))
+  expect(screen.getByText("没有找到可用的原文")).toBeTruthy()
+  expect(screen.queryByText("生成向量")).toBeNull()
 })
 
 it("the draft composer leaves surface styling to the shared input when a new conversation is opened", () => {
@@ -54,8 +128,9 @@ it("the message preview inherits the theme radius when the navigation rail expan
   render(<MessageNavigationRail messages={[
     UserMsg({ id: "question", name: "user", content: "提问" }),
     AssistantMsg({ id: "answer", name: "assistant", content: "回答" }),
+    UserMsg({ id: "question-2", name: "user", content: "追问" }),
   ]} />)
-  await userEvent.hover(screen.getByRole("button", { name: "跳转到第 1 条消息" }))
+  await userEvent.hover(screen.getByRole("button", { name: "跳转到第 1 个提问" }))
   const surface = screen.getByRole("navigation", { name: "会话消息导航" }).parentElement!
   expect(surface.classList.contains("rounded-lg")).toBe(true)
 })

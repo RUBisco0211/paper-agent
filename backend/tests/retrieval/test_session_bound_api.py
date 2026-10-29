@@ -11,7 +11,7 @@ from tests.retrieval.test_search_api import _index_chunks, _upload
 
 
 def test_binding_list_contains_only_the_current_users_sessions_when_owners_differ(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="binding-list-owner@example.com")
     stranger = register_user(email="binding-list-stranger@example.com")
@@ -39,7 +39,7 @@ def test_binding_list_contains_only_the_current_users_sessions_when_owners_diffe
 
 
 def test_registered_citation_is_visible_only_to_the_bound_owner_when_queried(
-    client: TestClient, api_prefix: str, register_user, make_pdf, db_session
+    client: TestClient, api_prefix: str, register_user, make_pdf, db_session, completed_imports
 ) -> None:
     owner = register_user(email="citation-owner@example.com")
     stranger = register_user(email="citation-stranger@example.com")
@@ -81,7 +81,7 @@ def test_registered_citation_is_visible_only_to_the_bound_owner_when_queried(
 
 
 def test_session_binding_rejects_deletion_when_user_does_not_own_it(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="delete-owner@example.com")
     stranger = register_user(email="delete-stranger@example.com")
@@ -106,7 +106,7 @@ def test_session_binding_rejects_deletion_when_user_does_not_own_it(
 
 
 def test_session_binding_deletion_removes_registered_citations_when_owner_deletes_it(
-    client: TestClient, api_prefix: str, register_user, make_pdf, db_session
+    client: TestClient, api_prefix: str, register_user, make_pdf, db_session, completed_imports
 ) -> None:
     owner = register_user(email="delete-citation-owner@example.com")
     paper_id = _upload(
@@ -145,7 +145,7 @@ def test_session_binding_deletion_removes_registered_citations_when_owner_delete
 
 
 def test_session_binding_deletion_returns_not_found_when_already_removed(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="delete-repeat-owner@example.com")
     session_id = str(uuid4())
@@ -168,7 +168,7 @@ def test_session_binding_deletion_returns_not_found_when_already_removed(
 
 
 def test_session_binding_rejects_another_users_project_when_created(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")
@@ -195,7 +195,7 @@ def test_session_binding_rejects_another_users_project_when_created(
 
 
 def test_internal_search_rejects_unbound_session_and_invalid_secret(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     user = register_user()
@@ -219,7 +219,7 @@ def test_internal_search_rejects_unbound_session_and_invalid_secret(
 
 
 def test_session_binding_cannot_change_scope_after_creation(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     token = register_user()["access_token"]
     session_id = str(uuid4())
@@ -240,7 +240,7 @@ def test_session_binding_cannot_change_scope_after_creation(
 
 
 def test_internal_search_rejects_another_user_on_a_bound_session(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     owner = register_user(email="owner@example.com")
@@ -273,6 +273,7 @@ def test_internal_search_uses_bound_project_and_registers_retrievable_citation(
     make_pdf,
     db_session,
     monkeypatch,
+    completed_imports,
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     user = register_user()
@@ -352,6 +353,7 @@ def test_internal_search_covers_all_owned_papers_when_session_is_global(
     make_pdf,
     db_session,
     monkeypatch,
+    completed_imports,
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     user = register_user()
@@ -393,6 +395,7 @@ def test_long_evidence_is_returned_whole_when_it_exceeds_the_old_display_budget(
     make_pdf,
     db_session,
     monkeypatch,
+    completed_imports,
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     user = register_user()
@@ -435,6 +438,7 @@ def test_registered_citation_flattens_source_ranges_into_ordered_blocks(
     make_pdf,
     db_session,
     monkeypatch,
+    completed_imports,
 ) -> None:
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     user = register_user()

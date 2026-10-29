@@ -89,6 +89,75 @@
 - **用户决定不再回测**：接近上传上限的大 PDF 资源压力及生产级 S3 部署；现有实测仅覆盖较小样本和本地 RustFS。生产部署仍须使用可用的 S3 兼容对象存储。
 - **依据**：0056
 
+## R10 入库记录模型重做（进行中，依据 0093、0094）
+
+### 数据层
+
+- [x] 迁移：删 `paper_imports`、`import_stages`
+- [x] 迁移：建 `downloads`（user_id / identifier_type / identifier / status / paper_id / run_id / source_url / error_message / 时间戳）
+- [x] 迁移：建 `runs`（paper_id / status / current_stage / stage_timings JSONB / error_message / leased_until / started_at / finished_at）
+- [x] 迁移：建部分唯一索引 `(paper_id) WHERE status IN ('pending','running')`
+- [x] 迁移：建 `user_runs`（user_id / run_id / paper_id）
+- [x] 迁移：`user_papers` 删 `ready`、删 `source`
+- [ ] 迁移：`chunk_metadata` 去 `artifact_manifest_key` 副本
+- [x] 迁移：`papers` 保留 byte_size / page_count / mineru_version / metadata_sources / updated_at
+- [x] ORM 与仓储：`downloads` 仓储、`runs` 仓储（含租约领取与过期回收）、`user_runs` 仓储
+- [x] 删除 `PaperSource` 枚举、`MetadataStatus` 枚举、`ProviderMetadata.metadata_status()`
+
+### 流程层
+
+- [x] 上传入口：算 hash → papers 建/复用 → 按 paper_id 挂进行中 run（含 pending）或新建 run + user_runs
+- [x] 导入入口：只建 downloads 行并返回，不下载
+- [x] download worker：下载 → hash → papers 建/复用（补 doi/arxiv_id）→ 挂 run → 回填 paper_id / run_id
+- [x] run worker：parse → chunk → embed，推进 current_stage 与 stage_timings
+- [x] parse 阶段入口校验产物 sha256，不符则重新解析（不报错）
+- [x] run 成功：按 paper_id 查 user_runs，逐个写入 user_papers
+- [x] 租约续期与过期回收
+- [x] 产物路径扁平化：删 `runs/{job_id}/`，删 `mineru_job_artifact_key` 与 `mineru_artifact_prefix`
+
+### 接口与前端
+
+- [x] 队列接口改为以 downloads 为行，串出关联 run
+- [x] 删前端 `ERROR_TEXT` 映射，直接显示后端 `error_message`
+- [x] 删除文献库对 `user_papers.ready` 的过滤
+
+### 测试
+
+- [x] 并发：两人同时导入同一 DOI 只产生一条 run
+- [x] 并发：上传与下载得到同一 hash 时合并为同一篇论文
+- [x] 失败：下载失败不建论文、不建 run，downloads 行保留
+- [x] 失败：run 失败时所有挂靠用户可见同一结果
+- [x] 崩溃：租约过期的 run 被判失败，续租的正常存活
+- [x] 自愈：产物被截断后重试，parse 重新执行并成功
+
+### R11 队列并入请求记录与项目归属（依据 0095）
+
+- [x] 迁移：`user_runs` 加 `project_id`（可空，外键 projects）
+- [x] `RunService.request` 接受 `project_id`，校验项目属于当前用户
+- [x] 已完成论文的请求不写 `user_runs`，直接建 `user_papers` 与 `project_papers`
+- [x] run 成功时：只兑现该 `run_id` 的 `user_runs`，用户/项目关系与 success 一起提交
+- [x] 队列接口合并 `downloads` ∪ `user_runs`，按 `run_id` 仅消除跨表重复
+- [x] 上传接口把 `project_id` 传下去
+- [x] 前端：列表只显示状态；详情按动作列步骤（导入含「获取原文」，上传含「文件上传」）
+- [x] 测试：上传已在库的论文只建关系、不进队列
+- [x] 测试：导入到指定项目后该条目出现在项目里
+- [x] 测试：别人的项目 ID 被拒绝
+- [x] 测试：download 已代表的 user_run 不重复显示，独立下载尝试保留
+
+### PR #9 审查修复
+
+- [x] S1：用户文件名不写入共享书目，未获取书目时标题为空
+- [x] B1：仅领取 pending、执行排他锁、持续续租与过期回收
+- [x] B2/B3：挂靠和完成同锁；成功与用户、项目授权同事务
+- [x] B4：0036/0037 不删除会话或定时任务绑定（不自动恢复已被旧迁移删除的数据）
+- [x] B5/B6：授权入库继承会话项目；非 PDF 候选继续尝试其他来源
+- [x] B7/B9：队列固定读取关联 run；查看文献使用当前用户条目 ID
+- [x] B8：文档明确仅消除跨表重复，不合并独立下载历史
+
+### 待办（用户明确不急）
+
+- [ ] 租约超时时长与失效判定的调优
+
 ## 全局约束（不重复，只指路）
 
 - 不做清单与后置清单：`AGENTS.md` 第 1 节

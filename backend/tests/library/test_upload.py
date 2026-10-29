@@ -1,7 +1,6 @@
 import hashlib
 import json
 from collections.abc import Callable, Iterator
-from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -13,18 +12,12 @@ from app.library.depends import (
 )
 from app.library.repo import PaperRecord, PaperRepository, UserPaperRecord
 from app.library.service import PaperLibraryService
-from app.literature_support.scholar.metadata import MetadataResolver
-from app.platform.storage import (
-    ObjectStorage,
-    mineru_artifact_key,
-    mineru_job_artifact_key,
-)
-from app.processing.repo import (
-    IngestionJobRecord,
-    IngestionRepository,
-    IngestionStageRecordOrm,
-)
-from app.processing.service import IngestionService
+from app.literature_support.scholar.enrichment import MetadataEnricher
+from app.literature_support.scholar.metadata import build_default_resolver
+from app.pipelines.domain import RunStage, RunStatus
+from app.pipelines.repo import RunRecord, RunRepository
+from app.platform.storage import ObjectStorage, mineru_artifact_key
+from app.platform.tasks import InlineTaskScheduler
 from tests.conftest import auth_headers
 
 PDF_FILENAME = "attention is all you need.pdf"
@@ -36,85 +29,18 @@ def test_paper_detail_exposes_versions_when_owner_reads_quoted_sources(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     owner = register_user(email="quote-version-owner@example.com")
     stranger = register_user(email="quote-version-stranger@example.com")
-    entry_id = UUID(_upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"]["id"])
-    paper = db_session.get(PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id)
-    paper.has_fulltext = True
-    db_session.commit()
+    entry_id = _entry_id(client, api_prefix, owner["access_token"], make_pdf())
+    paper = _paper_of(db_session, entry_id)
 
     detail = client.get(f"{api_prefix}/papers/{entry_id}", headers=auth_headers(owner["access_token"]))
     assert detail.status_code == 200
     assert detail.json()["pdf_version"] == paper.file_hash
     assert detail.json()["artifact_version"]
     assert client.get(f"{api_prefix}/papers/{entry_id}", headers=auth_headers(stranger["access_token"])).status_code == 404
-
-
-def test_legacy_paper_image_can_be_previewed_from_its_own_storage_prefix(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-    storage: ObjectStorage,
-) -> None:
-    owner = register_user(email="legacy-image-owner@example.com")
-    entry_id = UUID(
-        _upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"][
-            "id"
-        ]
-    )
-    paper = db_session.get(
-        PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id
-    )
-    paper.has_fulltext = True
-    db_session.commit()
-    storage.put_bytes(
-        mineru_artifact_key(paper.file_hash, "content_list.json"),
-        json.dumps(
-            [{"type": "image", "page_idx": 0, "img_path": "images/figure.png"}]
-        ).encode(),
-    )
-    payload = b"\x89PNG\r\n\x1a\nlegacy"
-    storage.put_bytes(
-        mineru_artifact_key(paper.file_hash, "images/images/figure.png"), payload
-    )
-
-    response = client.get(
-        f"{api_prefix}/papers/{entry_id}/blocks/0/image",
-        headers=auth_headers(owner["access_token"]),
-    )
-    assert response.status_code == 200
-    assert response.content == payload
-
-
-def test_legacy_block_image_revalidates_when_it_is_still_available(
-    client: TestClient,
-    api_prefix: str,
-    register_user,
-    make_pdf,
-    db_session: Session,
-    storage: ObjectStorage,
-) -> None:
-    owner = register_user(email="legacy-cache@example.com")
-    entry_id = UUID(_upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"]["id"])
-    paper = db_session.get(PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id)
-    paper.has_fulltext = True
-    db_session.commit()
-    content_key = mineru_artifact_key(paper.file_hash, "content_list.json")
-    image_key = mineru_artifact_key(paper.file_hash, "images/figure.png")
-    storage.put_bytes(content_key, json.dumps([{"type": "image", "page_idx": 0, "img_path": "figure.png"}]).encode())
-    storage.put_bytes(image_key, b"\x89PNG\r\n\x1a\npreview")
-    url = f"{api_prefix}/papers/{entry_id}/blocks/0/image"
-    first = client.get(url, headers=auth_headers(owner["access_token"]))
-    assert first.status_code == 200
-    etag = first.headers["etag"]
-    repeated = client.get(url, headers={**auth_headers(owner["access_token"]), "If-None-Match": etag})
-    assert repeated.status_code == 304
-    storage.delete(image_key)
-    missing = client.get(url, headers={**auth_headers(owner["access_token"]), "If-None-Match": etag})
-    assert missing.status_code == 404
 
 
 def test_paper_blocks_are_filtered_and_private(
@@ -124,17 +50,12 @@ def test_paper_blocks_are_filtered_and_private(
     make_pdf,
     db_session: Session,
     storage: ObjectStorage,
+    completed_imports,
 ) -> None:
     owner = register_user(email="block-owner@example.com")
     stranger = register_user(email="block-stranger@example.com")
-    entry_id = UUID(
-        _upload(client, api_prefix, owner["access_token"], make_pdf()).json()["paper"][
-            "id"
-        ]
-    )
-    paper = db_session.get(
-        PaperRecord, db_session.get(UserPaperRecord, entry_id).paper_id
-    )
+    entry_id = _entry_id(client, api_prefix, owner["access_token"], make_pdf())
+    paper = _paper_of(db_session, entry_id)
     index = {
         "types": ["text", "table"],
         "items": [
@@ -156,10 +77,10 @@ def test_paper_blocks_are_filtered_and_private(
             },
         ],
     }
-    key = mineru_job_artifact_key(paper.file_hash, "test", "blocks_index.json")
+    key = mineru_artifact_key(paper.file_hash, "blocks_index.json")
     payload = json.dumps(index).encode()
     storage.put_bytes(key, payload)
-    content_key = mineru_job_artifact_key(paper.file_hash, "test", "content_list.json")
+    content_key = mineru_artifact_key(paper.file_hash, "content_list.json")
     content_payload = json.dumps(
         [
             {"type": "text", "text": "Body", "page_idx": 0},
@@ -179,10 +100,10 @@ def test_paper_blocks_are_filtered_and_private(
         ]
     ).encode()
     storage.put_bytes(content_key, content_payload)
-    image_key = mineru_job_artifact_key(paper.file_hash, "test", "images/figure-1.png")
+    image_key = mineru_artifact_key(paper.file_hash, "images/figure-1.png")
     image_payload = b"\x89PNG\r\n\x1a\npreview"
     storage.put_bytes(image_key, image_payload)
-    manifest_key = mineru_job_artifact_key(paper.file_hash, "test", "manifest.json")
+    manifest_key = mineru_artifact_key(paper.file_hash, "manifest.json")
     storage.put_bytes(
         manifest_key,
         json.dumps(
@@ -206,7 +127,7 @@ def test_paper_blocks_are_filtered_and_private(
         ).encode(),
     )
     paper.artifact_manifest_key = manifest_key
-    paper.has_fulltext = True
+    paper.has_parsed = True
     db_session.commit()
 
     response = client.get(
@@ -286,9 +207,22 @@ def test_paper_blocks_are_filtered_and_private(
     )
 
 
-class _NoopPdfFetcher:
-    def download(self, url: str, *, destination: Path):
-        raise AssertionError("该用例不应下载 PDF")
+def _entry_id(client: TestClient, api_prefix: str, token: str, pdf: bytes) -> UUID:
+    """Upload a file and return the library entry it becomes."""
+    response = _upload(client, api_prefix, token, pdf)
+    assert response.status_code == 202, response.text
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()[
+        "items"
+    ]
+    return UUID(items[0]["id"])
+
+
+def _paper_of(session: Session, entry_id: UUID) -> PaperRecord:
+    entry = session.get(UserPaperRecord, entry_id)
+    assert entry is not None and entry.paper_id is not None
+    paper = session.get(PaperRecord, entry.paper_id)
+    assert paper is not None
+    return paper
 
 
 def _upload(
@@ -306,60 +240,84 @@ def _upload(
     )
 
 
-def test_upload_creates_entry_and_ingestion_job(
+def test_a_failed_upload_leaves_no_entry_in_the_library(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
     db_session: Session,
+    session_factory: sessionmaker[Session],
+    storage: ObjectStorage,
 ) -> None:
+    """Without a working parser the paper exists but nobody owns it yet."""
     token = register_user(email="reader@example.com")["access_token"]
 
     response = _upload(client, api_prefix, token, make_pdf())
 
     assert response.status_code == 202, response.text
     body = response.json()
-    paper = body["paper"]
-    UUID(paper["id"])
-    assert paper["title"] == "attention is all you need"
-    assert paper["original_filename"] == PDF_FILENAME
-    assert paper["source"] == "upload"
-    assert paper["capabilities"] == {
-        "has_pdf": True,
-        "has_metadata": False,
-        "has_fulltext": False,
-        "has_keyword_index": False,
-        "has_embedding": False,
-    }
-    # The job ran inline: local recognition finished, MinerU is unconfigured.
-    assert paper["processing"]["status"] == "failed"
+    # The request only records the run; Failing here would need a worker.
+    assert body["status"] == RunStatus.PENDING.value
 
-    job = body["ingestion_job"]
-    assert job["paper_id"] == paper["id"]
-    assert job["status"] == "failed"
-    assert job["error_code"] == "provider_not_configured"
-    stages = {stage["stage"]: stage for stage in job["stages"]}
-    assert set(stages) == {"metadata", "fulltext", "chunking", "embedding"}
-    assert stages["metadata"]["status"] == "succeeded"
-    assert stages["metadata"]["progress"]["outcome"] == "unrecognized"
-    assert stages["fulltext"]["status"] == "failed"
-    assert stages["fulltext"]["error_code"] == "provider_not_configured"
-    # Blocking failure stops later stages instead of pretending they ran.
-    assert stages["chunking"]["status"] == "pending"
-    assert stages["embedding"]["status"] == "pending"
+    from app.literature_support.embedding import build_embedding_adapter
+    from app.literature_support.importing.mineru import MineruParser
+    from app.pipelines.pipeline import RunPipeline
 
+    RunPipeline(
+        scheduler=InlineTaskScheduler(),
+        session_factory=session_factory,
+        storage=storage,
+        mineru=MineruParser(
+            base_url=None, api_key=None, timeout_seconds=30
+        ),
+        embeddings=build_embedding_adapter(),
+    ).run_sync(UUID(body["run_id"]))
+
+    run = RunRepository(db_session).get(UUID(body["run_id"]))
+    assert run is not None
+    # One failed stage waits to be retried before it is declared dead.
+    assert run.status is RunStatus.PENDING
+    assert run.current_stage is RunStage.PARSE
+    assert run.attempts_for(RunStage.PARSE) == 1
+    assert run.next_attempt_at is not None
+    assert run.error_message is not None
+
+    # The paper and its file exist; the entry does not, because no run succeeded.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
-    assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 1
-    assert db_session.scalar(select(func.count(IngestionJobRecord.id))) == 1
-    assert db_session.scalar(select(func.count(IngestionStageRecordOrm.id))) == 4
+    assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 0
+    library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert library["total"] == 0
 
 
-def test_duplicate_upload_reuses_paper_and_entry(
+def test_a_finished_upload_appears_in_the_library(
     client: TestClient,
     api_prefix: str,
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
+) -> None:
+    token = register_user(email="reader@example.com")["access_token"]
+
+    response = _upload(client, api_prefix, token, make_pdf())
+
+    assert response.status_code == 202, response.text
+    run = RunRepository(db_session).get(UUID(response.json()["run_id"]))
+    assert run is not None and run.status is RunStatus.SUCCESS
+    assert run.current_stage is None
+
+    library = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    assert library["total"] == 1
+    assert library["items"][0]["capabilities"]["has_parsed"] is True
+
+
+def test_a_second_upload_of_the_same_file_reuses_the_paper(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     pdf = make_pdf()
@@ -369,12 +327,11 @@ def test_duplicate_upload_reuses_paper_and_entry(
 
     assert first.status_code == 202
     assert second.status_code == 202
-    assert first.json()["paper"]["id"] == second.json()["paper"]["id"]
-    # The upload never duplicates the shared paper or the user's entry; the
-    # second upload only asks for the stages that are still missing.
+    # One paper and one entry: the second upload changes nothing.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 1
-    assert db_session.scalar(select(func.count(IngestionJobRecord.id))) == 2
+    # The finished run was not repeated just because a file was uploaded again.
+    assert db_session.scalar(select(func.count(RunRecord.id))) == 1
 
 
 def test_two_users_sharing_a_pdf_stay_isolated(
@@ -383,6 +340,7 @@ def test_two_users_sharing_a_pdf_stay_isolated(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     first_user = register_user(email="first@example.com")
     second_user = register_user(email="second@example.com")
@@ -391,19 +349,21 @@ def test_two_users_sharing_a_pdf_stay_isolated(
     first = _upload(client, api_prefix, first_user["access_token"], pdf)
     second = _upload(client, api_prefix, second_user["access_token"], pdf)
 
-    first_paper_id = first.json()["paper"]["id"]
-    second_paper_id = second.json()["paper"]["id"]
-    assert first_paper_id != second_paper_id
-    # One shared PDF fact, two independent user entries.
+    assert first.status_code == 202 and second.status_code == 202
+    # One shared paper and two independent entries; the second upload joined
+    # the run that was already active instead of starting another.
     assert db_session.scalar(select(func.count(PaperRecord.id))) == 1
     assert db_session.scalar(select(func.count(UserPaperRecord.id))) == 2
 
+    first_entry_id = client.get(
+        f"{api_prefix}/papers", headers=auth_headers(first_user["access_token"])
+    ).json()["items"][0]["id"]
     foreign_detail = client.get(
-        f"{api_prefix}/papers/{first_paper_id}",
+        f"{api_prefix}/papers/{first_entry_id}",
         headers=auth_headers(second_user["access_token"]),
     )
     foreign_pdf = client.get(
-        f"{api_prefix}/papers/{first_paper_id}/pdf",
+        f"{api_prefix}/papers/{first_entry_id}/pdf",
         headers=auth_headers(second_user["access_token"]),
     )
     assert foreign_detail.status_code == 404
@@ -454,12 +414,18 @@ def test_upload_enforces_size_and_page_limits(
             session = session_factory()
             try:
                 papers = PaperRepository(session)
+                enrichment = MetadataEnricher(
+                    storage=storage,
+                    resolver=build_default_resolver(),
+                    session_factory=session_factory,
+                )
+                from app.pipelines.runs import RunService
+
                 yield PaperLibraryService(
                     papers,
-                    IngestionService(IngestionRepository(session), papers),
+                    RunService(session_factory=session_factory),
+                    enrichment,
                     storage,
-                    MetadataResolver([]),
-                    _NoopPdfFetcher(),  # type: ignore[arg-type]
                     max_pdf_bytes=max_pdf_bytes,
                     max_pdf_pages=max_pdf_pages,
                 )

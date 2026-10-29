@@ -18,7 +18,8 @@ def _upload(client: TestClient, api_prefix: str, token: str, pdf: bytes) -> str:
         files={"file": ("paper.pdf", pdf, "application/pdf")},
     )
     assert response.status_code == 202, response.text
-    return response.json()["paper"]["id"]
+    items = client.get(f"{api_prefix}/papers", headers=auth_headers(token)).json()
+    return items["items"][0]["id"]
 
 
 def _index_chunks(
@@ -83,6 +84,7 @@ def test_keyword_search_returns_evidence_with_stable_ids(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     paper_id = _upload(client, api_prefix, token, make_pdf())
@@ -127,6 +129,7 @@ def test_search_does_not_leak_other_users_papers(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     owner = register_user(email="owner@example.com")
     stranger = register_user(email="stranger@example.com")
@@ -155,6 +158,7 @@ def test_paper_scope_restricts_search_to_selected_entries(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     first = _upload(client, api_prefix, token, make_pdf(page_count=1))
@@ -189,6 +193,7 @@ def test_project_scope_only_covers_project_papers(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     inside = _upload(client, api_prefix, token, make_pdf(page_count=1))
@@ -240,6 +245,7 @@ def test_hybrid_search_fuses_keyword_and_vector_channels(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     paper_id = _upload(client, api_prefix, token, make_pdf())
@@ -294,6 +300,7 @@ def test_reindexing_chunks_is_idempotent(
     register_user,
     make_pdf,
     db_session: Session,
+    completed_imports,
 ) -> None:
     token = register_user(email="reader@example.com")["access_token"]
     paper_id = _upload(client, api_prefix, token, make_pdf())

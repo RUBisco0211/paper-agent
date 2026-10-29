@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Protocol
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from alembic.config import Config
@@ -321,6 +321,212 @@ def client(
     app.dependency_overrides.clear()
 
 
+MINIMAL_CONTENT_LIST = [
+    {
+        "type": "text",
+        "text": "The encoder stacks self attention layers over the input tokens.",
+        "page_idx": 0,
+    },
+]
+
+
+class StubMineruParser:
+    """Stand-in parser so an upload can finish without the MinerU service."""
+
+    def __init__(self, content_list: list[dict] | None = None) -> None:
+        self.content_list = content_list or MINIMAL_CONTENT_LIST
+        self.calls = 0
+
+    def parse(self, *, pdf_path: Path):
+        from app.literature_support.importing.mineru import MineruArtifact
+
+        self.calls += 1
+        return MineruArtifact(
+            content_list=self.content_list,
+            markdown="# Parsed",
+            images={},
+            version="stub",
+        )
+
+
+class StubEmbeddingAdapter:
+    """Stand-in embedding provider returning fixed vectors."""
+
+    name = "stub"
+    is_configured = True
+
+    def __init__(self) -> None:
+        self.model = settings.embedding_model
+        self.documents: list[str] = []
+
+    @property
+    def dimensions(self) -> int:
+        return settings.embedding_dimensions
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        self.documents.extend(texts)
+        return [[0.1] * self.dimensions for _ in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [0.1] * self.dimensions
+
+
+@pytest.fixture
+def make_user(session_factory: sessionmaker[Session]) -> Callable[[str], UUID]:
+    """Insert a user directly; tests that only need ownership never log in."""
+
+    def _make(email: str = "reader@example.com") -> UUID:
+        from app.auth.repo import UserRecord
+
+        with session_factory() as session:
+            user = UserRecord(
+                email=email, password_hash="x", display_name="Reader"
+            )
+            session.add(user)
+            session.commit()
+            return user.id
+
+    return _make
+
+
+@pytest.fixture
+def completed_imports(
+    client: TestClient,
+    session_factory: sessionmaker[Session],
+    storage: ObjectStorage,
+    monkeypatch,
+) -> StubMineruParser:
+    """Make a submitted request finish its download and run inline.
+
+    Both queues are drained synchronously with stand-in providers, so an API test
+    can assert on the outcome without a background process.
+    """
+    from app.imports.depends import get_pdf_locator
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+    from app.literature_support.scholar.metadata import build_default_resolver
+    from app.literature_support.scholar.pdf_fetch import PdfFetcher
+    from app.pipelines.domain import RunStage
+    from app.pipelines.download import DownloadService
+    from app.pipelines.pipeline import RunPipeline
+    from app.pipelines.repo import DownloadRepository, RunRepository
+    from app.platform.tasks import InlineTaskScheduler
+
+    def _enricher(resolver):
+        from app.literature_support.scholar.enrichment import MetadataEnricher
+
+        return MetadataEnricher(
+            storage=storage, resolver=resolver, session_factory=session_factory
+        )
+
+    def _default_pdf_locator():
+        from types import SimpleNamespace
+
+        # Provider-backed source discovery is explicitly supplied by tests
+        # that cover it; an unrelated fixture must never reach the network.
+        return SimpleNamespace(find=lambda doi: [])
+
+    mineru = StubMineruParser()
+    embeddings = StubEmbeddingAdapter()
+
+    def downloader() -> DownloadService:
+        """Reads the test's overrides, so a case can swap the fetcher."""
+        overrides = client.app.dependency_overrides
+
+        def pick(key, fallback):
+            factory = overrides.get(key)
+            return factory() if factory is not None else fallback()
+
+        resolver = pick(get_metadata_resolver, build_default_resolver)
+        return DownloadService(
+            session_factory=session_factory,
+            storage=storage,
+            fetcher=pick(
+                get_pdf_fetcher,
+                lambda: PdfFetcher(max_bytes=settings.max_pdf_bytes),
+            ),
+            resolver=resolver,
+            locator=pick(get_pdf_locator, _default_pdf_locator),
+            enrichment=_enricher(resolver),
+        )
+
+    def pipeline() -> RunPipeline:
+        return RunPipeline(
+            scheduler=InlineTaskScheduler(),
+            session_factory=session_factory,
+            storage=storage,
+            mineru=mineru,
+            embeddings=embeddings,
+        )
+
+    def run_worker() -> None:
+        """Drain both queues the way the worker process does."""
+        downloads = downloader()
+        while (download_id := downloads.claim_next()) is not None:
+            downloads.run(download_id)
+        runs = pipeline()
+        for stage in (RunStage.PARSE, RunStage.CHUNK, RunStage.EMBED):
+            while True:
+                with session_factory() as session:
+                    claim = RunRepository(session).claim_next(
+                        stage=stage, lease_seconds=300
+                    )
+                if claim is None:
+                    break
+                runs.run_sync(claim[0], stage=stage, token=claim[1])
+
+    # A submitted request only records intent; the worker does the rest. The
+    # wrapper keeps the API contract identical while running that worker now.
+    from app.imports import service as import_service_module
+
+    original_start = import_service_module.ImportService.start
+
+    def start_then_work(self, *, user_id, identifier_text, project_id=None):
+        download = original_start(
+            self,
+            user_id=user_id,
+            identifier_text=identifier_text,
+            project_id=project_id,
+        )
+        run_worker()
+        with session_factory() as session:
+            return DownloadRepository(session).get(download.id) or download
+
+    monkeypatch.setattr(
+        import_service_module.ImportService, "start", start_then_work
+    )
+
+    # An upload joins its run in the request; run it right away so the entry
+    # exists by the time the response reaches the test.
+    from app.library import service as library_service_module
+
+    original_upload = library_service_module.PaperLibraryService.upload_pdf
+
+    def upload_then_work(self, *, user_id, filename, stream, project_id=None):
+        run = original_upload(
+            self,
+            user_id=user_id,
+            filename=filename,
+            stream=stream,
+            project_id=project_id,
+        )
+        run_worker()
+        return run
+
+    monkeypatch.setattr(
+        library_service_module.PaperLibraryService, "upload_pdf", upload_then_work
+    )
+    return mineru
+
+
+@pytest.fixture(autouse=True)
+def stop_metadata_pool() -> Iterator[None]:
+    """Region: background metadata lookups must not outlive a test."""
+    yield
+    from app.literature_support.scholar.enrichment import shutdown_pool
+
+    shutdown_pool()
+
+
 @pytest.fixture
 def api_prefix() -> str:
     return settings.api_prefix
@@ -426,5 +632,7 @@ def register_user(
 
     return _register
 
+
+os.environ.setdefault("TZ", "UTC")
 
 os.environ.setdefault("TZ", "UTC")

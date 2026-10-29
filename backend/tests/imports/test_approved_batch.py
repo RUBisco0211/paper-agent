@@ -1,16 +1,17 @@
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
-from app.imports.repo import PaperImportRecord
+from app.pipelines.domain import DownloadStatus
+from app.pipelines.repo import DownloadRecord
 from app.platform.config import settings
 from app.platform.security import create_candidate_token
 from tests.conftest import auth_headers
 
 
 def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     owner = register_user(email="approved-batch-owner@example.com")
     session_id = str(uuid4())
@@ -51,7 +52,9 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
 
     def fake_start(self, *, user_id, identifier_text, project_id=None):
         imports.append(identifier_text)
-        return SimpleNamespace(id=uuid4(), identifier=identifier_text, status="queued")
+        return SimpleNamespace(
+            id=uuid4(), identifier=identifier_text, status=DownloadStatus.PENDING
+        )
 
     monkeypatch.setattr(ImportService, "start", fake_start)
     payload = {"user_id": owner["user"]["id"], "session_id": session_id}
@@ -71,8 +74,63 @@ def test_approved_batch_imports_only_selected_candidates_once_when_user_confirms
     assert first.json() == second.json()
 
 
+def test_approved_download_joins_the_project_when_the_session_is_project_scoped(
+    client, api_prefix, register_user, monkeypatch, completed_imports, make_pdf
+):
+    from app.library.depends import get_metadata_resolver, get_pdf_fetcher
+    from app.literature_support.scholar.metadata import (
+        MetadataResolver,
+        ProviderMetadata,
+    )
+    from tests.library.test_pdf_and_metadata import FakePdfFetcher, FakeProvider
+
+    owner = register_user(email="project-batch@example.com")
+    headers = auth_headers(owner["access_token"])
+    project = client.post(
+        f"{api_prefix}/projects", headers=headers, json={"name": "Reading"}
+    ).json()["id"]
+    session_id = str(uuid4())
+    bound = client.post(
+        f"{api_prefix}/session-bindings",
+        headers=headers,
+        json={"session_id": session_id, "project_id": project},
+    )
+    assert bound.status_code in (200, 201)
+    token = create_candidate_token(
+        user_id=owner["user"]["id"],
+        session_id=session_id,
+        openalex_id="https://openalex.org/W1",
+        identifier="10.1234/project",
+    )
+    client.app.dependency_overrides[get_metadata_resolver] = lambda: MetadataResolver(
+        [
+            FakeProvider(
+                ProviderMetadata(source="fake", pdf_url="https://example.org/p.pdf")
+            )
+        ]
+    )
+    client.app.dependency_overrides[get_pdf_fetcher] = lambda: FakePdfFetcher(
+        make_pdf()
+    )
+    approval = client.post(
+        f"{api_prefix}/imports/approvals",
+        headers=headers,
+        json={"session_id": session_id, "candidate_tokens": [token]},
+    )
+    assert approval.status_code == 201
+    monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
+    result = client.post(
+        f"{api_prefix}/internal/import-approved",
+        headers={"X-Agent-Internal-Key": "a" * 64},
+        json={"user_id": owner["user"]["id"], "session_id": session_id},
+    )
+    assert result.status_code == 200, result.text
+    members = client.get(f"{api_prefix}/projects/{project}/papers", headers=headers)
+    assert members.json()["total"] == 1
+
+
 def test_another_user_cannot_approve_a_discovered_candidate(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="approved-batch-owner-2@example.com")
     stranger = register_user(email="approved-batch-stranger@example.com")
@@ -103,7 +161,7 @@ def test_another_user_cannot_approve_a_discovered_candidate(
 
 
 def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(
-    client: TestClient, api_prefix: str, register_user
+    client: TestClient, api_prefix: str, register_user, completed_imports
 ) -> None:
     owner = register_user(email="approved-semantic-scholar@example.com")
     session_id = str(uuid4())
@@ -127,19 +185,24 @@ def test_user_can_approve_a_semantic_scholar_candidate_with_a_doi(
 
 
 def test_import_queue_contains_only_the_current_users_imports(
-    client: TestClient, api_prefix: str, register_user, db_session
+    client: TestClient, api_prefix: str, register_user, db_session, completed_imports
 ) -> None:
     owner = register_user(email="queue-owner@example.com")
     stranger = register_user(email="queue-stranger@example.com")
-    db_session.add_all([
-        PaperImportRecord(
-            user_id=user["user"]["id"], identifier_type="doi",
-            identifier=identifier, status="queued",
-        )
-        for user, identifier in (
-            (owner, "10.1234/owner"), (stranger, "10.1234/stranger")
-        )
-    ])
+    db_session.add_all(
+        [
+            DownloadRecord(
+                user_id=UUID(user["user"]["id"]),
+                identifier_type="doi",
+                identifier=identifier,
+                status="pending",
+            )
+            for user, identifier in (
+                (owner, "10.1234/owner"),
+                (stranger, "10.1234/stranger"),
+            )
+        ]
+    )
     db_session.commit()
     response = client.get(
         f"{api_prefix}/imports/queue",
@@ -152,7 +215,7 @@ def test_import_queue_contains_only_the_current_users_imports(
 
 
 def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
-    client: TestClient, api_prefix: str, register_user, monkeypatch
+    client: TestClient, api_prefix: str, register_user, monkeypatch, completed_imports
 ) -> None:
     owner = register_user(email="approved-real-import@example.com")
     session_id = str(uuid4())
@@ -162,7 +225,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"session_id": session_id},
     )
     token = create_candidate_token(
-        user_id=owner["user"]["id"], session_id=session_id,
+        user_id=owner["user"]["id"],
+        session_id=session_id,
         openalex_id="https://openalex.org/W7148549932",
         identifier="10.48550/arXiv.2604.00722",
     )
@@ -172,9 +236,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"session_id": session_id, "candidate_tokens": [token]},
     )
     assert approval.status_code == 201
-    from app.imports.service import ImportService
-
-    monkeypatch.setattr(ImportService, "_run_sync", lambda self, import_id: None)
+    # The batch only records the requests; the worker owns fetching them, so
+    # without a worker the downloads stay pending.
     monkeypatch.setattr(settings, "agent_internal_key", "a" * 64)
     result = client.post(
         f"{api_prefix}/internal/import-approved",
@@ -182,4 +245,8 @@ def test_approved_batch_starts_a_real_import_when_the_agent_consumes_it(
         json={"user_id": owner["user"]["id"], "session_id": session_id},
     )
     assert result.status_code == 200
-    assert result.json()["results"][0]["status"] == "queued"
+    # The batch only records the request. Whether the worker then succeeds is
+    # the queue's business, so the result only has to name the request.
+    # The arXiv DOI is normalized to the arXiv id it names.
+    assert result.json()["results"][0]["identifier"] == "2604.00722"
+    assert result.json()["results"][0]["download_id"]
