@@ -47,6 +47,10 @@ class S3ObjectStorage:
             region_name=region,
             config=BotoConfig(
                 s3={"addressing_style": addressing_style},
+                # botocore defaults to 10 pooled connections per client. The
+                # API thread pool alone can issue more than that, and a full
+                # pool discards connections instead of waiting, so raise it.
+                max_pool_connections=32,
                 retries={"max_attempts": 3, "mode": "standard"},
             ),
         )
