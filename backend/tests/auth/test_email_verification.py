@@ -98,6 +98,19 @@ def test_email_code_creates_verified_account_when_code_is_correct(
     assert user.email_verified_at >= before
 
 
+@pytest.mark.parametrize("email", ["reader@example.com", "Reader@Example.com"])
+def test_registration_code_returns_conflict_when_email_is_already_registered(
+    request_code, make_user, auth_emails, email_verification_store, email
+):
+    make_user()
+    response = request_code(email)
+    assert response.status_code == 409
+    assert response.json()["code"] == "email_already_registered"
+    assert not auth_emails
+    store = email_verification_store
+    assert not list(store.redis.scan_iter(match=store.namespace + ":*"))
+
+
 def test_challenge_stores_no_plaintext_code_when_email_is_requested(
     request_code, auth_emails, email_verification_store
 ):

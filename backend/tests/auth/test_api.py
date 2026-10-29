@@ -69,17 +69,12 @@ def test_login_rejects_wrong_credentials_and_unknown_email(
     assert unknown_email.json()["code"] == "invalid_credentials"
 
 
-def test_duplicate_email_is_rejected(
+def test_registration_returns_conflict_when_email_is_registered_after_verification(
     client: TestClient,
     api_prefix: str,
-    register_user,
-    email_verification_store,
+    make_user,
     auth_emails,
 ) -> None:
-    register_user()
-    store = email_verification_store
-    for key in store.redis.scan_iter(match=store.namespace + ":cooldown:*"):
-        store.redis.delete(key)
     requested = client.post(
         f"{api_prefix}/auth/email-codes",
         json={"email": "READER@example.com", "purpose": "register"},
@@ -94,6 +89,7 @@ def test_duplicate_email_is_rejected(
         },
     )
     assert verified.status_code == 200
+    make_user()
     second = client.post(
         f"{api_prefix}/auth/register",
         json={

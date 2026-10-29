@@ -97,6 +97,11 @@ class AuthService:
     def request_email_code(self, *, email: str, purpose: str, ip: str) -> str:
         email = normalize_email(email)
         credential = self._repository.get_credential_by_email(email)
+        if purpose == "register" and credential is not None:
+            raise ConflictError(
+                "该邮箱已注册",
+                code=ErrorCode.EMAIL_ALREADY_REGISTERED,
+            )
         eligible = purpose == "register" or credential is not None
         version = (
             hashlib.sha256(credential.password_hash.encode()).hexdigest()
