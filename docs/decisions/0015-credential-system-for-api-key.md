@@ -7,7 +7,7 @@
 
 ## DECISION
 
-LLM API Key 使用 AgentScope Credential API，服务端持有并跨会话按归属引用；会话模型配置仅持有 `credential_id` 与模型名。业务注册的 JSON Schema 限定凭据类型、模型目录与 Base URL 白名单，浏览器不能指定任意请求目标。列表与更新响应不回传明文 Key；Key 不进入日志、对象存储或任务队列。
+LLM API Key 使用 AgentScope Credential API，服务端持有并跨会话按归属引用；会话模型配置仅持有 `credential_id` 与模型名。业务注册的 JSON Schema 限定凭据类型、模型目录与 Base URL 白名单，浏览器不能指定任意请求目标；省略或显式传入空值时使用服务端注册地址，未配置时沿用凭据类型默认值。列表与更新响应不回传明文 Key；Key 不进入日志、对象存储或任务队列。
 
 AgentScope SQL 存储适配层在写入前加密 API Key，模型装配时按归属解密。agent_service 持有一个独立随机主密钥，以用户 ID 派生对称密钥，并将用户与凭据 ID 绑定进密文认证。主密钥不入数据库或浏览器；本地首次生成并持久保存，生产从受限密钥文件或环境配置读取。已有密文而主密钥丢失时明确失败，不自动重建。
 

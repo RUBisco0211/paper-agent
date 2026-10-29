@@ -193,10 +193,11 @@ def test_materialize_yields_a_readable_file(storage) -> None:
     assert storage.read_bytes(key) == b"%PDF-1.7 mine"
 
 
+@pytest.mark.parametrize(
+    "storage", ["s3"] + (["s3-live"] if LIVE else []), indirect=True
+)
 def test_s3_materialize_copies_to_a_temporary_file(storage) -> None:
     """S3 没有本地路径：下载到临时文件，退出即删除。"""
-    if isinstance(storage, LocalObjectStorage):
-        pytest.skip("本地实现是零拷贝，见 test_local_materialize_is_zero_copy")
     key = paper_pdf_key("9" * 64)
     storage.put_bytes(key, b"%PDF-1.7 staged")
 
