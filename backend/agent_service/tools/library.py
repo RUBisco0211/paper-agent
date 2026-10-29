@@ -2,7 +2,7 @@
 
 from agentscope.tool import ToolBase
 
-from .base import PaperReadTool
+from .base import PaperImageTool, PaperReadTool
 from .request import business_request
 
 
@@ -44,7 +44,50 @@ def build_library_tools(user_id: str, session_id: str) -> list[ToolBase]:
             },
         )
 
+    async def read_paper(paper_id: str, page: int) -> dict:
+        """Read one page of a paper's parsed full text.
+
+        Use this only when a search does not answer the question, when you need
+        continuous context around an excerpt, or when the user names a specific
+        paper or page. The page text is for understanding: it carries no
+        citation ID, so never cite it directly and never invent one. Cite only
+        evidence returned by search_papers. Figures on the page are listed with
+        their block ids; read one with read_paper_image.
+        """
+        return await business_request(
+            "POST",
+            "paper-page",
+            json={
+                "user_id": user_id,
+                "session_id": session_id,
+                "paper_id": paper_id,
+                "page": page,
+            },
+        )
+
+    async def read_paper_image(paper_id: str, block_id: int) -> dict:
+        """Read one figure or chart that a page read listed.
+
+        Pass the paper id and the block id printed in the page text. You get
+        the caption and page, and the picture itself when the current model can
+        view images. Read one image at a time unless the user asks for more.
+        """
+        return await business_request(
+            "POST",
+            "paper-image",
+            json={
+                "user_id": user_id,
+                "session_id": session_id,
+                "paper_id": paper_id,
+                "block_id": block_id,
+            },
+        )
+
     return [
         PaperReadTool(func, is_read_only=True, is_concurrency_safe=True)
-        for func in (list_papers, search_papers)
+        for func in (list_papers, search_papers, read_paper)
+    ] + [
+        PaperImageTool(
+            read_paper_image, is_read_only=True, is_concurrency_safe=True
+        )
     ]

@@ -28,6 +28,44 @@ class QuoteReferenceResolved(BaseModel):
     image_media_type: str | None = None
 
 
+class PaperPageRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    paper_id: UUID
+    page: int = Field(ge=1)
+
+
+class PageImageRead(BaseModel):
+    block_id: int
+    caption: str | None = None
+
+
+class PaperPageRead(BaseModel):
+    title: str | None
+    page: int
+    total_pages: int
+    markdown: str
+    images: list[PageImageRead]
+    truncated: bool
+    partial_block_id: int | None = None
+    omitted_block_ids: list[int]
+
+
+class PaperImageRequest(BaseModel):
+    user_id: UUID
+    session_id: UUID
+    paper_id: UUID
+    block_id: int = Field(ge=0)
+
+
+class PaperImageRead(BaseModel):
+    title: str | None
+    page: int
+    caption: str | None = None
+    image_base64: str
+    image_media_type: str
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     scope: SearchScope = SearchScope.LIBRARY

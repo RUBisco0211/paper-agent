@@ -71,7 +71,14 @@ def get_paper_library_service(
     enrichment: MetadataEnricherDep,
     storage: StorageDep,
 ) -> PaperLibraryService:
-    return PaperLibraryService(papers, runs, enrichment, storage)
+    return PaperLibraryService(
+        papers,
+        runs,
+        enrichment,
+        storage,
+        page_max_chars=settings.paper_page_max_chars,
+        image_max_bytes=settings.paper_image_max_bytes,
+    )
 
 
 PaperLibraryServiceDep = Annotated[

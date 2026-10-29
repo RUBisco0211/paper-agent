@@ -20,6 +20,10 @@ from .schemas import (
     BoundSearchResponse,
     ChannelRead,
     EvidenceRead,
+    PaperImageRead,
+    PaperImageRequest,
+    PaperPageRead,
+    PaperPageRequest,
     QuoteReferenceResolved,
     QuoteReferenceResolveRequest,
     SearchRequest,
@@ -99,6 +103,38 @@ def list_bound_papers(
     )
     return BoundListResponse.model_validate(
         {"scope": scope, "total": total, "papers": papers}
+    )
+
+
+@router.post("/internal/paper-page", response_model=PaperPageRead)
+def read_bound_paper_page(
+    payload: PaperPageRequest,
+    _auth: AgentInternalAuth,
+    service: BoundPaperServiceDep,
+) -> PaperPageRead:
+    return PaperPageRead(
+        **service.read_page(
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            user_paper_id=payload.paper_id,
+            page=payload.page,
+        )
+    )
+
+
+@router.post("/internal/paper-image", response_model=PaperImageRead)
+def read_bound_paper_image(
+    payload: PaperImageRequest,
+    _auth: AgentInternalAuth,
+    service: BoundPaperServiceDep,
+) -> PaperImageRead:
+    return PaperImageRead(
+        **service.read_image(
+            user_id=payload.user_id,
+            session_id=payload.session_id,
+            user_paper_id=payload.paper_id,
+            block_id=payload.block_id,
+        )
     )
 
 

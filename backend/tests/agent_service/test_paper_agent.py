@@ -29,6 +29,8 @@ def test_paper_agent_exposes_bound_read_tools_when_defaults_exist() -> None:
     } == {
         "list_papers",
         "search_papers",
+        "read_paper",
+        "read_paper_image",
         "web_search",
         "web_fetch",
         "web_extract_excerpt",

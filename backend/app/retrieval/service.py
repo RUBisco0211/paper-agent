@@ -13,7 +13,8 @@ from app.literature_support.evidence.ranking import (
 )
 
 from ..library.repo import PaperRepository
-from ..library.service import PaperLibraryService
+from ..library.service import LibraryEntry, PaperLibraryService
+from ..platform.config import settings
 from ..platform.errors import ErrorCode, NotFoundError
 from ..projects.repo import ProjectRepository
 from ..retrieval.ports import EmbeddingAdapter
@@ -30,6 +31,11 @@ from .repo import ChunkRepository
 
 #: Builds one user's query adapter, or ``None`` when they saved no key.
 SearchEmbeddingFactory = Callable[[UUID], EmbeddingAdapter | None]
+
+#: Image media types a browser quote preview or an agent read may return.
+IMAGE_MEDIA_TYPES = frozenset(
+    {"image/png", "image/jpeg", "image/webp", "image/gif"}
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -125,6 +131,58 @@ class BoundPaperService:
         self._library = library
         self._projects = projects
 
+    def _require_scoped_entry(
+        self, *, user_id: UUID, session_id: UUID, user_paper_id: UUID
+    ) -> LibraryEntry:
+        """Reject a paper the bound session may not read."""
+        binding = self._bindings.require(session_id=session_id, user_id=user_id)
+        entry = self._library.get_entry(user_id=user_id, user_paper_id=user_paper_id)
+        if entry is None or (
+            binding.project_id is not None
+            and user_paper_id not in self._projects.paper_ids_of(binding.project_id)
+        ):
+            raise NotFoundError("文献不在当前会话范围", code=ErrorCode.PAPER_NOT_FOUND)
+        return entry
+
+    def read_page(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        user_paper_id: UUID,
+        page: int,
+    ) -> dict:
+        """Read one PDF page; the page text is not registered as a citation."""
+        self._require_scoped_entry(
+            user_id=user_id, session_id=session_id, user_paper_id=user_paper_id
+        )
+        return self._library.read_page(
+            user_id=user_id, user_paper_id=user_paper_id, page=page
+        )
+
+    def read_image(
+        self,
+        *,
+        user_id: UUID,
+        session_id: UUID,
+        user_paper_id: UUID,
+        block_id: int,
+    ) -> dict:
+        """Read one image block, already listed by a page read."""
+        entry = self._require_scoped_entry(
+            user_id=user_id, session_id=session_id, user_paper_id=user_paper_id
+        )
+        image = self._library.read_image(
+            user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
+        )
+        return {
+            "title": entry.paper.title if entry.paper else None,
+            "page": image["page"],
+            "caption": image["caption"],
+            "image_base64": base64.b64encode(image["payload"]).decode("ascii"),
+            "image_media_type": image["media_type"],
+        }
+
     def resolve_quote(
         self,
         *,
@@ -140,13 +198,9 @@ class BoundPaperService:
         selected_text: str,
         include_image: bool = False,
     ) -> dict:
-        binding = self._bindings.require(session_id=session_id, user_id=user_id)
-        entry = self._library.get_entry(user_id=user_id, user_paper_id=user_paper_id)
-        if entry is None or (
-            binding.project_id is not None
-            and user_paper_id not in self._projects.paper_ids_of(binding.project_id)
-        ):
-            raise NotFoundError("文献不在当前会话范围", code=ErrorCode.PAPER_NOT_FOUND)
+        entry = self._require_scoped_entry(
+            user_id=user_id, session_id=session_id, user_paper_id=user_paper_id
+        )
         if kind == "parsed_block":
             if version != self._library.artifact_cache_version(
                 user_id=user_id, user_paper_id=user_paper_id
@@ -173,12 +227,10 @@ class BoundPaperService:
                 payload, media_type = self._library.get_block_image(
                     user_id=user_id, user_paper_id=user_paper_id, block_id=block_id
                 )
-                if len(payload) > 5 * 1024 * 1024 or media_type not in {
-                    "image/png",
-                    "image/jpeg",
-                    "image/webp",
-                    "image/gif",
-                }:
+                if (
+                    len(payload) > settings.paper_image_max_bytes
+                    or media_type not in IMAGE_MEDIA_TYPES
+                ):
                     raise ValueError("image_unsupported")
                 return {
                     "title": entry.paper.title if entry.paper else None,

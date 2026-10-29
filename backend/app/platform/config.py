@@ -193,6 +193,12 @@ class Settings(BaseSettings):
     max_evidence_chunks: int = 12
     max_evidence_per_paper: int = 4
     evidence_max_chars: int = 2500
+    # A whole PDF page read by the agent; pages are never split further.
+    # Measured parsed pages run 4.2k chars at the median and 9.1k at the peak,
+    # so the budget covers a dense page instead of dropping its tail.
+    paper_page_max_chars: int = 12000
+    # One picture handed to a multimodal model; larger files are refused.
+    paper_image_max_bytes: int = 5 * 1024 * 1024
 
     # Chunking
     chunk_token_num: int = 512

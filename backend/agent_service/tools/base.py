@@ -1,10 +1,18 @@
 """Permission types for the project's explicit agent tool allowlist."""
 
+import inspect
+import json
 from collections.abc import Awaitable, Callable
 from typing import cast
 
+from agentscope.message import Base64Source, DataBlock, TextBlock
 from agentscope.permission import PermissionBehavior, PermissionDecision
-from agentscope.tool import Function, FunctionTool, ToolMiddlewareBase
+from agentscope.tool import (
+    Function,
+    FunctionTool,
+    ToolChunk,
+    ToolMiddlewareBase,
+)
 
 
 class PaperReadTool(FunctionTool):
@@ -33,6 +41,38 @@ class PaperReadTool(FunctionTool):
         return PermissionDecision(
             behavior=PermissionBehavior.ALLOW,
             message="Session-bound read tool allowed.",
+        )
+
+
+class PaperImageTool(PaperReadTool):
+    """Return a figure as an image only when the current model can see one.
+
+    A text-only model cannot use base64 data, and AgentScope would otherwise
+    write the picture to a temporary file the agent has no tools to open. The
+    caption and page are always returned.
+    """
+
+    supports_images: bool = False
+
+    async def call(self, **kwargs) -> ToolChunk:
+        result = self._func(**kwargs)
+        if inspect.isawaitable(result):
+            result = await result
+        image = result.pop("image_base64", None)
+        media_type = result.pop("image_media_type", None)
+        if not self.supports_images or not image or not media_type:
+            result["note"] = (
+                "The current model cannot view images, so only the caption "
+                "and page are provided."
+            )
+            return ToolChunk(
+                content=[TextBlock(text=json.dumps(result, ensure_ascii=False))]
+            )
+        return ToolChunk(
+            content=[
+                TextBlock(text=json.dumps(result, ensure_ascii=False)),
+                DataBlock(source=Base64Source(data=image, media_type=media_type)),
+            ]
         )
 
 

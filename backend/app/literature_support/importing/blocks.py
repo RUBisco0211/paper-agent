@@ -25,7 +25,7 @@ def build_block_index(content_list: list[dict]) -> dict:
             if block_type in {"equation", "formula", "equation_interline"}
             else None
         )
-        image_path = _image_path(block)
+        image_path = image_path_of(block)
         bbox = _rectangle(block.get("bbox"))
         page_size = _size(block.get("page_size"))
         coordinate_system = "page" if page_size else None
@@ -79,7 +79,8 @@ def _formula(block: dict) -> str | None:
     return str(raw)[:4000] if isinstance(raw, str) and raw.strip() else None
 
 
-def _image_path(block: dict) -> str | None:
+def image_path_of(block: dict) -> str | None:
+    """Return the block's image path when it points at a readable picture."""
     raw = block.get("img_path")
     if not raw and isinstance(block.get("content"), dict):
         source = block["content"].get("image_source")

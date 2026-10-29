@@ -21,6 +21,7 @@ class ModelOption:
     label: str
     context_size: int | None
     reasoning_efforts: tuple[str, ...]
+    supports_vision: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,7 @@ def model_catalog() -> tuple[ProviderOption, ...]:
                 label=card.label,
                 context_size=card.context_size,
                 reasoning_efforts=_reasoning_efforts(card.parameter_schema),
+                supports_vision=_supports_vision(card),
             )
             for card in model_class.list_models()
             if card.status == "active"
@@ -85,6 +87,11 @@ def reasoning_effort_is_available(
         )
         for item in model_catalog()
     )
+
+
+def _supports_vision(card) -> bool:
+    """A card accepts images when it lists an image media type."""
+    return any(str(item).startswith("image/") for item in card.input_types)
 
 
 def _reasoning_efforts(schema: dict | None) -> tuple[str, ...]:

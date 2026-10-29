@@ -10,6 +10,7 @@ class LlmModelRead(BaseModel):
     label: str
     context_size: int | None = None
     reasoning_efforts: list[str] = []
+    supports_vision: bool = False
 
 
 class LlmProviderRead(BaseModel):
@@ -34,6 +35,7 @@ def to_llm_catalog(providers: tuple[ProviderOption, ...]) -> LlmCatalogResponse:
                         label=model.label,
                         context_size=model.context_size,
                         reasoning_efforts=list(model.reasoning_efforts),
+                        supports_vision=model.supports_vision,
                     )
                     for model in provider.models
                 ],

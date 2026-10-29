@@ -9,16 +9,24 @@ from uuid import UUID
 import structlog
 
 from app.literature_support.importing.blocks import (
+    block_full_text,
     build_block_index,
+    image_path_of,
     normalize_image_path,
 )
+from app.literature_support.importing.pages import build_page, count_pages
 from app.literature_support.importing.pdf import ensure_pdf_magic, inspect_pdf
 from app.literature_support.importing.text import detect_identifiers
 from app.literature_support.scholar.identifiers import Identifier
 from app.pipelines.domain import Run
 
 from ..platform.config import settings as app_settings
-from ..platform.errors import AppError, ErrorCode, NotFoundError
+from ..platform.errors import (
+    AppError,
+    ErrorCode,
+    NotFoundError,
+    ValidationError,
+)
 from ..platform.storage import ObjectStorage, paper_pdf_key
 from .domain import (
     Capabilities,
@@ -64,6 +72,8 @@ class PaperLibraryService:
         *,
         max_pdf_bytes: int | None = None,
         max_pdf_pages: int | None = None,
+        page_max_chars: int | None = None,
+        image_max_bytes: int | None = None,
     ) -> None:
         self._papers = papers
         self._runs = runs
@@ -71,6 +81,8 @@ class PaperLibraryService:
         self._storage = storage
         self._max_pdf_bytes = max_pdf_bytes or app_settings.max_pdf_bytes
         self._max_pdf_pages = max_pdf_pages or app_settings.max_pdf_pages
+        self._page_max_chars = page_max_chars or app_settings.paper_page_max_chars
+        self._image_max_bytes = image_max_bytes or app_settings.paper_image_max_bytes
 
     # Uploads ---------------------------------------------------------------
     def list_blocks(
@@ -210,6 +222,110 @@ class PaperLibraryService:
     def _image_media_type(image_path: str) -> str:
         suffix = image_path.rsplit(".", 1)[-1].lower()
         return "image/jpeg" if suffix in {"jpg", "jpeg"} else f"image/{suffix}"
+
+    def read_page(
+        self, *, user_id: UUID, user_paper_id: UUID, page: int
+    ) -> dict:
+        """Render one PDF page of the parsed document for the agent reader."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.artifact_manifest_key:
+            raise NotFoundError(
+                "该文献还没有可读取的正文", code=ErrorCode.PAPER_NOT_FOUND
+            )
+        manifest, content = self._load_document(paper)
+        total_pages = count_pages(content)
+        if page < 1 or page > total_pages:
+            raise ValidationError(f"页码超出范围，该文献共 {total_pages} 页")
+        return {
+            "title": paper.title,
+            **build_page(
+                content,
+                page,
+                max_chars=self._page_max_chars,
+                unreadable_image_ids=self._unreadable_image_ids(manifest, content),
+            ),
+        }
+
+    def read_image(
+        self, *, user_id: UUID, user_paper_id: UUID, block_id: int
+    ) -> dict:
+        """Read one image block, identified by the page read that listed it."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.artifact_manifest_key:
+            raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        manifest, content = self._load_document(paper)
+        if (
+            block_id < 0
+            or block_id >= len(content)
+            or not isinstance(content[block_id], dict)
+        ):
+            raise NotFoundError("原文片段不存在", code=ErrorCode.PAPER_NOT_FOUND)
+        block = content[block_id]
+        image_path = image_path_of(block)
+        page_idx = block.get("page_idx")
+        if image_path is None or not isinstance(page_idx, int):
+            raise NotFoundError("该片段没有图片", code=ErrorCode.PAPER_NOT_FOUND)
+        part = self._manifest_part(manifest["files"], image_path)
+        if part is None:
+            raise NotFoundError("图片预览不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        payload = self._read_artifact_part(part)
+        if len(payload) > self._image_max_bytes:
+            raise ValidationError("该图片过大，无法读取")
+        return {
+            "page": page_idx + 1,
+            "caption": block_full_text(block) or None,
+            "payload": payload,
+            "media_type": self._image_media_type(image_path),
+        }
+
+    def _unreadable_image_ids(
+        self, manifest: dict, content: list[dict]
+    ) -> frozenset[int]:
+        """Blocks that look like pictures but cannot be served to the reader."""
+        unreadable = set()
+        for block_id, block in enumerate(content):
+            if not isinstance(block, dict):
+                continue
+            image_path = image_path_of(block)
+            if image_path is None:
+                continue
+            part = self._manifest_part(manifest["files"], image_path)
+            if part is None or part.get("bytes", 0) > self._image_max_bytes:
+                unreadable.add(block_id)
+        return frozenset(unreadable)
+
+    @staticmethod
+    def _manifest_part(files: dict, name: str) -> dict | None:
+        if name in files:
+            return files[name]
+        matches = [part for key, part in files.items() if key.endswith(f"/{name}")]
+        return matches[0] if len(matches) == 1 else None
+
+    def _load_document(self, paper: Paper) -> tuple[dict, list[dict]]:
+        """Read the manifest and parsed blocks once per page or image read."""
+        try:
+            manifest = json.loads(
+                self._storage.read_text(paper.artifact_manifest_key)
+            )
+            if manifest.get("file_hash") != paper.file_hash:
+                raise ValueError("artifact hash mismatch")
+            raw = self._read_artifact_part(manifest["files"]["content_list.json"])
+            content = json.loads(raw)
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献解析结果不可读取",
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+        if not isinstance(content, list) or not isinstance(manifest.get("files"), dict):
+            raise AppError(
+                "文献解析结果不可读取",
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
+                status_code=502,
+            )
+        return manifest, content
 
     def _read_artifact_part(self, part: dict) -> bytes:
         raw = self._storage.read_bytes(part["key"])

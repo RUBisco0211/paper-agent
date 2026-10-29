@@ -53,7 +53,9 @@ def test_system_prompt_excludes_file_instructions_when_runtime_supplies_workspac
         workspace = LocalWorkspace(workdir=str(tmp_path / "private-root"))
         agent = await make_agent(workspace)
         prompt = await agent._get_system_prompt()
-        assert prompt == "Use registered paper evidence."
+        assert prompt.startswith("Use registered paper evidence.")
+        assert "workspace" not in prompt.lower()
+        assert "scratch/" not in prompt
         assert agent.offloader is None
 
     asyncio.run(run())
