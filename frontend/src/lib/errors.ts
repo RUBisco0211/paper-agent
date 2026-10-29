@@ -13,6 +13,9 @@ export function describeError(error: unknown): string {
       return error.message || "请检查输入内容"
     }
     if (error.status === 401) {
+      if (error.code === "invalid_credentials") {
+        return "邮箱或密码不正确"
+      }
       return "登录态已失效，请重新登录"
     }
     if (error.status === 404) {
