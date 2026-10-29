@@ -6,6 +6,7 @@ from agent_service.quoted_chat import (
     MessageQuote,
     PaperQuote,
     QuotedChatRequest,
+    apply_mentions,
     image_model_unavailable,
     render_quoted_content,
     validate_message_quote,
@@ -105,3 +106,33 @@ def test_pdf_quote_shows_only_paper_and_page_as_source():
     assert "来源：文献《Example》第 2 页" in content
     assert "PDF 选区" not in content
     assert "未核对" not in content
+
+
+def test_mentioned_paper_becomes_a_title_and_id_inside_the_sentence():
+    text = "对比 @{{1}} 和 @{{2}} 的安全性做法"
+    rendered = apply_mentions(
+        text,
+        {
+            1: {
+                "title": "Safe and Scalable Multi-Drone Payload Transport",
+                "has_fulltext": True,
+                "user_paper_id": "11111111-1111-1111-1111-111111111111",
+            },
+            2: {
+                "title": "Beyond Safety Filtering",
+                "has_fulltext": False,
+                "user_paper_id": "22222222-2222-2222-2222-222222222222",
+            },
+        },
+    )
+
+    assert (
+        "@《Safe and Scalable Multi-Drone Payload Transport》"
+        "(paper:11111111-1111-1111-1111-111111111111)"
+    ) in rendered
+    assert "@《Beyond Safety Filtering》(paper:22222222-2222-2222-2222-222222222222)（待补全文）" in rendered
+    assert "@{{" not in rendered
+
+
+def test_quoted_content_omits_the_source_header_when_only_papers_are_mentioned():
+    assert render_quoted_content("只问一句", []) == "只问一句"

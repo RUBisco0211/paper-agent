@@ -190,8 +190,8 @@ class BoundPaperService:
         session_id: UUID,
         user_paper_id: UUID,
         kind: str,
-        version: str,
-        page: int,
+        version: str | None = None,
+        page: int | None = None,
         block_id: int | None,
         start: int | None,
         end: int | None,
@@ -201,6 +201,13 @@ class BoundPaperService:
         entry = self._require_scoped_entry(
             user_id=user_id, session_id=session_id, user_paper_id=user_paper_id
         )
+        if kind == "paper":
+            # An @-mentioned entry only needs its scope check and readable name;
+            # it locates nothing inside the paper.
+            return {
+                "title": entry.paper.title if entry.paper else None,
+                "has_fulltext": bool(entry.capabilities.has_parsed),
+            }
         if kind == "parsed_block":
             if version != self._library.artifact_cache_version(
                 user_id=user_id, user_paper_id=user_paper_id

@@ -13,8 +13,9 @@ from sqlalchemy.engine import make_url
 from app.platform.config import settings
 
 from .auth import get_agent_service_user_id
+from .chat_entry import router as chat_entry_router
+from .chat_entry import take_over_chat_route
 from .paper_agent import PaperAgent
-from .quoted_chat import router as quoted_chat_router
 from .schedule_api import router as tool_schedule_router
 from .schedule_notifications import ScheduleNotificationStorage
 from .session_name import router as session_name_router
@@ -48,6 +49,9 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
     # inject instructions about a writable directory, skills/ and scratch/ into
     # the system prompt and hand the agent Bash / Read / Write tools. Paper
     # Agent has none of those capabilities, so the binding grants nothing.
+    # The built-in /chat/ must be gone before the app includes its routers;
+    # ours lives at the same path and adds reference validation.
+    take_over_chat_route()
     app = create_app(
         storage=storage,
         message_bus=InMemoryMessageBus(),
@@ -58,7 +62,7 @@ def create_agent_service_app(database_url: str, workspace_root: Path) -> FastAPI
     )
     app.dependency_overrides[get_current_user_id] = get_agent_service_user_id
     app.include_router(tool_schedule_router)
-    app.include_router(quoted_chat_router)
+    app.include_router(chat_entry_router)
     app.include_router(session_name_router)
     if settings.cors_origins:
         app.add_middleware(

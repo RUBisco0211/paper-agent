@@ -12,7 +12,7 @@ export const chatApi = {
 	triggerQuoted: (body: {
 		agent_id: string; session_id: string; text: string;
 		references: import('@/types/chat').QuoteReference[];
-	}) => client.post<{ status: string; session_id: string; message_id: string }>('/quoted-chat/', body),
+	}) => client.post<{ status: string; session_id: string; message_id: string }>('/chat/', body),
 	/**
 	 * Trigger a chat run for the specified session.
 	 *

@@ -387,3 +387,70 @@ def test_image_read_refuses_a_picture_above_the_configured_size(
 
     assert response.status_code == 422
     assert response.json()["message"] == "该图片过大，无法读取"
+
+
+def test_paper_reference_resolves_title_and_state_when_it_is_in_scope(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    storage,
+    db_session,
+    completed_imports,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "agent_internal_key", INTERNAL_KEY)
+    user = register_user()
+    paper_id = _upload(
+        client, api_prefix, user["access_token"], make_pdf(page_count=2)
+    )
+    _seed_artifacts(db_session, storage, paper_id)
+    session_id = _bound_session(client, api_prefix, user["access_token"])
+
+    response = client.post(
+        f"{api_prefix}/internal/quote-reference/resolve",
+        headers={"X-Agent-Internal-Key": INTERNAL_KEY},
+        json={
+            "user_id": user["user"]["id"],
+            "session_id": session_id,
+            "kind": "paper",
+            "user_paper_id": paper_id,
+            "selected_text": "",
+            "comment": "",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["has_fulltext"] is True
+
+
+def test_paper_reference_is_rejected_when_the_paper_is_out_of_scope(
+    client: TestClient,
+    api_prefix: str,
+    register_user,
+    make_pdf,
+    completed_imports,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "agent_internal_key", INTERNAL_KEY)
+    owner = register_user(email="mention-owner@example.com")
+    stranger = register_user(email="mention-stranger@example.com")
+    paper_id = _upload(
+        client, api_prefix, stranger["access_token"], make_pdf(page_count=1)
+    )
+    session_id = _bound_session(client, api_prefix, owner["access_token"])
+
+    response = client.post(
+        f"{api_prefix}/internal/quote-reference/resolve",
+        headers={"X-Agent-Internal-Key": INTERNAL_KEY},
+        json={
+            "user_id": owner["user"]["id"],
+            "session_id": session_id,
+            "kind": "paper",
+            "user_paper_id": paper_id,
+            "selected_text": "",
+            "comment": "",
+        },
+    )
+
+    assert response.status_code == 404

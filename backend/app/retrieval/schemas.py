@@ -10,8 +10,9 @@ class QuoteReferenceResolveRequest(BaseModel):
     session_id: UUID
     kind: str
     user_paper_id: UUID
-    version: str
-    page: int = Field(ge=1)
+    # ``kind="paper"`` only needs the entry: the other kinds locate a fragment.
+    version: str | None = None
+    page: int | None = Field(default=None, ge=1)
     block_id: int | None = None
     start: int | None = None
     end: int | None = None
@@ -23,7 +24,8 @@ class QuoteReferenceResolveRequest(BaseModel):
 
 class QuoteReferenceResolved(BaseModel):
     title: str | None
-    page: int
+    page: int | None = None
+    has_fulltext: bool | None = None
     image_base64: str | None = None
     image_media_type: str | None = None
 
