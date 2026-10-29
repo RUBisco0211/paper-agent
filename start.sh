@@ -351,6 +351,8 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   step "启动后端 http://$BACKEND_HOST:$BACKEND_PORT"
   uv run uvicorn app.main:app \
     --host "$BACKEND_HOST" --port "$BACKEND_PORT" --reload \
+    --reload-dir app \
+    --timeout-graceful-shutdown 5 \
     >"$LOG_DIR/backend.log" 2>&1 &
   BACKEND_PID=$!
 
@@ -389,6 +391,8 @@ if [[ "$START_BACKEND" -eq 1 ]]; then
   step "启动 AgentScope 服务 http://$AGENT_SERVICE_HOST:$AGENT_SERVICE_PORT"
   uv run uvicorn agent_service.main:app \
     --host "$AGENT_SERVICE_HOST" --port "$AGENT_SERVICE_PORT" --reload \
+    --reload-dir agent_service \
+    --timeout-graceful-shutdown 5 \
     >"$LOG_DIR/agent-service.log" 2>&1 &
   AGENT_SERVICE_PID=$!
   if ! wait_for_tcp "$AGENT_SERVICE_HOST" "$AGENT_SERVICE_PORT" "$AGENT_SERVICE_PID"; then
