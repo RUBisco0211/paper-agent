@@ -31,8 +31,13 @@ class NoCapabilityWorkspace(WorkspaceBase):
     async def list_tools(self) -> list:
         return []
 
-    async def list_skills(self) -> list:
+    async def list_skills(self, *, agent_id: str | None = None) -> list:
         return []
 
-    async def list_mcps(self) -> list:
+    async def list_mcps(
+        self,
+        *,
+        agent_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list:
         return []

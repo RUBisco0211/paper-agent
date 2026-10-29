@@ -16,6 +16,7 @@ from agentscope.app.storage import (
     ScheduleData,
     ScheduleRecord,
 )
+from agentscope.app.message_bus import MessageBusKeys
 from agentscope.event import (
     ReplyEndEvent,
     ReplyStartEvent,
@@ -76,6 +77,12 @@ def test_scheduled_runs_persist_independent_results_when_no_tool_is_called(
 
     async def reply_stream(self, inputs=None):
         called.append(self.state.session_id)
+        # The real reasoning loop drains the inbox through InboxMiddleware;
+        # this stub must do the same or the run loop treats the scheduled
+        # wakeup as still pending and keeps replying.
+        await app.state.message_bus.queue_drain(
+            MessageBusKeys.inbox(self.state.session_id)
+        )
         reply_id, block_id = uuid4().hex, uuid4().hex
         yield ReplyStartEvent(
             session_id=self.state.session_id, reply_id=reply_id, name="Reader"

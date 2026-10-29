@@ -15,7 +15,7 @@ from uuid import uuid4
 from weakref import WeakValueDictionary
 
 import httpx
-from agentscope.app.storage import SessionSource
+from agentscope.app.storage import ScheduleOrigin, SessionSource
 from agentscope.app.storage._sql._tables import MessageRow, SessionRow
 from agentscope.message import Msg
 from agentscope.state import AgentState
@@ -126,8 +126,32 @@ class ScheduleNotificationStorage(EncryptedCredentialStorage):
         source_schedule_id=None,
         source_chat_id=None,
         source_channel_id=None,
+        **kwargs,
     ):
-        if source != SessionSource.SCHEDULE and session_id:
+        # AgentScope inserted ``origin`` before ``source`` and now passes a
+        # ``ScheduleOrigin`` instead of the flat ``source`` arguments, so the
+        # inherited call must name every argument and this override must read
+        # both shapes.
+        origin = kwargs.get("origin")
+        schedule_origin = origin if isinstance(origin, ScheduleOrigin) else None
+        is_schedule = schedule_origin is not None or source == SessionSource.SCHEDULE
+        inherited = {
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "config": config,
+            "state": state,
+            "session_id": session_id,
+            "source": source.value if isinstance(source, SessionSource) else source,
+            "source_schedule_id": (
+                schedule_origin.schedule_id
+                if schedule_origin is not None
+                else source_schedule_id
+            ),
+            "source_chat_id": source_chat_id,
+            "source_channel_id": source_channel_id,
+            **kwargs,
+        }
+        if not is_schedule and session_id:
             async with self._notification_lock(session_id):
                 saved = await self.get_session(user_id, agent_id, session_id)
                 if (
@@ -139,30 +163,12 @@ class ScheduleNotificationStorage(EncryptedCredentialStorage):
                     state.middle_context[_MARKER] = dict(
                         saved.state.middle_context[_MARKER]
                     )
-                return await super().upsert_session(
-                    user_id,
-                    agent_id,
-                    config,
-                    state,
-                    session_id,
-                    source,
-                    source_schedule_id,
-                    source_chat_id,
-                    source_channel_id,
-                )
-        if source != SessionSource.SCHEDULE:
-            return await super().upsert_session(
-                user_id,
-                agent_id,
-                config,
-                state,
-                session_id,
-                source,
-                source_schedule_id,
-                source_chat_id,
-                source_channel_id,
-            )
+                    inherited["state"] = state
+                return await super().upsert_session(**inherited)
+        if not is_schedule:
+            return await super().upsert_session(**inherited)
         session_id = session_id or uuid4().hex
+        inherited["session_id"] = session_id
         async with self._notification_lock(session_id):
             existing = await self.get_session(user_id, agent_id, session_id)
             state = (state or AgentState()).model_copy(deep=True)
@@ -176,17 +182,7 @@ class ScheduleNotificationStorage(EncryptedCredentialStorage):
                 "retry_at": 0,
             }
             state.middle_context[_MARKER] = dict(marker)
-            record = await super().upsert_session(
-                user_id,
-                agent_id,
-                config,
-                state,
-                session_id,
-                source,
-                source_schedule_id,
-                source_chat_id,
-                source_channel_id,
-            )
+            record = await super().upsert_session(**{**inherited, "state": state})
             if marker["status"] == "binding":
                 try:
                     await prepare_schedule_scope(self, user_id, agent_id, session_id)

@@ -29,7 +29,7 @@ class NoCapabilityWorkspaceManager(WorkspaceManagerBase):
             if workspace_id is None:
                 workspace_id = self._fallback_ids.get(identity)
             if workspace_id is None:
-                workspace_id = self.assign_workspace_id(
+                workspace_id = await self.assign_workspace_id(
                     user_id=user_id, agent_id=agent_id, session_id=session_id,
                 )
             self._fallback_ids[identity] = workspace_id

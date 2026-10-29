@@ -27,6 +27,7 @@ class SummaryModel:
         return SimpleNamespace(
             finished_reason="stop",
             content=dict.fromkeys(structured_model["properties"], "summary-sentinel"),
+            usage=None,
         )
 
 
