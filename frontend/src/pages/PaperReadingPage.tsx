@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, Info, LocateFixed, MessageSquarePlus, Minus, PanelRightClose, PanelRightOpen, Plus, RotateCcw } from "lucide-react"
+import { ArrowLeft, Copy, Info, LocateFixed, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { useEffect, useState } from "react"
 import { usePanelRef } from "react-resizable-panels"
 import katex from "katex"
@@ -7,6 +7,7 @@ import "katex/dist/katex.min.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { PaperDetailSheet } from "@/components/papers/PaperDetailSheet"
+import { ImageViewerDialog, type ImageViewerTarget } from "@/components/papers/ImageViewerDialog"
 import { normalizePdfQuoteRects } from "@/components/chat/quoteReferences"
 import type { PaperQuote } from "@/types/chat"
 import { PdfViewer, type PdfTarget } from "@/components/papers/PdfViewer"
@@ -14,7 +15,6 @@ import { useApi } from "@/components/providers/ApiProvider"
 import type { PaperBlock } from "@/types/business"
 import { describeError, notifyError, notifySuccess } from "@/lib/errors"
 import { Button } from "@/components/ui/Button"
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/Dialog"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/Resizable"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/Tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/Tooltip"
@@ -114,8 +114,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     return () => cancelAnimationFrame(frame)
   }, [panelOpen, blocksPanelRef])
   const [infoOpen, setInfoOpen] = useState(false)
-  const [imageViewer, setImageViewer] = useState<{ source: string; title: string } | null>(null)
-  const [imageZoom, setImageZoom] = useState(1)
+  const [imageViewer, setImageViewer] = useState<ImageViewerTarget | null>(null)
 
   const paper = useQuery({
     queryKey: ["paper", paperId],
@@ -246,7 +245,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
                   </span>
                 </div>
                 {block.has_image && (block.type === "image" || block.type === "chart" || (isFormula && !block.formula)) && <div className="px-3 pb-2">
-                  <BlockImagePreview paperId={paperId} block={block} onOpen={block.type === "image" || block.type === "chart" ? (source) => { setImageViewer({ source, title: block.type === "chart" ? "图表预览" : "图片预览" }); setImageZoom(1) } : undefined} />
+                  <BlockImagePreview paperId={paperId} block={block} onOpen={block.type === "image" || block.type === "chart" ? (source) => { setImageViewer({ source, title: block.type === "chart" ? "图表预览" : "图片预览", filename: `${block.type === "chart" ? "figure" : "image"}-p${block.page}-b${block.id}.png` }) } : undefined} />
                 </div>}
                 <div className="absolute right-1 top-1 flex items-center gap-0.5">
                   <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="定位分块" onClick={() => locateBlock(block)}><LocateFixed /></Button></TooltipTrigger><TooltipContent>定位原文</TooltipContent></Tooltip>
@@ -263,22 +262,6 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
       </>
     </ResizablePanelGroup>
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
-    <Dialog open={Boolean(imageViewer)} onOpenChange={(open) => { if (!open) setImageViewer(null) }}>
-      <DialogContent className="flex h-[92vh] w-[96vw] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none">
-        <div data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-2 border-b px-4 pr-12">
-          <DialogTitle className="min-w-0 flex-1 truncate">{imageViewer?.title}</DialogTitle>
-          <DialogDescription className="sr-only">放大或缩小图片以查看细节</DialogDescription>
-          <Button variant="ghost" size="icon-sm" aria-label="缩小图片" disabled={imageZoom <= 0.5} onClick={() => setImageZoom((value) => Math.max(0.5, value - 0.25))}><Minus /></Button>
-          <span className="min-w-10 text-center text-xs tabular-nums">{Math.round(imageZoom * 100)}%</span>
-          <Button variant="ghost" size="icon-sm" aria-label="放大图片" disabled={imageZoom >= 4} onClick={() => setImageZoom((value) => Math.min(4, value + 0.25))}><Plus /></Button>
-          <Button variant="ghost" size="icon-sm" aria-label="重置缩放" onClick={() => setImageZoom(1)}><RotateCcw /></Button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-muted/30 p-4">
-          <div className="flex min-h-full min-w-full items-center justify-center">
-            {imageViewer && <img src={imageViewer.source} alt={imageViewer.title} className="h-auto shrink-0 object-contain" style={{ width: imageZoom === 1 ? "auto" : `${imageZoom * 90}vw`, maxWidth: imageZoom === 1 ? "100%" : "none", maxHeight: imageZoom === 1 ? "calc(92vh - 5rem)" : "none" }} />}
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <ImageViewerDialog target={imageViewer} onOpenChange={setImageViewer} />
   </div>
 }

@@ -16,6 +16,7 @@ import { ReadRenderer } from './ReadRenderer';
 import { TaskCreateRenderer } from './TaskCreateRenderer';
 import { ListPapersRenderer } from './ListPapersRenderer';
 import { PaperSearchRenderer } from './PaperSearchRenderer';
+import { PaperPageRenderer, PaperImageRenderer } from './PaperReadRenderer';
 import { WebSearchRenderer } from './WebSearchRenderer';
 import { WebFetchRenderer, WebExcerptRenderer } from './WebPageRenderer';
 import { PaperDiscoveryRenderer } from './PaperDiscoveryRenderer';
@@ -33,6 +34,8 @@ const renderers: Record<string, ToolRenderer> = {
 	TaskCreate: TaskCreateRenderer,
 	list_papers: ListPapersRenderer,
 	search_papers: PaperSearchRenderer,
+	read_paper: PaperPageRenderer,
+	read_paper_image: PaperImageRenderer,
 	discover_papers: PaperDiscoveryRenderer,
 	web_search: WebSearchRenderer,
 	web_fetch: WebFetchRenderer,
