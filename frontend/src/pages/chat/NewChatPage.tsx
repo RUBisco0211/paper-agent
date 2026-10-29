@@ -15,6 +15,7 @@ import {
 import { describeError } from "@/lib/errors";
 import { chatApi } from "@/lib/api/agentscope/chat";
 import { TextInput } from "@/components/chat/TextInput";
+import { mentionMetadata, mentionPlaceholders, mentionRequest, type MentionCandidate } from "@/lib/mentions";
 import { Button } from "@/components/ui/Button";
 import {
   Select,
@@ -111,6 +112,23 @@ export function NewChatPage() {
     ? projects.data?.items.find((project) => project.id === projectId)
     : undefined;
 
+  const [mentions, setMentions] = useState<MentionCandidate[]>([]);
+  /** Mentions of the message being retried; the input has already been cleared. */
+  const sentMentions = useRef<MentionCandidate[]>([]);
+  const mentionCandidatesQuery = useQuery({
+    queryKey: ["mention-candidates", projectId || "library"],
+    queryFn: async () => {
+      const page = projectId
+        ? await api.projects.papers(projectId, { limit: 200 })
+        : await api.library.list({ limit: 200 });
+      return page.items.map((item) => ({
+        user_paper_id: item.id,
+        title: item.title || "未命名文献",
+      }));
+    },
+  });
+  const mentionCandidates = mentionCandidatesQuery.data ?? [];
+
   async function sendFirst(blocks: ContentBlock[], retry = false) {
     if (!selected || busy) return;
     setBusy(true);
@@ -120,13 +138,20 @@ export function NewChatPage() {
         retry && pendingMessage.current
           ? pendingMessage.current
           : UserMsg({ name: "user", content: blocks });
-      if (!retry && pendingQuotes.length) {
+      const body = blocks
+        .filter((block) => block.type === "text")
+        .map((block) => block.text)
+        .join("\n\n");
+      const rendered = mentionPlaceholders(
+        body,
+        retry ? sentMentions.current : mentions,
+      );
+      const mentionPayload = mentionRequest(rendered.mentions);
+      if (!retry && (pendingQuotes.length || mentionPayload.length)) {
         message.metadata = {
           paper_agent: {
-            body: blocks
-              .filter((block) => block.type === "text")
-              .map((block) => block.text)
-              .join("\n\n"),
+            body,
+            mentions: mentionMetadata(rendered.mentions),
             references: pendingQuotes.map((reference) =>
               reference.kind === "pdf_selection"
                 ? {
@@ -138,6 +163,7 @@ export function NewChatPage() {
           },
         };
       }
+      if (!retry) sentMentions.current = rendered.mentions;
       pendingMessage.current = message;
       const parameters = { ...selected.parameters };
       if (effort !== "default") parameters.reasoning_effort = effort;
@@ -175,15 +201,13 @@ export function NewChatPage() {
         }
       }
       const references = readQuoteReferences(message.metadata);
-      if (references.length) {
+      if (references.length || mentionPayload.length) {
         await chatApi.triggerQuoted({
           agent_id: session.agentId,
           session_id: session.sessionId,
-          text: message.content
-            .filter((block) => block.type === "text")
-            .map((block) => block.text)
-            .join("\n\n"),
+          text: rendered.text,
           references,
+          mentions: mentionPayload,
         });
       } else {
         await chatApi.trigger({
@@ -236,6 +260,8 @@ export function NewChatPage() {
           )}
           <TextInput
             className="w-full"
+            mentionCandidates={mentionCandidates}
+            onMentions={setMentions}
             quoteSlot={
               pendingQuotes.length ? (
                 <>

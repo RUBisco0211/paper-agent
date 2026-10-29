@@ -157,7 +157,7 @@ export function PaperCalendarPage() {
           <div className="min-h-0 flex-1">
             {tasks.isPending || (routeTask && routeRuns.isPending) ? <p className="p-5 text-sm text-muted-foreground">加载中…</p>
               : tasks.isError || routeRuns.isError ? <p role="alert" className="p-5 text-sm text-destructive">无法读取会话</p>
-              : routeRun && routeTask ? <PaperChatPage scheduledRun={routeRun} scheduledScope={routeTask.projectId ? routeProject?.name ?? "项目" : "全局"} />
+              : routeRun && routeTask ? <PaperChatPage scheduledRun={routeRun} scheduledScope={routeTask.projectId ? routeProject?.name ?? "项目" : "全局"} scheduledProjectId={routeTask.projectId ?? undefined} />
               : <p role="alert" className="p-5 text-sm text-muted-foreground">会话不存在</p>}
           </div>
         </> : <>

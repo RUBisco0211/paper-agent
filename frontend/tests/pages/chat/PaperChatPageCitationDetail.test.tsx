@@ -31,6 +31,7 @@ vi.mock("@/components/providers/ApiProvider", () => ({
   useApi: () => ({
     api: {
       sessions: { llmCatalog: async () => ({ providers: [] }) },
+      library: { list: async () => ({ items: [] }) },
       client: {
         request: (path: string) => {
           harness.requests.push(path)

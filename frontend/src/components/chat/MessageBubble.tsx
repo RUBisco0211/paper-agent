@@ -26,7 +26,7 @@ import {
 	X,
 } from 'lucide-react';
 import * as mime from 'mime-types';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 import { renderToolCall } from '@/components/chat/toolRenderers';
@@ -58,8 +58,14 @@ import { cn } from '@/lib/utils';
 import { formatNumber, formatTime } from '@/lib/common';
 import { toast } from 'sonner';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
+import { MentionBadge } from './MentionBadge';
 import { QuoteBadge } from './QuoteBadge';
 import { messageQuoteKey, messageReferenceFromSelection, readQuoteReferences, readQuotedBody } from './quoteReferences';
+import {
+	mentionTag,
+	readMessageMentions,
+	renderMessageMentions,
+} from '@/lib/mentions';
 import type { MessageQuote, QuoteReference } from '@/types/chat';
 import { captureRenderedSelection, restoreRenderedSelection } from './renderedSelection';
 import { addMessageHighlight } from './messageHighlight';
@@ -315,6 +321,19 @@ function AudioInlineControl({ block }: { block: DataBlock }) {
 
 const MCP_TOOL_PREFIX = 'mcp__';
 
+/** `<paper-mention>` is the inline chip a user message body carries (see lib/mentions). */
+const MENTION_ALLOWED_TAGS: Record<string, string[]> = { 'paper-mention': ['title'] };
+const MENTION_LITERAL_TAGS: string[] = ['paper-mention'];
+
+/** Renders the mention marker as the same badge the reference chips use. */
+function PaperMentionTag({ title, children }: { title?: string; children?: ReactNode }) {
+	return <MentionBadge label={children} title={title ?? ''} />;
+}
+
+const MENTION_COMPONENTS = {
+	'paper-mention': PaperMentionTag,
+} as unknown as React.ComponentProps<typeof Markdown>['components'];
+
 // Task-management tools are all surfaced under one "updated todos" summary.
 const TODO_TOOLS = new Set(['TaskGet', 'TaskUpdate', 'TaskList', 'TaskCreate']);
 
@@ -413,6 +432,7 @@ interface MessageBubbleProps {
 export function MessageBubble({ message, onQuote, onOpenReference, annotations, activeAnnotationKey }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const references = isUser ? readQuoteReferences(message.metadata) : [];
+	const mentions = isUser ? readMessageMentions(message.metadata) : [];
 	const quotedBody = references.length ? readQuotedBody(message.metadata) : null;
 	const [selection, setSelection] = useState<{ blockIndex: number; start: number; end: number; text: string; range: Range } | null>(null);
 	const [quoteComment, setQuoteComment] = useState('');
@@ -469,7 +489,14 @@ export function MessageBubble({ message, onQuote, onOpenReference, annotations, 
 		...message.content.filter((block) => block.type !== 'text'),
 		...(quotedBody ? [{ ...message.content.find((block) => block.type === 'text'), type: 'text' as const, text: quotedBody } as TextBlock] : []),
 	] : message.content;
-	const blocks = groupToolCalls(displayContent);
+	// The service leaves `@《标题》(paper:id)` in the body for the model; the
+	// reader gets the chip form built from the recorded mentions instead.
+	const renderedContent = mentions.length
+		? displayContent.map((block) => block.type === 'text'
+			? { ...block, text: renderMessageMentions(block.text, mentions, mentionTag) }
+			: block)
+		: displayContent;
+	const blocks = groupToolCalls(renderedContent);
 	const captureSelection = (element: HTMLElement, block: ExtendedContentBlock) => {
 		if (isUser || isRunning || !onQuote || block.type !== 'text') { setSelection(null); setEditorHost(null); return; }
 		const selected = window.getSelection();
@@ -519,10 +546,14 @@ export function MessageBubble({ message, onQuote, onOpenReference, annotations, 
 	const endMs = isRunning ? now : new Date(message.finished_at!).getTime();
 	const elapsedSeconds = Math.max(0, (endMs - startMs) / 1000);
 	const elapsedText = formatTime(elapsedSeconds);
-	const messageText = displayContent
-		.filter((block): block is TextBlock => block.type === 'text')
-		.map((block) => block.text)
-		.join('\n\n');
+	const messageText = renderMessageMentions(
+		displayContent
+			.filter((block): block is TextBlock => block.type === 'text')
+			.map((block) => block.text)
+			.join('\n\n'),
+		mentions,
+		(mention) => `@${mention.title}`,
+	);
 	const timestamp = isUser ? message.created_at : message.finished_at;
 	const messageTime = timestamp ? new Date(timestamp) : null;
 	const validMessageTime = messageTime && !Number.isNaN(messageTime.getTime()) ? messageTime : null;
@@ -734,7 +765,14 @@ export function MessageBlock({ block, ...props }: MessageBlockProps) {
 	switch (block.type) {
 		case 'text':
 			return (
-				<Markdown animated isAnimating={!block.finished_at} {...props}>
+				<Markdown
+					animated
+					isAnimating={!block.finished_at}
+					allowedTags={MENTION_ALLOWED_TAGS}
+					literalTagContent={MENTION_LITERAL_TAGS}
+					components={MENTION_COMPONENTS}
+					{...props}
+				>
 					{block.text}
 				</Markdown>
 			);

@@ -31,3 +31,12 @@ if (typeof Element !== "undefined" && !Element.prototype.hasPointerCapture) {
 if (typeof Element !== "undefined" && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
+
+// ProseMirror 定位光标时需要 Range 的几何信息，jsdom 没有实现。
+if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList
+  Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0)
+}
+if (typeof document !== "undefined" && !document.elementFromPoint) {
+  document.elementFromPoint = () => null
+}

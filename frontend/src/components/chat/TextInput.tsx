@@ -14,11 +14,12 @@ import React, {
 	useRef,
 	useMemo,
 	useLayoutEffect,
-	type KeyboardEvent,
 	useImperativeHandle,
 	forwardRef,
 } from 'react';
 
+import { MentionInput, type MentionInputRef, type MentionInputValue } from '@/components/chat/MentionInput';
+import type { MentionCandidate } from '@/lib/mentions';
 import { Button } from '@/components/ui/Button';
 import { Kbd } from '@/components/ui/Kbd';
 import {
@@ -93,11 +94,18 @@ interface TextInputProps {
 	headerSlot?: React.ReactNode;
 	quoteSlot?: React.ReactNode;
 	allowEmptyText?: boolean;
+	/** Papers the current scope can @-mention; the picker only offers these. */
+	mentionCandidates?: MentionCandidate[];
+	/** Mentions still in the message, in document order. */
+	onMentions?: (mentions: MentionCandidate[]) => void;
 }
 
 export interface TextInputRef {
 	focus: () => void;
 }
+
+/** Stable empty list, so an input without a mention scope keeps one prop identity. */
+const NO_MENTIONS: MentionCandidate[] = [];
 
 /**
  * A text input component with file attachment support and autocomplete functionality.
@@ -126,6 +134,8 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			headerSlot,
 			quoteSlot,
 			allowEmptyText = false,
+			mentionCandidates,
+			onMentions,
 		},
 		ref,
 	) => {
@@ -134,10 +144,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		const [value, setValue] = useState('');
 		const [files, setFiles] = useState<ProcessedFile[]>([]);
 		const [isFocused, setIsFocused] = useState(false);
-		const textareaRef = useRef<HTMLTextAreaElement>(null);
+		const inputRef = useRef<MentionInputRef>(null);
 		const fileInputRef = useRef<HTMLInputElement>(null);
 		const measureRef = useRef<HTMLSpanElement>(null);
-		/** ``true`` — textarea takes the full width, buttons drop to their own row. */
+		/** ``true`` — the editor takes the full width, buttons drop to their own row. */
 		const [isStacked, setIsStacked] = useState(false);
 
 		// Derive the accept attribute for the hidden file input
@@ -154,20 +164,10 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 		const hasProcessing = files.some((f) => f.status === 'processing');
 
 		useImperativeHandle(ref, () => ({
-			focus: () => textareaRef.current?.focus(),
+			focus: () => inputRef.current?.focus(),
 		}));
 
-		// Grow the textarea with its content. The ``auto`` reset is what lets it
-		// shrink again — ``scrollHeight`` never reports less than the current height.
-		useLayoutEffect(() => {
-			const textarea = textareaRef.current;
-			if (!textarea) return;
-			textarea.style.height = 'auto';
-			textarea.style.height = `${textarea.scrollHeight}px`;
-			// Stacking widens the textarea, so the line count has to be redone.
-		}, [value, isStacked]);
-
-		// Measured on the ghost, not the textarea: stacking widens the textarea, so
+		// Measured on the ghost, not the editor: stacking widens the editor, so
 		// measuring it would flip-flop (wraps → stack → fits → unstack → wraps).
 		useLayoutEffect(() => {
 			const ghost = measureRef.current;
@@ -189,32 +189,25 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 			return '';
 		}, [value, autoComplete, isFocused]);
 
-		const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-			// Tab key to select autocomplete
-			if (e.key === 'Tab' && suggestion) {
-				e.preventDefault();
-				setValue(value + suggestion);
-				return;
-			}
-
-			// Enter to send message, Shift+Enter for new line
-			if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-				e.preventDefault();
-				handleSend();
-			}
+		const handleMentionChange = (next: MentionInputValue) => {
+			setValue(next.text);
+			onMentions?.(next.mentions);
 		};
 
 		const handleSend = async () => {
-			if ((!value.trim() && !allowEmptyText) || disabled || sendDisabled || hasProcessing) return;
+			// Read the document rather than the mirrored string: a chip picked in
+			// the same tick as the send must not be left out of the message.
+			const text = (inputRef.current?.read().text || value).trim();
+			if ((!text && !allowEmptyText) || disabled || sendDisabled || hasProcessing) return;
 
 			const blocks: ContentBlock[] = [];
 
 			// Add text block
-			if (value.trim()) {
+			if (text) {
 				const textBlock: TextBlock = {
 					id: crypto.randomUUID(),
 					type: 'text',
-					text: value.trim(),
+					text,
 					created_at: new Date().toISOString(),
 					finished_at: new Date().toISOString(),
 				};
@@ -230,6 +223,7 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 
 			const accepted = await onSend(blocks);
 			if (accepted === false) return;
+			inputRef.current?.clear();
 			setValue('');
 			setFiles([]);
 		};
@@ -403,30 +397,26 @@ export const TextInput = forwardRef<TextInputRef, TextInputProps>(
 							</div>
 						</div>
 
-						{/* ``min-w-0`` lets the textarea shrink instead of pushing the
+						{/* ``min-w-0`` lets the editor shrink instead of pushing the
 						    buttons out of the row once the text gets long. */}
 						<div
 							className={cn('relative min-w-0', isStacked ? 'basis-full' : 'flex-1')}
 						>
-							{/* ``block`` — inline-block would sit on the text baseline and
-							    leave a descender gap that makes the wrapper taller. */}
-							<textarea
-								ref={textareaRef}
-								data-slot="composer-textarea"
-								value={value}
-								onChange={(e) => setValue(e.target.value)}
-								onKeyDown={handleKeyDown}
-								onFocus={() => setIsFocused(true)}
-								onBlur={() => setIsFocused(false)}
+							<MentionInput
+								ref={inputRef}
+								candidates={mentionCandidates ?? NO_MENTIONS}
 								placeholder={defaultPlaceholder}
 								disabled={disabled}
-								rows={1}
-								className="block w-full resize-none rounded-md border-0 bg-transparent outline-none placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-(--disabled-opacity)"
-								autoFocus={true}
+								autoFocus
+								suggestion={suggestion}
+								onChange={handleMentionChange}
+								onSubmit={() => { void handleSend(); }}
+								onFocus={() => setIsFocused(true)}
+								onBlur={() => setIsFocused(false)}
 							/>
 
 							{/* Autocomplete overlay — its padding and line-height mirror the
-							    textarea's, or the suggestion drifts off the real text. */}
+							    editor's, or the suggestion drifts off the real text. */}
 							{suggestion && isFocused && (
 								<div
 									data-slot="composer-suggestion"

@@ -19,6 +19,7 @@ import { chatApi } from '@/lib/api/agentscope';
 import { ApiError } from '@/lib/api/agentscope/client';
 import { useAudioManager } from '@/components/providers/AudioProvider';
 import { normalizePdfQuoteRects } from '@/components/chat/quoteReferences';
+import { mentionMetadata, mentionPlaceholders, mentionRequest, type MentionCandidate } from '@/lib/mentions';
 import type { QuoteReference } from '@/types/chat';
 
 /**
@@ -410,29 +411,42 @@ export function useMessages(
 	 * arrive via the already-open SSE connection.
 	 *
 	 * @param content - The message content blocks.
+	 * @param references - Quoted passages to send with the message.
+	 * @param mentions - Mentioned papers, in document order.
 	 */
 	const send = useCallback(
-		async (content: ContentBlock[], references: QuoteReference[] = []): Promise<boolean> => {
+		async (
+			content: ContentBlock[],
+			references: QuoteReference[] = [],
+			mentions: MentionCandidate[] = [],
+		): Promise<boolean> => {
 			if (!agentId || !sessionId) return false;
 			const boundedReferences = references.map((reference) => reference.kind === 'pdf_selection'
 				? { ...reference, rects: normalizePdfQuoteRects(reference.rects ?? []) }
 				: reference);
+			const body = content.filter((block) => block.type === 'text').map((block) => block.text).join('\n\n');
+			// Chips read as `@标题` on screen; the service replaces `@{{n}}` after
+			// checking that each paper is in this session's scope.
+			const rendered = mentionPlaceholders(body, mentions);
+			const mentionPayload = mentionRequest(rendered.mentions);
 
 			const userMsg = UserMsg({ name: 'user', content });
-			if (boundedReferences.length) userMsg.metadata = { paper_agent: {
-				body: content.filter((block) => block.type === 'text').map((block) => block.text).join('\n\n'),
+			if (boundedReferences.length || mentionPayload.length) userMsg.metadata = { paper_agent: {
+				body,
 				references: boundedReferences,
+				mentions: mentionMetadata(rendered.mentions),
 			} };
 			setHistoryInterrupted(false);
 			msgsRef.current = [...msgsRef.current, userMsg];
 			scheduleUpdate();
 
 			try {
-				if (boundedReferences.length) {
+				if (boundedReferences.length || mentionPayload.length) {
 					const accepted = await chatApi.triggerQuoted({
 						agent_id: agentId, session_id: sessionId,
-						text: content.filter((block) => block.type === 'text').map((block) => block.text).join('\n\n'),
+						text: rendered.text,
 						references: boundedReferences,
+						mentions: mentionPayload,
 					});
 					userMsg.id = accepted.message_id;
 					scheduleUpdate();

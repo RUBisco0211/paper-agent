@@ -36,6 +36,7 @@ vi.mock("@/components/providers/ApiProvider", () => ({
   useApi: () => ({
     api: {
       sessions: { llmCatalog: async () => ({ providers: [] }) },
+      library: { list: async () => ({ items: [] }) },
       client: {
         request: async (path: string) => {
           if (!path.includes("/citations/")) return {}

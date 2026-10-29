@@ -12,7 +12,7 @@ import { PaperChatPage } from "@/pages/chat/PaperChatPage"
 const send = vi.fn()
 const onExternalAnswer = vi.fn(async () => {})
 const importState = vi.hoisted(() => ({ messages: [] as Array<{ id: string; role: string; content: unknown[] }>, open: vi.fn(), confirm: vi.fn(async () => {}) }))
-vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: { sessions: { llmCatalog: async () => ({ providers: [] }) }, client: { request: async () => ({ candidates: [{ title: "Selected Study", identifier: "10.1234/selected", source_id: "https://example.org/study" }] }) } } }) }))
+vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: { sessions: { llmCatalog: async () => ({ providers: [] }) }, library: { list: async () => ({ items: [] }) }, client: { request: async () => ({ candidates: [{ title: "Selected Study", identifier: "10.1234/selected", source_id: "https://example.org/study" }] }) } } }) }))
 vi.mock("@/components/providers/ImportQueueProvider", () => ({ useImportQueue: () => ({ setOpen: importState.open }) }))
 vi.mock("@/lib/agentSessions", () => ({ availableChatModels: async () => [], listBindings: async () => [], sameSessionId: (left: string, right: string) => left === right }))
 vi.mock("@/hooks/useMessages", () => ({ useMessages: () => ({ msgs: importState.messages, loading: false, phase: "idle", error: null, reconnecting: false, historyInterrupted: false, send, interrupt: vi.fn(), onUserConfirm: importState.confirm, onExternalAnswer }) }))
@@ -33,7 +33,7 @@ it("allows a follow up message in a scheduled run when its session is loaded", a
   expect(screen.getByRole("link", { name: "返回月视图" })).toBeTruthy()
   expect(document.querySelector('[data-slot="message-scroller-viewport"]')?.className).toContain("no-scrollbar")
   await user.click(screen.getByRole("button", { name: "发送" }))
-  expect(send).toHaveBeenCalledWith([{ type: "text", text: "继续提问" }])
+  expect(send).toHaveBeenCalledWith([{ type: "text", text: "继续提问" }], [], [])
 })
 
 it("opens the import queue only after the import tool succeeds", () => {

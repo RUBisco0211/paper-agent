@@ -119,3 +119,25 @@ it("sends every rectangle in a long PDF selection", async () => {
   expect(api.triggerQuoted.mock.calls[0][0].references[0].rects).toHaveLength(30)
   unmount()
 })
+
+it("sends named papers as placeholders that the service resolves in scope", async () => {
+  api.messages.mockResolvedValue({ messages: [], is_running: false })
+  api.streamEvents.mockImplementation(async function* () { await new Promise(() => {}) })
+  api.triggerQuoted.mockResolvedValue({ message_id: "quoted-1" })
+  const { result, unmount } = renderHook(() => useMessages("agent-1", "session-1"))
+  await waitFor(() => expect(result.current.loading).toBe(false))
+  await act(async () => {
+    await result.current.send(
+      [{
+        id: "block-1", type: "text", created_at: "2026-10-30T00:00:00Z", finished_at: "2026-10-30T00:00:00Z",
+        text: "对比 @Safe and Scalable Payload Transport 和正文",
+      }],
+      [],
+      [{ user_paper_id: "paper-1", title: "Safe and Scalable Payload Transport" }],
+    )
+  })
+  const request = api.triggerQuoted.mock.calls[0][0]
+  expect(request.text).toBe("对比 @{{1}} 和正文")
+  expect(request.mentions).toEqual([{ index: 1, user_paper_id: "paper-1" }])
+  unmount()
+})

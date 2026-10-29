@@ -11,6 +11,7 @@ import { ChatQuoteContext } from "@/components/chat/chatQuoteContext"
 import { MessageBubble } from "@/components/chat/MessageBubble"
 import { QuoteBadge } from "@/components/chat/QuoteBadge"
 import type { MessageQuote, PaperOpenReference, QuoteReference } from "@/types/chat"
+import type { MentionCandidate } from "@/lib/mentions"
 import type { ImportApprovalPreview } from "@/types/business"
 import { messageQuoteKey, readQuoteReferences } from "@/components/chat/quoteReferences"
 import { restoreRenderedSelection } from "@/components/chat/renderedSelection"
@@ -65,6 +66,13 @@ function QuotedMessage({ message, annotations, onQuote, onUserConfirm, activeAnn
 
 const NO_ANNOTATIONS: MessageQuote[] = []
 
+/** Hands the scroller's imperative API to the page, which renders outside the provider. */
+function ScrollerBridge({ onReady }: { onReady: (api: ReturnType<typeof useMessageScroller>) => void }) {
+  const api = useMessageScroller()
+  useEffect(() => { onReady(api) }, [api, onReady])
+  return null
+}
+
 function scheduleDraft(input: string): ReviewedSchedule | undefined {
   try {
     const value: unknown = JSON.parse(input)
@@ -82,7 +90,7 @@ function scheduleDraft(input: string): ReviewedSchedule | undefined {
   } catch { return undefined }
 }
 
-export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?: SessionRecord; scheduledScope?: string } = {}) {
+export function PaperChatPage({ scheduledRun, scheduledScope, scheduledProjectId }: { scheduledRun?: SessionRecord; scheduledScope?: string; scheduledProjectId?: string } = {}) {
   const params = useParams()
   const agentId = scheduledRun?.agent_id ?? params.agentId ?? ""
   const sessionId = scheduledRun?.id ?? params.sessionId ?? ""
@@ -104,6 +112,9 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     blocks: CitationBlock[]
   } | null>(null)
   const [pendingQuotes, setPendingQuotes] = useState<QuoteReference[]>([])
+  const [mentions, setMentions] = useState<MentionCandidate[]>([])
+  const scroller = useRef<ReturnType<typeof useMessageScroller> | null>(null)
+  const rememberScroller = useCallback((api: ReturnType<typeof useMessageScroller>) => { scroller.current = api }, [])
   const citationRequestToken = useRef(0)
   const [activeAnnotationKey, setActiveAnnotationKey] = useState<string | null>(null)
   useEffect(() => {
@@ -124,7 +135,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     return true
   }, [])
   useEffect(() => quoteBridge?.register(sessionId, addPendingQuote), [quoteBridge, sessionId, addPendingQuote])
-  useEffect(() => { setPendingQuotes([]) }, [sessionId])
+  useEffect(() => { setPendingQuotes([]); setMentions([]) }, [sessionId])
   useEffect(() => {
     setCitationDetail(null)
     // Invalidate responses still in flight for the session being left.
@@ -215,6 +226,22 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
     queryFn: () => api.projects.detail(binding!.project_id!),
     enabled: Boolean(binding?.project_id),
   })
+  // @ 提及只提供本会话范围内的文献：有项目按项目取，否则取全局。
+  const mentionScope = scheduledRun ? scheduledProjectId ?? "" : binding?.project_id ?? ""
+  const mentionCandidatesQuery = useQuery({
+    queryKey: ["mention-candidates", mentionScope || "library"],
+    queryFn: async () => {
+      const page = mentionScope
+        ? await api.projects.papers(mentionScope, { limit: 200 })
+        : await api.library.list({ limit: 200 })
+      return page.items.map((item) => ({
+        user_paper_id: item.id,
+        title: item.title || "未命名文献",
+      }))
+    },
+    enabled: scheduledRun ? true : !bindings.isPending,
+  })
+  const mentionCandidates = mentionCandidatesQuery.data ?? []
   const current = (scheduledRun ?? view?.session)?.config.chat_model_config
   const selectedModel = current ? `${current.credential_id}:${current.model}` : ""
   const availableEfforts = current ? reasoningEffortsForModel(catalog.data?.providers ?? [], current.type, current.model) : []
@@ -368,7 +395,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
                   <QuotedMessage message={message} annotations={messageAnnotations.get(message.id) ?? NO_ANNOTATIONS} activeAnnotationKey={activeAnnotationKey} onShowAnnotation={setActiveAnnotationKey} onHideAnnotation={() => setActiveAnnotationKey(null)} sessionId={sessionId} onUserConfirm={onUserConfirm} onQuote={addPendingQuote} />
                 </MessageScrollerItem>
               ))}
-            </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /></MessageScroller>
+            </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /><ScrollerBridge onReady={rememberScroller} /></MessageScroller>
           </MessageScrollerProvider>
         </div>
         {pendingQuestion && <div className="mx-auto w-full max-w-(--chat-content-max-width) px-4 pb-2">
@@ -404,9 +431,15 @@ export function PaperChatPage({ scheduledRun, scheduledScope }: { scheduledRun?:
                 onRemove={() => setPendingQuotes((current) => current.filter((_, item) => item !== index))} />)}
             </> : undefined}
             allowEmptyText={pendingQuotes.length > 0}
+            mentionCandidates={mentionCandidates}
+            onMentions={setMentions}
             onSend={async (blocks) => {
-              const sent = await (pendingQuotes.length ? send(blocks, pendingQuotes) : send(blocks))
-              if (sent) setPendingQuotes([])
+              const sent = await send(blocks, pendingQuotes, mentions)
+              if (sent) {
+                setPendingQuotes([])
+                // The optimistic message is appended below the fold; follow it.
+                scroller.current?.scrollToEnd({ behavior: "smooth" })
+              }
               return sent
             }}
             sendDisabled={loading || changingModel || (!binding && !scheduledRun) || !current}

@@ -379,7 +379,7 @@ svg.lucide {
         --composer-max-height: calc(var(--composer-line-height) * var(--composer-max-lines) + var(--composer-padding-block) * 2);
     }
     [data-slot="composer-measure"],
-    [data-slot="composer-textarea"],
+    [data-slot="composer-editor"],
     [data-slot="composer-suggestion"] {
         padding-inline: var(--composer-padding-inline);
         font-size: var(--text-body);
@@ -387,14 +387,38 @@ svg.lucide {
         white-space: pre-wrap;
         overflow-wrap: break-word;
     }
-    [data-slot="composer-textarea"],
+    [data-slot="composer-editor"],
     [data-slot="composer-suggestion"] {
         padding-block: var(--composer-padding-block);
     }
-    [data-slot="composer-textarea"] {
+    [data-slot="composer-editor"] {
         min-height: var(--composer-min-height);
         max-height: var(--composer-max-height);
         overflow-y: auto;
+    }
+    /* @ 文献 chip：与引用 badge 同一套描边与圆角；输入区随正文行高，历史消息用 Badge 组件。 */
+    [data-slot="composer-editor"] .composer-mention {
+        display: inline-block;
+        max-width: 18rem;
+        overflow: hidden;
+        padding-inline: var(--control-gap-sm);
+        border: 1px solid var(--message-quote-accent);
+        border-radius: var(--radius-md);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
+    }
+    /* 空文档时由 Placeholder 扩展挂上 data-placeholder，这里只负责显示。 */
+    [data-slot="composer-editor"] p.is-editor-empty:first-child::before {
+        content: attr(data-placeholder);
+        float: left;
+        height: 0;
+        color: var(--muted-foreground);
+        pointer-events: none;
+    }
+    [data-slot="composer-editor"][contenteditable="false"] {
+        cursor: not-allowed;
+        opacity: var(--disabled-opacity);
     }
     [data-slot="composer-actions"] {
         height: var(--composer-min-height);
