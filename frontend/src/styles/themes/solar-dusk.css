@@ -1,0 +1,128 @@
+/* 主题：solar dusk（暖赭色沙幕，深棕文字）。
+ *
+ * 只提供颜色相关的 token；字体、圆角与阴影仍由 index.css 统一决定，
+ * 因此换主题不会改掉排版。源配色里的 Oxanium / Merriweather / Fira Code
+ * 与 0.3rem 圆角没有一起引入：字体未随项目打包，圆角属于 SMUI 控件规则。
+ *
+ * 配色取自 solar_dusk（oklch 原值，暖色相 20–90），这里保留 oklch 不换算。
+ *
+ * 两处偏离源配色：
+ * - 暗色下 --primary-foreground 取背景色而非白：白字落在 53% 明度的橙上对比不足。
+ * - --smui-* 由这套 oklch 折算成 hsl 三元组（index.css 用 hsl(var(--smui-*))），
+ *   --success / --warning / --info 按同一色相压暗，保证状态文字可读。
+ */
+:root {
+    color-scheme: light;
+    --background: oklch(0.9885 0.0057 84.5659);
+    --foreground: oklch(0.3660 0.0251 49.6085);
+    --card: oklch(0.9686 0.0091 78.2818);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: oklch(0.5553 0.1455 48.9975);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.8276 0.0752 74.4400);
+    --secondary-foreground: oklch(0.4444 0.0096 73.6390);
+    --muted: oklch(0.9363 0.0218 83.2637);
+    --muted-foreground: oklch(0.5534 0.0116 58.0708);
+    --accent: oklch(0.9000 0.0500 74.9889);
+    --accent-foreground: oklch(0.4444 0.0096 73.6390);
+    --destructive: oklch(0.4437 0.1613 26.8994);
+    --destructive-foreground: oklch(1 0 0);
+    --border: oklch(0.8866 0.0404 89.6994);
+    --input: var(--border);
+    --ring: var(--primary);
+    --chart-1: oklch(0.5553 0.1455 48.9975);
+    --chart-2: oklch(0.5534 0.0116 58.0708);
+    --chart-3: oklch(0.5538 0.1207 66.4416);
+    --chart-4: oklch(0.5534 0.0116 58.0708);
+    --chart-5: oklch(0.6806 0.1423 75.8340);
+    --sidebar: oklch(0.9363 0.0218 83.2637);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: oklch(0.5538 0.1207 66.4416);
+    --sidebar-accent-foreground: oklch(1 0 0);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    /* 冷色系 token 换成同一暖色阶，免得在沙色表面上出现灰蓝色文字。 */
+    --smui-frost-1: 25 8% 42%;
+    --smui-frost-2: 30 10% 48%;
+    --smui-frost-3: 21 12% 36%;
+    --smui-frost-4: 21 14% 32%;
+    --smui-red: 0 70% 40%;
+    --smui-orange: 26 90% 42%;
+    --smui-yellow: 41 92% 38%;
+    --smui-green: 142 55% 32%;
+    --smui-purple: 300 12% 40%;
+    --smui-surface-0: 40 30% 96%;
+    --smui-surface-1: 38 35% 98%;
+    --smui-surface-2: 38 25% 92%;
+    --smui-surface-3: 40 22% 86%;
+    --smui-border-hover: 30 14% 55%;
+
+    --success: hsl(142 55% 26%);
+    --warning: hsl(41 92% 28%);
+    --info: hsl(300 12% 32%);
+    --paper-quote-accent: hsl(40 60% 32%);
+    --paper-quote-fill: hsl(40 60% 70% / 0.45);
+}
+
+.dark {
+    color-scheme: dark;
+    --background: oklch(0.2161 0.0061 56.0434);
+    --foreground: oklch(0.9699 0.0013 106.4238);
+    --card: oklch(0.2685 0.0063 34.2976);
+    --card-foreground: var(--foreground);
+    --popover: var(--card);
+    --popover-foreground: var(--foreground);
+    --primary: oklch(0.7049 0.1867 47.6044);
+    /* 源配色用白；白字落在 53% 明度的橙上只有约 2.6:1，改用背景色。 */
+    --primary-foreground: oklch(0.2161 0.0061 56.0434);
+    --secondary: oklch(0.4444 0.0096 73.6390);
+    --secondary-foreground: oklch(0.9232 0.0026 48.7171);
+    --muted: oklch(0.2330 0.0073 67.4563);
+    --muted-foreground: oklch(0.7161 0.0091 56.2590);
+    --accent: oklch(0.3598 0.0497 229.3202);
+    --accent-foreground: oklch(0.9232 0.0026 48.7171);
+    --destructive: oklch(0.5771 0.2152 27.3250);
+    --destructive-foreground: oklch(1 0 0);
+    --border: oklch(0.3741 0.0087 67.5582);
+    --input: var(--border);
+    --ring: var(--primary);
+    --chart-1: oklch(0.7049 0.1867 47.6044);
+    --chart-2: oklch(0.6847 0.1479 237.3225);
+    --chart-3: oklch(0.7952 0.1617 86.0468);
+    --chart-4: oklch(0.7161 0.0091 56.2590);
+    --chart-5: oklch(0.5534 0.0116 58.0708);
+    --sidebar: oklch(0.2685 0.0063 34.2976);
+    --sidebar-foreground: var(--foreground);
+    --sidebar-primary: var(--primary);
+    --sidebar-primary-foreground: var(--primary-foreground);
+    --sidebar-accent: oklch(0.6847 0.1479 237.3225);
+    --sidebar-accent-foreground: oklch(0.2839 0.0734 254.5378);
+    --sidebar-border: var(--border);
+    --sidebar-ring: var(--ring);
+
+    --smui-frost-1: 24 6% 62%;
+    --smui-frost-2: 30 8% 68%;
+    --smui-frost-3: 24 6% 58%;
+    --smui-frost-4: 24 6% 52%;
+    --smui-red: 0 72% 62%;
+    --smui-orange: 25 95% 62%;
+    --smui-yellow: 41 92% 60%;
+    --smui-green: 142 50% 52%;
+    --smui-purple: 300 12% 60%;
+    --smui-surface-0: 24 8% 12%;
+    --smui-surface-1: 12 7% 16%;
+    --smui-surface-2: 24 7% 14%;
+    --smui-surface-3: 30 6% 20%;
+    --smui-border-hover: 24 8% 46%;
+
+    --success: hsl(142 50% 68%);
+    --warning: hsl(41 92% 72%);
+    --info: hsl(300 12% 68%);
+    --paper-quote-accent: hsl(40 60% 66%);
+    --paper-quote-fill: hsl(40 60% 70% / 0.25);
+}
