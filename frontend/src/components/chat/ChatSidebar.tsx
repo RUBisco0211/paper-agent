@@ -9,6 +9,7 @@ import { AddPapersDialog } from "@/components/projects/AddPapersDialog"
 import { deleteBoundSession, deleteProjectWithSessions, listBoundSessions } from "@/lib/agentSessions"
 import type { BoundSession } from "@/types/session"
 import { sessionApi } from "@/lib/api/agentscope/session"
+import { chatPath } from "./chatView"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/Collapsible"
 import { Button } from "@/components/ui/Button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
@@ -27,11 +28,11 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/Sidebar"
 
-function SessionRows({ sessions, onRename, onDelete }: { sessions: BoundSession[]; onRename: (session: BoundSession) => void; onDelete: (session: BoundSession) => void }) {
+function SessionRows({ sessions, activePath, onRename, onDelete }: { sessions: BoundSession[]; activePath: string; onRename: (session: BoundSession) => void; onDelete: (session: BoundSession) => void }) {
   return sessions.map((item) => (
     <SidebarMenuItem key={item.session.session.id}>
-      <SidebarMenuButton asChild tooltip={item.session.session.config.name || "会话"}>
-        <NavLink to={`/chat/${item.agentId}/${item.session.session.id}`}>
+      <SidebarMenuButton asChild isActive={chatPath(item) === activePath} tooltip={item.session.session.config.name || "会话"}>
+        <NavLink to={chatPath(item)}>
           <span className="truncate">{item.session.session.config.name || "新会话"}</span>
         </NavLink>
       </SidebarMenuButton>
@@ -173,7 +174,7 @@ export function ChatSidebar() {
           <SidebarGroupLabel className="flex items-center justify-between">全局
             <button type="button" aria-label="新建全局会话" onClick={() => navigate("/chat/new", { state: { initialProjectId: null } })}><Plus className="size-4" /></button>
           </SidebarGroupLabel>
-          <SidebarGroupContent><SidebarMenu><SessionRows sessions={globalSessions} onRename={beginRename} onDelete={setDeleting} /></SidebarMenu></SidebarGroupContent>
+          <SidebarGroupContent><SidebarMenu><SessionRows sessions={globalSessions} activePath={location.pathname} onRename={beginRename} onDelete={setDeleting} /></SidebarMenu></SidebarGroupContent>
         </SidebarGroup>
         {(projects.data?.items ?? []).map((project) => (
           <Collapsible key={project.id} defaultOpen>
@@ -193,7 +194,7 @@ export function ChatSidebar() {
                 </span>
               </SidebarGroupLabel>
               <CollapsibleContent><SidebarGroupContent><SidebarMenu>
-                <SessionRows sessions={all.filter((item) => item.binding.project_id === project.id)} onRename={beginRename} onDelete={setDeleting} />
+                <SessionRows sessions={all.filter((item) => item.binding.project_id === project.id)} activePath={location.pathname} onRename={beginRename} onDelete={setDeleting} />
               </SidebarMenu></SidebarGroupContent></CollapsibleContent>
             </SidebarGroup>
           </Collapsible>
