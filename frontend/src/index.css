@@ -7,7 +7,7 @@
 @import "@fontsource/maple-mono/700.css";
 
 /* 配色主题：换这一行即可在 smui、vintage-paper 与 solar-dusk 之间切换。 */
-@import "./styles/themes/solar-dusk.css";
+@import "./styles/themes/vintage-paper.css";
 @source '../node_modules/streamdown/dist/*.js';
 @source '../node_modules/@streamdown/*/dist/*.js';
 
