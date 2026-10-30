@@ -115,37 +115,36 @@ export function ConversationPapersPanel({
       aria-label={projectId ? "项目文献" : "全局文献"}
       className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
     >
-      {
-        <div className="shrink-0 border-b p-2">
-          <div className="flex items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label={projectId ? "搜索项目文献" : "搜索个人文献库"}
-                placeholder={projectId ? "搜索项目文献" : "搜索个人文献库"}
-                className="pl-9"
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  if (listRef.current) listRef.current.scrollTop = 0;
-                }}
-              />
-            </div>
-            {/* Adding papers only makes sense inside a project. */}
-            {projectId && (
-              <Button
-                variant="outline"
-                size="icon-sm"
-                aria-label="添加文献到项目"
-                title="添加文献到项目"
-                onClick={() => setAdding(true)}
-              >
-                <Plus />
-              </Button>
-            )}
+      {/* 与中间栏的标题栏同高，两条底边才对得上。 */}
+      <div className="flex h-(--app-toolbar-height) shrink-0 items-center border-b px-2">
+        <div className="flex w-full items-center gap-2">
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label={projectId ? "搜索项目文献" : "搜索个人文献库"}
+              placeholder={projectId ? "搜索项目文献" : "搜索个人文献库"}
+              className="pl-9"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                if (listRef.current) listRef.current.scrollTop = 0;
+              }}
+            />
           </div>
+          {/* Adding papers only makes sense inside a project. */}
+          {projectId && (
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label="添加文献到项目"
+              title="添加文献到项目"
+              onClick={() => setAdding(true)}
+            >
+              <Plus />
+            </Button>
+          )}
         </div>
-      }
+      </div>
       {projectId && adding && (
         <AddPapersDialog
           projectId={projectId}

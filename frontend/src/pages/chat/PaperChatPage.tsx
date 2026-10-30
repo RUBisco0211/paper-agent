@@ -376,13 +376,17 @@ export function PaperChatPage({ scheduledRun, scheduledScope, scheduledProjectId
       onOpenPaper={openPaperEntry}
     >
       <main className="flex h-full min-h-0 flex-col">
-        {scheduledRun && <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
+        {scheduledRun && <header data-slot="app-toolbar" aria-label="会话标题" className="flex h-(--app-toolbar-height) shrink-0 items-center justify-between gap-4 border-b bg-background px-5">
           <div className="flex min-w-0 items-center gap-2">
             {scheduledRun && <Button asChild variant="ghost" size="icon-sm"><Link to="/scheduled" aria-label="返回月视图"><ArrowLeft className="size-4" /></Link></Button>}
-            <div className="min-w-0"><h1 className="truncate font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
+            <div className="min-w-0"><h1 className="truncate text-sm font-medium">{scheduledRun?.config.name || view?.session.config.name || "新会话"}</h1>
             <p className="text-xs text-muted-foreground">{scheduledScope ?? (binding?.scope === "project" ? project.data?.name ?? "项目" : "全局")}</p>
             </div>
           </div>
+        </header>}
+        {/* 会话标题只属于中间这一栏：左栏与会话列表同一层，右栏有自己的顶栏。 */}
+        {!scheduledRun && <header data-slot="app-toolbar" aria-label="会话标题" className="flex h-(--app-toolbar-height) shrink-0 items-center border-b bg-background px-5">
+          <h1 className="min-w-0 truncate text-sm font-medium">{view?.session.config.name || "会话"}</h1>
         </header>}
         {modelError && <p role="alert" className="px-5 pt-2 text-sm text-destructive">{modelError}</p>}
         {!current && !models.isPending && <p role="status" className="px-5 pt-2 text-sm text-muted-foreground">请选择模型后发送</p>}
