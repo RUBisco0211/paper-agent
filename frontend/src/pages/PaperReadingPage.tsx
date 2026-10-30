@@ -1,5 +1,5 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Copy, Info, LocateFixed, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react"
+import { ArrowLeft, BookOpenText, Copy, FileText, Info, LocateFixed, MessageSquarePlus, PanelRightClose, PanelRightOpen } from "lucide-react"
 import { useEffect, useState } from "react"
 import { usePanelRef } from "react-resizable-panels"
 import katex from "katex"
@@ -7,6 +7,7 @@ import "katex/dist/katex.min.css"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 import { PaperDetailSheet } from "@/components/papers/PaperDetailSheet"
+import { PaperMarkdownView } from "@/components/papers/PaperMarkdownView"
 import { ImageViewerDialog, type ImageViewerTarget } from "@/components/papers/ImageViewerDialog"
 import { normalizePdfQuoteRects } from "@/components/chat/quoteReferences"
 import type { PaperQuote } from "@/types/chat"
@@ -100,11 +101,14 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     Number.isSafeInteger(initialPage) && initialPage > 0 ? { page: initialPage } : undefined,
   )
   useEffect(() => {
-    if (locatedQuote) setTarget({ page: locatedQuote.page, rects: locatedQuote.kind === "pdf_selection" ? locatedQuote.rects : undefined })
+    if (locatedQuote?.page) setTarget({ page: locatedQuote.page, rects: locatedQuote.kind === "pdf_selection" ? locatedQuote.rects : undefined })
   }, [locatedQuote])
   const [selectedBlock, setSelectedBlock] = useState<number | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [viewMode, setViewMode] = useState<"pdf" | "markdown">(
+    searchParams.get("view") === "markdown" ? "markdown" : "pdf",
+  )
   const blocksPanelRef = usePanelRef()
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -151,7 +155,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     initialPageParam: 0,
     getNextPageParam: (last) =>
       last.offset + last.items.length < last.total ? last.offset + last.items.length : undefined,
-    enabled: Boolean(paperId && activeType && panelOpen),
+    enabled: Boolean(paperId && activeType && panelOpen && viewMode === "pdf"),
   })
 
   function locateBlock(block: PaperBlock) {
@@ -204,16 +208,47 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
   }
 
   return <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
+    <TooltipProvider>
     <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" size="icon-sm" aria-label={embedded ? "返回文献列表" : "返回"} onClick={() => onBack ? onBack() : navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-medium">{paper.data?.title || "文献"}</h1>
         {paper.data && <p className="text-muted-foreground truncate text-xs">{paper.data.authors.join("、") || "作者未知"}{paper.data.year ? ` · ${paper.data.year}` : ""}</p>}
       </div>
-      <Button variant="ghost" size="icon-sm" aria-label="文献信息" title="文献信息" onClick={() => setInfoOpen(true)}><Info /></Button>
-      <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => { setPanelOpen(!panelOpen); setImageViewer(null) }}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={viewMode === "pdf" ? "切换到 Markdown 全文" : "切换到 PDF 原文"}
+            title={paper.data?.capabilities.has_parsed ? undefined : "暂无全文"}
+            disabled={!paper.data?.capabilities.has_parsed}
+            onClick={() => setViewMode(viewMode === "pdf" ? "markdown" : "pdf")}
+          >{viewMode === "pdf" ? <BookOpenText /> : <FileText />}</Button>
+        </TooltipTrigger>
+        <TooltipContent>{viewMode === "pdf" ? "切换到 Markdown 全文" : "切换到 PDF 原文"}</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="文献信息" onClick={() => setInfoOpen(true)}><Info /></Button>
+        </TooltipTrigger>
+        <TooltipContent>文献信息</TooltipContent>
+      </Tooltip>
+      {viewMode === "pdf" && <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => { setPanelOpen(!panelOpen); setImageViewer(null) }}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
+        </TooltipTrigger>
+        <TooltipContent>{panelOpen ? "收起分块" : "展开分块"}</TooltipContent>
+      </Tooltip>}
     </header>
-    <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+    </TooltipProvider>
+    {viewMode === "markdown" ? <PaperMarkdownView
+      paperId={paperId}
+      title={paper.data?.title ?? null}
+      version={paper.data?.artifact_version ?? null}
+      onBackToPdf={() => setViewMode("pdf")}
+      onQuote={onQuote}
+    /> : <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
       <ResizablePanel minSize={embedded ? "35%" : "20rem"} className="min-h-0 min-w-0">
         <main className="h-full min-w-0 overflow-hidden">
         {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} onClearTarget={clearLocatedBlock} onQuoteSelection={onQuote && paper.data?.pdf_version ? addPdfQuote : undefined} />}
@@ -263,7 +298,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
           </aside>
         </ResizablePanel>
       </>
-    </ResizablePanelGroup>
+    </ResizablePanelGroup>}
     <PaperDetailSheet paperId={infoOpen ? paperId : null} onOpenChange={setInfoOpen} />
     <ImageViewerDialog target={imageViewer} onOpenChange={setImageViewer} />
   </div>

@@ -40,6 +40,28 @@ IMAGE_MEDIA_TYPES = frozenset(
 logger = structlog.get_logger(__name__)
 
 
+#: Markdown syntax the reader never sees, dropped before comparing a selection.
+_MARKDOWN_NOISE = str.maketrans("", "", "*_`#>[]()")
+
+
+def _comparable(text: str) -> str:
+    """Text reduced to the characters a reader can actually select."""
+    return "".join(text.split()).translate(_MARKDOWN_NOISE)
+
+
+def _contains_passage(full_text: str, selected_text: str) -> bool:
+    """Whether a markdown selection is really part of the parsed full text.
+
+    The reader shows rendered text: line breaks, spacing and inline emphasis
+    markers differ from the stored markdown, so both sides lose whitespace and
+    markdown punctuation before the containment check.
+    """
+    passage = _comparable(selected_text)
+    if not passage:
+        return False
+    return passage in _comparable(full_text)
+
+
 class BoundSearchService:
     """Resolve immutable session scope before executing business retrieval."""
 
@@ -245,6 +267,20 @@ class BoundPaperService:
                     "image_base64": base64.b64encode(payload).decode("ascii"),
                     "image_media_type": media_type,
                 }
+        elif kind == "markdown_selection":
+            # The full text carries no page or rectangle, so the evidence is the
+            # selected passage itself; it must exist in this artifact version.
+            if include_image:
+                raise ValueError("image_unavailable")
+            if version != self._library.artifact_cache_version(
+                user_id=user_id, user_paper_id=user_paper_id
+            ):
+                raise ValueError("artifact_version_changed")
+            full_text = self._library.read_markdown(
+                user_id=user_id, user_paper_id=user_paper_id
+            )
+            if not _contains_passage(full_text, selected_text):
+                raise ValueError("selection_mismatch")
         elif kind == "pdf_selection":
             if include_image:
                 raise ValueError("image_unavailable")

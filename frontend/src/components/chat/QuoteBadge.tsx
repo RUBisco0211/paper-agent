@@ -20,7 +20,13 @@ export function QuoteBadge({ reference, onOpen, onRemove, onEdit }: {
   const [editing, setEditing] = useState(false)
   const [hovered, setHovered] = useState(false)
   const [draft, setDraft] = useState(reference.comment)
-  const label = reference.kind === 'message' ? '消息引用' : reference.kind === 'parsed_block' ? '文献块引用' : '文献原文引用'
+  const label = reference.kind === 'message'
+    ? '消息引用'
+    : reference.kind === 'parsed_block'
+      ? '文献块引用'
+      : reference.kind === 'markdown_selection'
+        ? '文献全文引用'
+        : '文献原文引用'
   const excerpt = reference.selected_text || (reference.kind === 'parsed_block' && reference.include_image ? '图片或图表' : '')
 
   const setOpen = (open: boolean) => {

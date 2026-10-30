@@ -229,6 +229,9 @@ svg.lucide {
         "Maple Mono", "PingFang SC", "Microsoft YaHei", monospace;
     --font-mono:
         "Maple Mono", "PingFang SC", "Microsoft YaHei", monospace;
+    /* 文献全文阅读用衬线体，贴近原文排版。 */
+    --font-reading:
+        "Times New Roman", "Songti SC", "SimSun", serif;
     --text-label: 11px;
     --text-ui: 13px;
     --text-heading: 22px;

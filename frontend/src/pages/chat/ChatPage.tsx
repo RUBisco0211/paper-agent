@@ -18,7 +18,7 @@ import {
   type ChatQuoteReceiver,
   type PaperQuoteOpener,
 } from "@/components/chat/chatQuoteContext";
-import type { PaperOpen, QuoteReference } from "@/types/chat";
+import type { PaperOpen, PaperQuote, QuoteReference } from "@/types/chat";
 import { ConversationPapersPanel } from "@/components/chat/ConversationPapersPanel";
 import { chatPath } from "@/components/chat/chatView";
 
@@ -80,10 +80,7 @@ export function ChatPage() {
     },
     openPaper: (
       sessionId: string,
-      reference: Extract<
-        QuoteReference,
-        { kind: "parsed_block" | "pdf_selection" }
-      >,
+      reference: PaperQuote,
     ) => {
       return paperOpeners.current.get(sessionId)?.(reference) ?? false;
     },

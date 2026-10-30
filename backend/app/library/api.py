@@ -12,6 +12,7 @@ from .depends import PaperLibraryServiceDep
 from .schemas import (
     PaperBlockRead,
     PaperBlocksResponse,
+    PaperMarkdownResponse,
     UploadResponse,
     UserPaperDetail,
     UserPaperSummary,
@@ -108,6 +109,51 @@ def read_paper_block_image(
     )
     version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
     etag = _cache_tag("block-image-v1", version, block_id)
+    headers = {**_cache_headers(etag), "X-Content-Type-Options": "nosniff"}
+    if _matches_cache(request, etag):
+        return Response(status_code=304, headers=headers)
+    return Response(
+        payload,
+        media_type=media_type,
+        headers=headers,
+    )
+
+
+@router.get("/{paper_id}/markdown", response_model=PaperMarkdownResponse)
+def read_paper_markdown(
+    paper_id: UUID,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+    request: Request,
+    response: Response,
+) -> PaperMarkdownResponse | Response:
+    result = PaperMarkdownResponse(
+        markdown=service.read_markdown(user_id=user.id, user_paper_id=paper_id)
+    )
+    version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    if version is not None:
+        etag = _cache_tag("markdown-v1", version)
+        if _matches_cache(request, etag):
+            return Response(status_code=304, headers=_cache_headers(etag))
+        response.headers.update(_cache_headers(etag))
+    return result
+
+
+@router.get("/{paper_id}/assets/{asset_path:path}", response_class=Response)
+def read_paper_asset(
+    paper_id: UUID,
+    asset_path: str,
+    user: CurrentUser,
+    service: PaperLibraryServiceDep,
+    request: Request,
+) -> Response:
+    payload, media_type = service.read_asset(
+        user_id=user.id,
+        user_paper_id=paper_id,
+        path=asset_path,
+    )
+    version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
+    etag = _cache_tag("asset-v1", version, asset_path)
     headers = {**_cache_headers(etag), "X-Content-Type-Options": "nosniff"}
     if _matches_cache(request, etag):
         return Response(status_code=304, headers=headers)

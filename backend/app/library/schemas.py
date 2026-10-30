@@ -68,6 +68,12 @@ class PaperBlocksResponse(BaseModel):
     limit: int
 
 
+class PaperMarkdownResponse(BaseModel):
+    """The parsed full text, rendered as one markdown document."""
+
+    markdown: str
+
+
 class UploadResponse(BaseModel):
     """A stored file joins the paper's run; the entry appears once it succeeds."""
 

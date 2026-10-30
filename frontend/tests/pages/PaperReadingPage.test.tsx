@@ -13,6 +13,14 @@ import { PaperReadingPage } from "@/pages/PaperReadingPage"
 vi.mock("@/components/papers/PdfViewer", () => ({
   PdfViewer: ({ target, onClearTarget }: { target?: { page: number }; onClearTarget?: () => void }) => <div><p>PDF 第 {target?.page ?? 1} 页</p><button type="button" onClick={onClearTarget}>文献空白处</button></div>,
 }))
+// jsdom 没有布局，虚拟列表量不到可视高度；这里让每个分页都落到文档里。
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () => Array.from({ length: count }, (_, index) => ({ index, key: index, start: index * 100 })),
+    getTotalSize: () => count * 100,
+    measureElement: () => {},
+  }),
+}))
 vi.mock("@/components/ui/Resizable", () => ({
   ResizablePanelGroup: ({ children, className }: { children: ReactNode; className?: string }) => <div className={className}>{children}</div>,
   ResizablePanel: ({ children, className, defaultSize }: { children: ReactNode; className?: string; defaultSize?: string }) => <div className={className} data-default-size={defaultSize}>{children}</div>,
@@ -192,4 +200,76 @@ it("PaperReadingPage opens a zoomable preview when a chart has an image", async 
   expect(await screen.findByRole("dialog", { name: "图表预览" })).toBeTruthy()
   await user.click(screen.getByRole("button", { name: "放大图片" }))
   expect(screen.getByText("125%")).toBeTruthy()
+})
+
+it("shows the markdown full text instead of the pdf and the block panel when the reader toggles the view", async () => {
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.endsWith("/markdown")) {
+      return new Response(JSON.stringify({ markdown: "## 摘要\n\n这是一段全文。" }), { headers: { "Content-Type": "application/json" } })
+    }
+    if (url.includes("/blocks")) {
+      return new Response(JSON.stringify({ types: ["text"], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
+    }
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  const user = userEvent.setup()
+  expect(await screen.findByRole("complementary", { name: "文献分块" })).toBeTruthy()
+  await user.click(await screen.findByRole("button", { name: "切换到 Markdown 全文" }))
+  expect(await screen.findByRole("heading", { name: "摘要" })).toBeTruthy()
+  expect(screen.getByText("这是一段全文。")).toBeTruthy()
+  expect(screen.queryByRole("complementary", { name: "文献分块" })).toBeNull()
+  expect(screen.queryByText("PDF 第 1 页")).toBeNull()
+  await user.click(screen.getByRole("button", { name: "切换到 PDF 原文" }))
+  expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
+})
+
+it("renders a markdown image from the paper asset endpoint", async () => {
+  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn(() => "blob:markdown-figure"), revokeObjectURL: vi.fn() }))
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.endsWith("/assets/images/figure-1.png")) return new Response(new Blob(["png"], { type: "image/png" }))
+    if (url.endsWith("/markdown")) {
+      return new Response(JSON.stringify({ markdown: "![图注](images/figure-1.png)" }), { headers: { "Content-Type": "application/json" } })
+    }
+    if (url.includes("/blocks")) {
+      return new Response(JSON.stringify({ types: ["text"], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
+    }
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole("button", { name: "切换到 Markdown 全文" }))
+  expect(await screen.findByRole("img", { name: "图注" })).toBeTruthy()
+  expect(fetchImpl.mock.calls.some(([input]) => String(input).endsWith("/assets/images/figure-1.png"))).toBe(true)
+})
+
+it("disables the markdown view when the paper has no parsed full text", async () => {
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.includes("/blocks")) return new Response(JSON.stringify({ types: [], items: [], total: 0, offset: 0, limit: 50 }), { headers: { "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: false } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  const toggle = await screen.findByRole("button", { name: "切换到 Markdown 全文" })
+  expect((toggle as HTMLButtonElement).disabled).toBe(true)
 })

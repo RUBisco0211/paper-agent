@@ -3,6 +3,7 @@ import { ApiError } from "../errors"
 import type {
   Page,
   PaperListParams,
+  PaperMarkdownResponse,
   PaperBlocksResponse,
   PaperBlock,
   UploadResponse,
@@ -42,6 +43,17 @@ export function libraryEndpoints(client: ApiClient) {
     block: (paperId: Uuid, blockId: number) =>
       client.request<PaperBlock>(`${PAPERS}/${paperId}/blocks/${blockId}`),
 
+    /** The parsed full text as one markdown document; images stay relative. */
+    markdown: (paperId: Uuid) =>
+      client.request<PaperMarkdownResponse>(`${PAPERS}/${paperId}/markdown`),
+
+    /** Fetched as a blob: markdown images need the access token too. */
+    assetBlob: async (paperId: Uuid, path: string, options: { signal?: AbortSignal } = {}) => {
+      const response = await client.raw(`${PAPERS}/${paperId}/assets/${path}`, options)
+      if (!response.ok) throw await toError(response)
+      return response.blob()
+    },
+
     blockImageBlob: async (paperId: Uuid, blockId: number, options: { signal?: AbortSignal } = {}) => {
       const response = await client.raw(`${PAPERS}/${paperId}/blocks/${blockId}/image`, options)
       if (!response.ok) throw await toError(response)
@@ -60,6 +72,9 @@ export function libraryEndpoints(client: ApiClient) {
     },
 
     pdfUrl: (paperId: Uuid) => `${client.base}${PAPERS}/${paperId}/pdf`,
+
+    assetUrl: (paperId: Uuid, path: string) =>
+      `${client.base}${PAPERS}/${paperId}/assets/${path}`,
 
   }
 }

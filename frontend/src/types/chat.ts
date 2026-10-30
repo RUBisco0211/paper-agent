@@ -9,10 +9,11 @@ export type MessageQuote = {
 }
 
 export type PaperQuote = {
-  kind: "parsed_block" | "pdf_selection"
+  /** Markdown 全文引用没有页码，它引用的是整篇解析产物。 */
+  kind: "parsed_block" | "pdf_selection" | "markdown_selection"
   user_paper_id: string
   version: string
-  page: number
+  page?: number | null
   block_id?: number
   start?: number
   end?: number

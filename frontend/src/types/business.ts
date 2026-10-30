@@ -154,6 +154,10 @@ export interface PaperBlocksResponse {
   limit: number
 }
 
+export interface PaperMarkdownResponse {
+  markdown: string
+}
+
 export interface UploadResponse {
   run_id: Uuid
   status: RunStatus

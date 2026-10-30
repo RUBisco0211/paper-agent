@@ -40,6 +40,24 @@ logger = structlog.get_logger(__name__)
 
 CHUNK_SIZE = 1024 * 1024
 
+#: Image files a parsed markdown may link to, keyed by suffix.
+ASSET_MEDIA_TYPES = {
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+    "svg": "image/svg+xml",
+}
+
+
+def _asset_media_type(path: str) -> str | None:
+    """Media type of a markdown image path, or None when it must not be served."""
+    if not path.startswith("images/") or ".." in path.split("/") or "\\" in path:
+        return None
+    return ASSET_MEDIA_TYPES.get(path.rsplit(".", 1)[-1].lower())
+
 
 @dataclass(frozen=True, slots=True)
 class LibraryEntry:
@@ -246,6 +264,78 @@ class PaperLibraryService:
                 unreadable_image_ids=self._unreadable_image_ids(manifest, content),
             ),
         }
+
+    def read_markdown(self, *, user_id: UUID, user_paper_id: UUID) -> str:
+        """Read the MinerU full-text markdown stored with the parse artifacts."""
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.artifact_manifest_key:
+            raise NotFoundError(
+                "该文献没有 Markdown 全文",
+                code=ErrorCode.PAPER_MARKDOWN_NOT_AVAILABLE,
+            )
+        try:
+            manifest = json.loads(
+                self._storage.read_text(paper.artifact_manifest_key)
+            )
+            if manifest.get("file_hash") != paper.file_hash:
+                raise ValueError("artifact hash mismatch")
+            files = manifest["files"]
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献解析结果不可读取",
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+        part = self._manifest_part(files, "full.md")
+        if part is None:
+            raise NotFoundError(
+                "该文献没有 Markdown 全文",
+                code=ErrorCode.PAPER_MARKDOWN_NOT_AVAILABLE,
+            )
+        try:
+            return self._read_artifact_part(part).decode("utf-8", errors="replace")
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献解析结果不可读取",
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+
+    def read_asset(
+        self, *, user_id: UUID, user_paper_id: UUID, path: str
+    ) -> tuple[bytes, str]:
+        """Read one image file the parsed markdown links to.
+
+        Only files the manifest lists as ``images/…`` are served; anything else
+        the parse wrote stays internal.
+        """
+        entry = self._require_entry(user_id=user_id, user_paper_id=user_paper_id)
+        paper = entry.paper
+        if paper is None or not paper.artifact_manifest_key:
+            raise NotFoundError("该文献图片不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        media_type = _asset_media_type(path)
+        if media_type is None:
+            raise NotFoundError("该文献图片不可用", code=ErrorCode.PAPER_NOT_FOUND)
+        try:
+            manifest = json.loads(
+                self._storage.read_text(paper.artifact_manifest_key)
+            )
+            if manifest.get("file_hash") != paper.file_hash:
+                raise ValueError("artifact hash mismatch")
+            part = manifest["files"].get(path)
+            if part is None:
+                raise NotFoundError("该文献图片不可用", code=ErrorCode.PAPER_NOT_FOUND)
+            payload = self._read_artifact_part(part)
+        except (KeyError, ValueError, TypeError, FileNotFoundError) as exc:
+            raise AppError(
+                "文献图片不可读取",
+                code=ErrorCode.IMPORT_ARTIFACT_INVALID,
+                status_code=502,
+            ) from exc
+        if len(payload) > self._image_max_bytes:
+            raise ValidationError("该图片过大，无法读取")
+        return payload, media_type
 
     def read_image(
         self, *, user_id: UUID, user_paper_id: UUID, block_id: int

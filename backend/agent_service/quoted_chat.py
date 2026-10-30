@@ -21,10 +21,11 @@ class MessageQuote(BaseModel):
 
 
 class PaperQuote(BaseModel):
-    kind: Literal["parsed_block", "pdf_selection"]
+    kind: Literal["parsed_block", "pdf_selection", "markdown_selection"]
     user_paper_id: str
     version: str
-    page: int = Field(ge=1)
+    #: ``markdown_selection`` quotes the parsed full text, which has no page.
+    page: int | None = Field(default=None, ge=1)
     block_id: int | None = None
     start: int | None = None
     end: int | None = None
@@ -74,6 +75,8 @@ def render_quoted_content(
             source = "本会话历史回复"
         elif ref.kind == "parsed_block":
             source = f"文献《{ref.source_title or '未命名文献'}》第 {ref.page} 页解析块"
+        elif ref.kind == "markdown_selection":
+            source = f"文献《{ref.source_title or '未命名文献'}》全文"
         else:
             source = f"文献《{ref.source_title or '未命名文献'}》第 {ref.page} 页"
         parts.append(

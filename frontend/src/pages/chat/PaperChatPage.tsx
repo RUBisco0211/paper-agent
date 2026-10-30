@@ -55,6 +55,9 @@ function QuotedMessage({ message, annotations, onQuote, onUserConfirm, activeAnn
         const range = root && restoreRenderedSelection(root, { start: reference.start, end: reference.end, text: reference.selected_text })
         range?.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' })
       })
+    } else if (reference.kind === 'markdown_selection') {
+      // The full text has no locator to hand the sidebar reader.
+      navigate(`/library/${reference.user_paper_id}?view=markdown`)
     } else {
       if (quoteBridge?.openPaper(sessionId, reference)) return
       const query = new URLSearchParams({ page: String(reference.page) })

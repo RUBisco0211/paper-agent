@@ -29,7 +29,7 @@ export function readQuoteReferences(metadata: unknown): QuoteReference[] {
   if (!Array.isArray(refs)) return []
   return refs.filter((ref): ref is QuoteReference =>
     typeof ref === 'object' && ref !== null &&
-    ['message', 'parsed_block', 'pdf_selection'].includes(ref.kind) &&
+    ['message', 'parsed_block', 'pdf_selection', 'markdown_selection'].includes(ref.kind) &&
     typeof ref.selected_text === 'string' && typeof ref.comment === 'string')
 }
 

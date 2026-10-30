@@ -42,10 +42,10 @@ export function ConversationPapersPanel({
     if (!bridge) return;
     const openEntry = bridge.openEntry;
     if (!openEntry) return;
-    const open = (reference: PaperOpenReference) => {
+    const open = (reference: PaperOpenReference | PaperQuote) => {
       setReadingId(reference.user_paper_id);
       setLocatedQuote(
-        reference.kind === "paper" || reference.page === null
+        reference.kind === "paper" || reference.page === null || reference.page === undefined
           ? null
           : {
               kind: reference.kind,

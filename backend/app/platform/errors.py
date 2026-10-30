@@ -39,6 +39,7 @@ class ErrorCode(StrEnum):
     # Library
     PAPER_NOT_FOUND = "paper_not_found"
     PAPER_PDF_NOT_AVAILABLE = "paper_pdf_not_available"
+    PAPER_MARKDOWN_NOT_AVAILABLE = "paper_markdown_not_available"
     PDF_INVALID = "pdf_invalid"
     PDF_ENCRYPTED = "pdf_encrypted"
     PDF_UNREADABLE = "pdf_unreadable"
