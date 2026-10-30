@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
+
+import { CitationProvider } from "@/components/chat/CitationProvider"
 
 import {
   PaperImageRenderer,
@@ -64,6 +66,13 @@ function renderBody(renderer: typeof PaperImageRenderer, pair: ToolCallWithResul
   render(<>{node}</>)
 }
 
+function renderBodyInConversation(pair: ToolCallWithResult) {
+  const openPaper = vi.fn().mockReturnValue(true)
+  const node = PaperImageRenderer.renderBody?.(pair, ((key: string) => key) as never)
+  render(<CitationProvider onOpen={() => {}} onOpenPaper={openPaper}>{node}</CitationProvider>)
+  return openPaper
+}
+
 describe("read_paper_image rendering", () => {
   it("shows the returned picture as a data URI when the model received it", () => {
     renderBody(
@@ -92,6 +101,37 @@ describe("read_paper_image rendering", () => {
     await user.click(screen.getByRole("button", { name: /查看大图/ }))
 
     expect(await screen.findByRole("dialog", { name: "Figure 1: accuracy" })).toBeTruthy()
+  })
+
+  it("locates the figure in the conversation reader from the call arguments", async () => {
+    const user = userEvent.setup()
+    const openPaper = renderBodyInConversation(
+      imagePair(
+        { title: "Attention", page: 2, caption: "Figure 1: accuracy" },
+        { data: PNG, media_type: "image/png" },
+      ),
+    )
+
+    await user.click(screen.getByRole("button", { name: "定位原文" }))
+
+    expect(openPaper).toHaveBeenCalledWith({
+      kind: "parsed_block",
+      user_paper_id: "p1",
+      page: 2,
+      block_id: 7,
+    })
+  })
+
+  it("offers no locator outside a conversation", () => {
+    renderBody(
+      PaperImageRenderer,
+      imagePair(
+        { title: "Attention", page: 2, caption: "Figure 1: accuracy" },
+        { data: PNG, media_type: "image/png" },
+      ),
+    )
+
+    expect(screen.queryByRole("button", { name: "定位原文" })).toBeNull()
   })
 
   it("explains the missing picture when the model cannot view images", () => {

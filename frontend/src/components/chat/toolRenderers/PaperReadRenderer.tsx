@@ -1,7 +1,9 @@
-import { FileImage, FileText } from "lucide-react"
+import { FileImage, FileText, LocateFixed } from "lucide-react"
 import { useState } from "react"
 
+import { usePaperOpen } from "@/components/chat/CitationProvider"
 import { Markdown } from "@/components/markdown/Markdown"
+import { Button } from "@/components/ui/Button"
 import {
   ImageViewerDialog,
   type ImageViewerTarget,
@@ -68,6 +70,47 @@ function pageArg(pair: ToolCallWithResult): number | null {
     return null
   }
   return null
+}
+
+/** The call arguments carry the locator the image result itself does not. */
+function imageArgs(pair: ToolCallWithResult): { paperId: string | null; blockId: number | null } {
+  try {
+    const input: unknown = JSON.parse(pair.call.input || "{}")
+    if (input && typeof input === "object") {
+      const { paper_id, block_id } = input as { paper_id?: unknown; block_id?: unknown }
+      return {
+        paperId: typeof paper_id === "string" && paper_id ? paper_id : null,
+        blockId: typeof block_id === "number" && Number.isInteger(block_id) ? block_id : null,
+      }
+    }
+  } catch {
+    // The model wrote these arguments; a malformed call simply has no locator.
+  }
+  return { paperId: null, blockId: null }
+}
+
+/**
+ * Jumps to the figure in the conversation's reader.
+ *
+ * The result carries only title, page and caption, so the paper and block ids
+ * come from the call arguments; outside a conversation there is nowhere to go
+ * and the button is omitted.
+ */
+function LocateButton({ paperId, page, blockId }: { paperId: string | null; page?: number; blockId: number | null }) {
+  const openPaper = usePaperOpen()
+  if (!openPaper || !paperId) return null
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="gap-1"
+      onClick={() => openPaper({ kind: "parsed_block", user_paper_id: paperId, page: page ?? null, block_id: blockId ?? undefined })}
+    >
+      <LocateFixed />
+      定位原文
+    </Button>
+  )
 }
 
 function PendingBody() {
@@ -139,12 +182,16 @@ export const PaperImageRenderer: ToolRenderer = {
     if (pair.result.state === "error") return <FailedBody />
     const meta = readMeta<ImageMeta>(pair.result)
     const src = imageSource(pair.result)
+    const { paperId, blockId } = imageArgs(pair)
     if (!src) {
       return (
-        <p className="p-3 text-sm text-muted-foreground">
-          {meta?.note || "当前模型没有收到图片，只能提供图注与页码"}
-          {meta?.caption ? `：${meta.caption}` : ""}
-        </p>
+        <div className="space-y-2 p-3">
+          <p className="text-sm text-muted-foreground">
+            {meta?.note || "当前模型没有收到图片，只能提供图注与页码"}
+            {meta?.caption ? `：${meta.caption}` : ""}
+          </p>
+          <LocateButton paperId={paperId} page={meta?.page} blockId={blockId} />
+        </div>
       )
     }
     const caption = meta?.caption?.trim()
@@ -154,6 +201,8 @@ export const PaperImageRenderer: ToolRenderer = {
         filename={`${caption || "figure"}.${src.mediaType.split("/")[1]?.replace("jpeg", "jpg") || "png"}`}
         caption={caption}
         page={meta?.page}
+        paperId={paperId}
+        blockId={blockId}
       />
     )
   },
@@ -168,11 +217,15 @@ function FigureBody({
   filename,
   caption,
   page,
+  paperId,
+  blockId,
 }: {
   source: string
   filename: string
   caption?: string
   page?: number
+  paperId: string | null
+  blockId: number | null
 }) {
   const [viewer, setViewer] = useState<ImageViewerTarget | null>(null)
   const title = caption || "文献图片"
@@ -191,11 +244,10 @@ function FigureBody({
           className="max-h-80 w-auto max-w-full rounded"
         />
       </button>
-      {(caption || page) && (
-        <figcaption className="text-xs text-muted-foreground">
-          {[caption, page ? `第 ${page} 页` : null].filter(Boolean).join(" · ")}
-        </figcaption>
-      )}
+      <figcaption className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span>{[caption, page ? `第 ${page} 页` : null].filter(Boolean).join(" · ")}</span>
+        <LocateButton paperId={paperId} page={page} blockId={blockId} />
+      </figcaption>
       <ImageViewerDialog target={viewer} onOpenChange={setViewer} />
     </figure>
   )
