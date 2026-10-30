@@ -181,7 +181,7 @@ export function ChatPage() {
   return (
     <ChatQuoteContext.Provider value={bridge}>
       <SidebarProvider className="min-h-0 flex-1">
-        <div className="flex h-full min-h-0 flex-1">
+        <div className="flex h-full min-h-0 min-w-0 flex-1">
           <div
             aria-hidden={!leftOpen}
             inert={!leftOpen}
@@ -198,7 +198,6 @@ export function ChatPage() {
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
-                  data-animated-sidebar
                   panelRef={papersPanelRef}
                   defaultSize="24rem"
                   minSize="18rem"

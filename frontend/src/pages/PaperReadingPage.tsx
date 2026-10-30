@@ -203,7 +203,7 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
     if (!accepted) notifyError(new Error("无法加入当前对话"), "请检查会话后重试")
   }
 
-  return <div className="flex h-full min-h-0 w-full flex-col">
+  return <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
     <header data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b px-4">
       <Button variant="ghost" size="icon-sm" aria-label={embedded ? "返回文献列表" : "返回"} onClick={() => onBack ? onBack() : navigate((location.state as { from?: string } | null)?.from ?? "/library")}><ArrowLeft /></Button>
       <div className="min-w-0 flex-1">
@@ -214,14 +214,14 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
       <Button variant="ghost" size="icon-sm" aria-label={panelOpen ? "收起分块" : "展开分块"} onClick={() => { setPanelOpen(!panelOpen); setImageViewer(null) }}>{panelOpen ? <PanelRightClose /> : <PanelRightOpen />}</Button>
     </header>
     <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
-      <ResizablePanel minSize={embedded ? "12rem" : "20rem"} className="min-h-0 min-w-0">
+      <ResizablePanel minSize={embedded ? "35%" : "20rem"} className="min-h-0 min-w-0">
         <main className="h-full min-w-0 overflow-hidden">
         {paper.isError ? <p role="alert" className="p-5 text-sm text-destructive">{describeError(paper.error)}</p> : paper.data && !paper.data.pdf.available ? <p className="p-5 text-sm text-muted-foreground">暂无 PDF 原文</p> : <PdfViewer paperId={paperId} target={target} onClearTarget={clearLocatedBlock} onQuoteSelection={onQuote && paper.data?.pdf_version ? addPdfQuote : undefined} />}
         </main>
       </ResizablePanel>
       <>
         <ResizableHandle aria-label="调整分块宽度" withHandle className={panelOpen ? "" : "pointer-events-none opacity-0"} />
-        <ResizablePanel data-animated-sidebar panelRef={blocksPanelRef} collapsible collapsedSize={0} defaultSize={embedded ? "45%" : "26rem"} minSize={embedded ? "12rem" : "20rem"} maxSize={embedded ? "65%" : "50rem"} className="min-h-0 min-w-0">
+        <ResizablePanel panelRef={blocksPanelRef} collapsible collapsedSize={0} defaultSize={embedded ? "45%" : "26rem"} minSize={embedded ? "35%" : "20rem"} maxSize={embedded ? "65%" : "50rem"} className="min-h-0 min-w-0">
           <aside aria-label="文献分块" className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
         {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null); setImageViewer(null) }} className="h-full min-h-0 flex-1 gap-0">
           <div data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center overflow-x-auto border-b px-2">

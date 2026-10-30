@@ -543,13 +543,9 @@ svg.lucide {
 @media (prefers-reduced-motion: reduce) {
 	.route-page-enter { animation: none; }
 }
-[data-animated-sidebar] {
-  transition: flex-grow var(--motion-duration-normal) var(--motion-ease-standard);
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .card-glow,
-  [data-animated-sidebar] {
+  .card-glow {
     transition: none;
   }
 }
