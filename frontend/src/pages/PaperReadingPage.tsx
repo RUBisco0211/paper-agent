@@ -229,29 +229,32 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
               {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
             </TabsList>
           </div>
-          <TooltipProvider><div className="min-h-0 flex-1 overflow-y-auto p-2">
+          <TooltipProvider><div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
             {blocks.isError && <p role="alert" className="p-2 text-sm text-destructive">{describeError(blocks.error)}</p>}
             {blocks.data?.pages.flatMap((page) => page.items).map((block) => {
               const isFormula = block.type === "equation" || block.type === "formula" || block.type === "equation_interline"
               const markup = isFormula && block.formula ? formulaMarkup(block.formula) : null
               const canCopy = (block.type === "text" && Boolean(block.text)) || (isFormula && Boolean(block.formula || block.text))
-              return <div key={block.id} className={`relative rounded-md hover:bg-muted ${selectedBlock === block.id ? "bg-muted" : ""}`}>
-                <div className="w-full px-3 py-2 pr-24 text-left">
-                  <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
-                  <span className="mt-1 block">
-                    {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
-                    {block.text && (!markup || block.type === "image" || block.type === "chart") && <span className="line-clamp-4 text-sm whitespace-pre-wrap">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
-                    {!block.text && !markup && !block.has_image && <span className="text-muted-foreground text-sm">{blockLabel(block.type)}</span>}
-                  </span>
+              return <div key={block.id} className={`rounded-md hover:bg-muted ${selectedBlock === block.id ? "bg-muted" : ""}`}>
+                {/* 操作按钮跟内容同一行：绝对定位在右边缘时，超宽的分块会把按钮顶到可视区外。 */}
+                <div className="flex items-start gap-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <span className="text-muted-foreground text-xs">第 {block.page} 页</span>
+                    <span className="mt-1 block">
+                      {markup ? <span className="block max-w-full overflow-x-auto text-sm" dangerouslySetInnerHTML={{ __html: markup }} /> : null}
+                      {block.text && (!markup || block.type === "image" || block.type === "chart") && <span className="line-clamp-4 text-sm whitespace-pre-wrap wrap-break-word">{isFormula && block.formula ? normalizeFormula(block.formula) : block.text}</span>}
+                      {!block.text && !markup && !block.has_image && <span className="text-muted-foreground text-sm">{blockLabel(block.type)}</span>}
+                    </span>
+                  </div>
+                  <div data-slot="block-actions" className="flex shrink-0 items-center gap-0.5">
+                    <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="定位分块" onClick={() => locateBlock(block)}><LocateFixed /></Button></TooltipTrigger><TooltipContent>定位原文</TooltipContent></Tooltip>
+                    {canCopy && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button></TooltipTrigger><TooltipContent>{isFormula ? "复制公式" : "复制正文"}</TooltipContent></Tooltip>}
+                    {onQuote && paper.data?.artifact_version && ((block.type === "image" || block.type === "chart") ? block.has_image : (block.text || block.formula)) && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="添加到对话" onClick={() => addBlockQuote(block)}><MessageSquarePlus /></Button></TooltipTrigger><TooltipContent>添加到对话</TooltipContent></Tooltip>}
+                  </div>
                 </div>
                 {block.has_image && (block.type === "image" || block.type === "chart" || (isFormula && !block.formula)) && <div className="px-3 pb-2">
                   <BlockImagePreview paperId={paperId} block={block} onOpen={block.type === "image" || block.type === "chart" ? (source) => { setImageViewer({ source, title: block.type === "chart" ? "图表预览" : "图片预览", filename: `${block.type === "chart" ? "figure" : "image"}-p${block.page}-b${block.id}.png` }) } : undefined} />
                 </div>}
-                <div className="absolute right-1 top-1 flex items-center gap-0.5">
-                  <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="定位分块" onClick={() => locateBlock(block)}><LocateFixed /></Button></TooltipTrigger><TooltipContent>定位原文</TooltipContent></Tooltip>
-                  {canCopy && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label={isFormula ? "复制公式" : "复制正文"} onClick={() => void copyBlock(block)}><Copy /></Button></TooltipTrigger><TooltipContent>{isFormula ? "复制公式" : "复制正文"}</TooltipContent></Tooltip>}
-                  {onQuote && paper.data?.artifact_version && ((block.type === "image" || block.type === "chart") ? block.has_image : (block.text || block.formula)) && <Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="添加到对话" onClick={() => addBlockQuote(block)}><MessageSquarePlus /></Button></TooltipTrigger><TooltipContent>添加到对话</TooltipContent></Tooltip>}
-                </div>
               </div>
             })}
             {blocks.hasNextPage && <Button className="mt-2 w-full" variant="ghost" size="sm" disabled={blocks.isFetchingNextPage} onClick={() => void blocks.fetchNextPage()}>加载更多</Button>}
