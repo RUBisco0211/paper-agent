@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { expect, it, vi } from "vitest"
 
+import { ChatSidebarProvider, useChatSidebarVisibility } from "@/components/providers/ChatSidebarProvider"
 import { SidebarProvider } from "@/components/ui/Sidebar"
 import { TooltipProvider } from "@/components/ui/Tooltip"
 import { AppSidebar } from "@/components/layout/AppSidebar"
@@ -25,13 +26,33 @@ it("returns to the last visited chat route after switching sidebar sections", as
   expect(screen.getByTestId("path").textContent).toBe("/chat/agent/session")
 })
 
-it("opens password reset from the account menu when the user selects it", async () => {
-  render(<MemoryRouter initialEntries={["/library"]}>
-    <TooltipProvider><SidebarProvider><AppSidebar /><Path /></SidebarProvider></TooltipProvider>
-  </MemoryRouter>)
+function Probe() {
+  const { open } = useChatSidebarVisibility()
+  return <span data-testid="chat-sidebar">{open ? "open" : "closed"}</span>
+}
 
-  await userEvent.click(screen.getByRole("button", { name: "账户" }))
-  await userEvent.click(await screen.findByRole("menuitem", { name: /重置密码/ }))
+function renderRail(path: string) {
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <TooltipProvider><SidebarProvider>
+        <ChatSidebarProvider><AppSidebar /><Probe /></ChatSidebarProvider>
+      </SidebarProvider></TooltipProvider>
+    </MemoryRouter>,
+  )
+}
 
-  expect(screen.getByTestId("path").textContent).toBe("/password-reset")
+it("folds the conversation sidebar from the rail button instead of navigating", async () => {
+  renderRail("/chat/agent-1/session-1")
+
+  await userEvent.click(screen.getByRole("button", { name: "收起会话侧栏" }))
+
+  expect(screen.getByTestId("chat-sidebar").textContent).toBe("closed")
+  expect(screen.getByRole("button", { name: "展开会话侧栏" })).toBeTruthy()
+})
+
+it("keeps the conversation entry as a link outside a conversation", () => {
+  renderRail("/library")
+
+  expect(screen.getByRole("link", { name: "对话" })).toBeTruthy()
+  expect(screen.queryByRole("button", { name: "收起会话侧栏" })).toBeNull()
 })

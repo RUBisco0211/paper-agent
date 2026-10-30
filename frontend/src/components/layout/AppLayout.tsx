@@ -3,16 +3,19 @@ import { useContext, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { ImportQueueProvider } from '@/components/providers/ImportQueueProvider';
 
 import { AppSidebar } from '@/components/layout/AppSidebar';
+import { ChatSidebarProvider } from '@/components/providers/ChatSidebarProvider';
 import { SidebarInset, SidebarProvider } from '@/components/ui/Sidebar';
 
 export function AppLayout() {
 	return (
 		<ImportQueueProvider><div className="h-screen flex">
 			<SidebarProvider>
-				<AppSidebar />
-				<SidebarInset className="flex-1 overflow-hidden bg-background">
-					<KeepAliveOutlet />
-				</SidebarInset>
+				<ChatSidebarProvider>
+					<AppSidebar />
+					<SidebarInset className="flex-1 overflow-hidden bg-background">
+						<KeepAliveOutlet />
+					</SidebarInset>
+				</ChatSidebarProvider>
 			</SidebarProvider>
 		</div></ImportQueueProvider>
 	);

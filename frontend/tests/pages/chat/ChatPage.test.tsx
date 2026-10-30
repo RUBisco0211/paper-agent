@@ -11,6 +11,10 @@ import {
 import { expect, it, vi } from "vitest";
 
 import { createQueryClient } from "@/app/query";
+import {
+  ChatSidebarProvider,
+  useChatSidebarVisibility,
+} from "@/components/providers/ChatSidebarProvider";
 import { ChatPage } from "@/pages/chat/ChatPage";
 
 vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: {} }) }));
@@ -65,83 +69,112 @@ function Navigation() {
   );
 }
 
+/** Stands in for the rail's 对话 button, which owns the fold on a conversation. */
+function RailButton() {
+  const { open, toggle } = useChatSidebarVisibility();
+  return (
+    <button onClick={toggle} aria-label={open ? "收起会话侧栏" : "展开会话侧栏"}>
+      对话
+    </button>
+  );
+}
+
+function sessionPanel() {
+  return screen.getByText("会话侧栏").parentElement!;
+}
+
 function renderChat(initialPath: string) {
   render(
     <QueryClientProvider client={createQueryClient()}>
       <MemoryRouter initialEntries={[initialPath]}>
-        <Routes>
-          <Route path="/chat" element={<ChatPage />}>
-            <Route
-              path="new"
-              element={
-                <>
-                  <Path />
-                  新会话页面
-                  <Navigation />
-                </>
-              }
-            />
-            <Route
-              path=":agentId/:sessionId"
-              element={
-                <>
-                  <Path />
-                  会话页面
-                  <Navigation />
-                </>
-              }
-            />
-          </Route>
-        </Routes>
+        <ChatSidebarProvider>
+          <RailButton />
+          <Routes>
+            <Route path="/chat" element={<ChatPage />}>
+              <Route
+                path="new"
+                element={
+                  <>
+                    <Path />
+                    新会话页面
+                    <Navigation />
+                  </>
+                }
+              />
+              <Route
+                path=":agentId/:sessionId"
+                element={
+                  <>
+                    <Path />
+                    会话页面
+                    <Navigation />
+                  </>
+                }
+              />
+            </Route>
+          </Routes>
+        </ChatSidebarProvider>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-it("shows one conversation header without a tab strip when a session is open", async () => {
+it("shows the conversation without a page toolbar of its own", async () => {
   renderChat("/chat/agent-1/session-1");
-  await screen.findByText("测试会话");
-  expect(
-    screen.getByRole("banner", { name: "会话工具栏" }).textContent,
-  ).toContain("测试会话");
+  await screen.findByText("会话侧栏");
+
+  expect(screen.queryByRole("banner")).toBeNull();
   expect(screen.queryByRole("tablist")).toBeNull();
-  expect(screen.getByRole("button", { name: "收起会话侧栏" })).toBeTruthy();
-});
-
-it("shows the papers sidebar when a global conversation is open", async () => {
-  renderChat("/chat/agent-1/session-1");
-  await screen.findByText("测试会话");
-  expect(screen.getByText("项目文献")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "收起文献侧栏" }));
-  expect(screen.getByRole("button", { name: "展开文献侧栏" })).toBeTruthy();
-});
-
-it("shows an empty workspace when no conversation is selected", async () => {
-  renderChat("/chat");
-  await screen.findByRole("banner", { name: "会话工具栏" });
-  expect(screen.queryByTestId("path")).toBeNull();
-  expect(screen.queryByRole("tablist")).toBeNull();
-});
-
-it("switches conversations through the route and keeps the sidebar toggle available", async () => {
-  renderChat("/chat/new");
-  fireEvent.click(screen.getByRole("button", { name: "收起会话侧栏" }));
-  expect(screen.getByRole("button", { name: "展开会话侧栏" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "已有会话" }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole("banner", { name: "会话工具栏" }).textContent,
-    ).toContain("测试会话"),
-  );
   expect(screen.getByTestId("path").textContent).toBe(
     "/chat/agent-1/session-1",
   );
 });
 
+it("keeps the papers panel on screen instead of offering a toggle", async () => {
+  renderChat("/chat/agent-1/session-1");
+  await screen.findByText("项目文献");
+
+  expect(screen.queryByRole("button", { name: "收起文献侧栏" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "展开文献侧栏" })).toBeNull();
+});
+
+it("shows an empty workspace when no conversation is selected", async () => {
+  renderChat("/chat");
+  await screen.findByText("会话侧栏");
+
+  expect(screen.queryByTestId("path")).toBeNull();
+  expect(screen.queryByRole("banner")).toBeNull();
+});
+
+it("folds the session list from the rail button while staying on the conversation", async () => {
+  renderChat("/chat/new");
+  await screen.findByText("会话侧栏");
+  expect(sessionPanel().hasAttribute("inert")).toBe(false);
+
+  fireEvent.click(screen.getByRole("button", { name: "收起会话侧栏" }));
+  expect(sessionPanel().hasAttribute("inert")).toBe(true);
+  expect(screen.getByTestId("path").textContent).toBe("/chat/new");
+
+  fireEvent.click(screen.getByRole("button", { name: "展开会话侧栏" }));
+  expect(sessionPanel().hasAttribute("inert")).toBe(false);
+});
+
+it("switches conversations through the route", async () => {
+  renderChat("/chat/new");
+  await screen.findByText("会话侧栏");
+
+  fireEvent.click(screen.getByRole("button", { name: "已有会话" }));
+
+  await waitFor(() =>
+    expect(screen.getByTestId("path").textContent).toBe(
+      "/chat/agent-1/session-1",
+    ),
+  );
+});
+
 it("returns to the empty workspace when a requested session is unavailable", async () => {
   renderChat("/chat/agent-1/deleted");
+
   await waitFor(() => expect(screen.queryByTestId("path")).toBeNull());
-  expect(
-    screen.getByRole("banner", { name: "会话工具栏" }).textContent,
-  ).toContain("对话");
+  expect(screen.getByText("会话侧栏")).toBeTruthy();
 });

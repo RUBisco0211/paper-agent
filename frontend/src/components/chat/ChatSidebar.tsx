@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { BookOpen, ChevronDown, MoreHorizontal, PanelRightClose, PanelRightOpen, Pencil, Plus, Trash2 } from "lucide-react"
+import { BookOpen, ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
@@ -46,11 +46,7 @@ function SessionRows({ sessions, onRename, onDelete }: { sessions: BoundSession[
   ))
 }
 
-export function ChatSidebar({ currentProjectId = null, papersOpen = false, onTogglePapers }: {
-  currentProjectId?: string | null
-  papersOpen?: boolean
-  onTogglePapers?: () => void
-}) {
+export function ChatSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { api } = useApi()
@@ -186,7 +182,6 @@ export function ChatSidebar({ currentProjectId = null, papersOpen = false, onTog
                 <CollapsibleTrigger className="flex min-w-0 items-center gap-1 truncate"><ChevronDown className="size-3.5" />{project.name}</CollapsibleTrigger>
                 <span className="flex items-center gap-1">
                   <button type="button" aria-label={`在${project.name}中新建会话`} onClick={() => navigate("/chat/new", { state: { initialProjectId: project.id } })}><Plus className="size-4" /></button>
-                  <button type="button" aria-label={`${currentProjectId === project.id && papersOpen ? "收起" : "展开"}${project.name}文献侧栏`} title={`${currentProjectId === project.id && papersOpen ? "收起" : "展开"}${project.name}文献侧栏`} onClick={() => currentProjectId === project.id && onTogglePapers ? onTogglePapers() : navigate(`/chat/project/${project.id}`)}>{currentProjectId === project.id && papersOpen ? <PanelRightClose className="size-4" /> : <PanelRightOpen className="size-4" />}</button>
                   <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={`${project.name}操作`}><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start">
                       <DropdownMenuItem onSelect={() => setAddPapersTo(project.id)}><Plus />添加文献</DropdownMenuItem>

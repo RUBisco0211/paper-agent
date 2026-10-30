@@ -3,6 +3,7 @@ import { BookOpen, Clock3, ListChecks, LoaderCircle, LockKeyhole, LogOut, Messag
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
 import { useAuth } from "@/components/providers/AuthProvider"
+import { useChatSidebarVisibility } from "@/components/providers/ChatSidebarProvider"
 import { useImportQueue } from "@/components/providers/ImportQueueProvider"
 import { ImportQueuePanel } from "@/components/imports/ImportQueuePanel"
 import { Avatar, AvatarFallback } from "@/components/ui/Avatar"
@@ -22,6 +23,7 @@ export function AppSidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const { setOpen, active } = useImportQueue()
+  const chatSidebar = useChatSidebarVisibility()
   const lastPaths = useRef<Record<string, string>>({})
   const currentRoute = routes.find(({ to }) => location.pathname === to || location.pathname.startsWith(`${to}/`))
   if (currentRoute) lastPaths.current[currentRoute.to] = `${location.pathname}${location.search}${location.hash}`
@@ -32,11 +34,19 @@ export function AppSidebar() {
     </SidebarHeader>
     <SidebarContent className="pt-5">
       <SidebarGroup className="px-2"><SidebarGroupContent><SidebarMenu>
-        {routes.map(({ to, label, icon: Icon }) => <SidebarMenuItem key={to}>
-          <SidebarMenuButton asChild tooltip={{ children: label, hidden: false }} isActive={location.pathname === to || location.pathname.startsWith(`${to}/`)} className="mx-auto size-(--app-nav-button-size)! justify-center p-0!">
-            <NavLink to={lastPaths.current[to] ?? to} aria-label={label}><Icon /><span className="sr-only">{label}</span></NavLink>
-          </SidebarMenuButton>
-        </SidebarMenuItem>)}
+        {routes.map(({ to, label, icon: Icon }) => {
+          const inSection = location.pathname === to || location.pathname.startsWith(`${to}/`)
+          // On a conversation the same button folds the session list instead of
+          // navigating: the page has no toolbar of its own.
+          const foldsChatSidebar = to === "/chat" && inSection
+          return <SidebarMenuItem key={to}>
+            {foldsChatSidebar ? <SidebarMenuButton tooltip={{ children: label, hidden: false }} isActive aria-label={chatSidebar.open ? "收起会话侧栏" : "展开会话侧栏"} onClick={chatSidebar.toggle} className="mx-auto size-(--app-nav-button-size)! justify-center p-0!">
+              <Icon /><span className="sr-only">{label}</span>
+            </SidebarMenuButton> : <SidebarMenuButton asChild tooltip={{ children: label, hidden: false }} isActive={inSection} className="mx-auto size-(--app-nav-button-size)! justify-center p-0!">
+              <NavLink to={lastPaths.current[to] ?? to} aria-label={label}><Icon /><span className="sr-only">{label}</span></NavLink>
+            </SidebarMenuButton>}
+          </SidebarMenuItem>
+        })}
       </SidebarMenu></SidebarGroupContent></SidebarGroup>
     </SidebarContent>
     <SidebarFooter className="items-center px-2 pb-4"><SidebarMenu>

@@ -1,17 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-} from "lucide-react";
 import { usePanelRef } from "react-resizable-panels";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useOutlet } from "react-router-dom";
 
 import { useApi } from "@/components/providers/ApiProvider";
+import { useChatSidebarVisibility } from "@/components/providers/ChatSidebarProvider";
 import { listBoundSessions } from "@/lib/agentSessions";
-import { Button } from "@/components/ui/Button";
 import { SidebarProvider } from "@/components/ui/Sidebar";
 import {
   ResizableHandle,
@@ -58,8 +52,7 @@ export function ChatPage() {
   } satisfies ChatWorkspaceContext);
   const mainRef = useRef<HTMLDivElement>(null);
   const previousPath = useRef<string | null>(null);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [papersOpen, setPapersOpen] = useState(true);
+  const { open: leftOpen } = useChatSidebarVisibility();
   const [readingPaper, setReadingPaper] = useState(false);
   const papersPanelRef = usePanelRef();
   const listPanelWidth = useRef<number | null>(null);
@@ -92,9 +85,7 @@ export function ChatPage() {
         { kind: "parsed_block" | "pdf_selection" }
       >,
     ) => {
-      const opened = paperOpeners.current.get(sessionId)?.(reference) ?? false;
-      if (opened) setPapersOpen(true);
-      return opened;
+      return paperOpeners.current.get(sessionId)?.(reference) ?? false;
     },
   }).current;
   // Exposed through the bridge so tool renderers and the citation dialog can
@@ -140,10 +131,6 @@ export function ChatPage() {
     projectId ?? (activeSession || isNewChat ? "global" : null);
 
   useEffect(() => {
-    if (projectRouteId) setPapersOpen(true);
-  }, [projectRouteId]);
-
-  useEffect(() => {
     if (previousPaperProject.current !== papersScope) {
       previousPaperProject.current = papersScope;
       listPanelWidth.current = null;
@@ -170,15 +157,6 @@ export function ChatPage() {
     return () => cancelAnimationFrame(frame);
   }, [readingPaper, papersScope, papersPanelRef]);
 
-  useEffect(() => {
-    if (!papersScope) return;
-    const frame = requestAnimationFrame(() => {
-      if (papersOpen) papersPanelRef.current?.expand();
-      else papersPanelRef.current?.collapse();
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [papersOpen, papersScope, papersPanelRef]);
-
   useLayoutEffect(() => {
     if (previousPath.current === null) {
       previousPath.current = location.pathname;
@@ -194,10 +172,6 @@ export function ChatPage() {
     return () => node.classList.remove("route-page-enter");
   }, [location.pathname]);
 
-  const title =
-    location.pathname === "/chat/new"
-      ? "新会话"
-      : activeSession?.session.session.config.name || "对话";
   const main = (
     <div ref={mainRef} className="h-full min-w-0 overflow-hidden bg-background">
       {outlet}
@@ -207,86 +181,43 @@ export function ChatPage() {
   return (
     <ChatQuoteContext.Provider value={bridge}>
       <SidebarProvider className="min-h-0 flex-1">
-        <div className="flex h-full min-h-0 w-full flex-col">
-          <header
-            data-slot="app-toolbar"
-            aria-label="会话工具栏"
-            className="flex h-(--app-toolbar-height) shrink-0 items-center gap-3 border-b bg-(--app-rail-background) px-3 text-foreground"
+        <div className="flex min-h-0 flex-1">
+          <div
+            aria-hidden={!leftOpen}
+            inert={!leftOpen}
+            className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-(--motion-duration-normal) ease-(--motion-ease-standard) motion-reduce:transition-none ${leftOpen ? "w-(--chat-sidebar-width) opacity-100" : "w-0 opacity-0"}`}
           >
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={leftOpen ? "收起会话侧栏" : "展开会话侧栏"}
-              title={leftOpen ? "收起会话侧栏" : "展开会话侧栏"}
-              onClick={() => setLeftOpen((open) => !open)}
-            >
-              {leftOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
-            </Button>
-            <span className="min-w-0 truncate text-sm font-medium">
-              {title}
-            </span>
-            {papersScope && (
-              <Button
-                className="ml-auto"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={papersOpen ? "收起文献侧栏" : "展开文献侧栏"}
-                title={papersOpen ? "收起文献侧栏" : "展开文献侧栏"}
-                onClick={() => setPapersOpen((open) => !open)}
-              >
-                {papersOpen ? <PanelRightClose /> : <PanelRightOpen />}
-              </Button>
-            )}
-          </header>
-          <div className="flex min-h-0 flex-1">
-            <div
-              aria-hidden={!leftOpen}
-              inert={!leftOpen}
-              className={`h-full shrink-0 overflow-hidden transition-[width,opacity] duration-(--motion-duration-normal) ease-(--motion-ease-standard) motion-reduce:transition-none ${leftOpen ? "w-(--chat-sidebar-width) opacity-100" : "w-0 opacity-0"}`}
-            >
-              <ChatSidebar
-                currentProjectId={projectId}
-                papersOpen={papersOpen}
-                onTogglePapers={() => setPapersOpen((open) => !open)}
-              />
-            </div>
-            <ResizablePanelGroup
-              orientation="horizontal"
-              className="min-w-0 flex-1"
-            >
-              <ResizablePanel minSize="24rem">{main}</ResizablePanel>
-              {papersScope && (
-                <>
-                  <ResizableHandle
-                    withHandle
-                    className={
-                      papersOpen ? "" : "pointer-events-none opacity-0"
-                    }
-                  />
-                  <ResizablePanel
-                    data-animated-sidebar
-                    panelRef={papersPanelRef}
-                    collapsible
-                    collapsedSize={0}
-                    defaultSize="24rem"
-                    minSize="18rem"
-                    maxSize="75%"
-                  >
-                    <ConversationPapersPanel
-                      key={papersScope}
-                      projectId={projectId}
-                      sessionId={
-                        isNewChat
-                          ? draftQuoteKey
-                          : (activeSession?.session.session.id ?? null)
-                      }
-                      onReadingChange={setReadingPaper}
-                    />
-                  </ResizablePanel>
-                </>
-              )}
-            </ResizablePanelGroup>
+            <ChatSidebar />
           </div>
+          <ResizablePanelGroup
+            orientation="horizontal"
+            className="min-w-0 flex-1"
+          >
+            <ResizablePanel minSize="24rem">{main}</ResizablePanel>
+            {papersScope && (
+              <>
+                <ResizableHandle withHandle />
+                <ResizablePanel
+                  data-animated-sidebar
+                  panelRef={papersPanelRef}
+                  defaultSize="24rem"
+                  minSize="18rem"
+                  maxSize="75%"
+                >
+                  <ConversationPapersPanel
+                    key={papersScope}
+                    projectId={projectId}
+                    sessionId={
+                      isNewChat
+                        ? draftQuoteKey
+                        : (activeSession?.session.session.id ?? null)
+                    }
+                    onReadingChange={setReadingPaper}
+                  />
+                </ResizablePanel>
+              </>
+            )}
+          </ResizablePanelGroup>
         </div>
       </SidebarProvider>
     </ChatQuoteContext.Provider>
