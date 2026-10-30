@@ -59,6 +59,7 @@ import { formatNumber, formatTime } from '@/lib/common';
 import { toast } from 'sonner';
 import { ContextMenu as ContextMenuPrimitive } from 'radix-ui';
 import { MentionBadge } from './MentionBadge';
+import { CitationBadge } from './CitationBadge';
 import { QuoteBadge } from './QuoteBadge';
 import { messageQuoteKey, messageReferenceFromSelection, readQuoteReferences, readQuotedBody } from './quoteReferences';
 import {
@@ -66,6 +67,7 @@ import {
 	readMessageMentions,
 	renderMessageMentions,
 } from '@/lib/mentions';
+import { renderCitationTags } from '@/lib/citations';
 import type { MessageQuote, QuoteReference } from '@/types/chat';
 import { captureRenderedSelection, restoreRenderedSelection } from './renderedSelection';
 import { addMessageHighlight } from './messageHighlight';
@@ -321,17 +323,31 @@ function AudioInlineControl({ block }: { block: DataBlock }) {
 
 const MCP_TOOL_PREFIX = 'mcp__';
 
-/** `<paper-mention>` is the inline chip a user message body carries (see lib/mentions). */
-const MENTION_ALLOWED_TAGS: Record<string, string[]> = { 'paper-mention': ['title'] };
-const MENTION_LITERAL_TAGS: string[] = ['paper-mention'];
+/**
+ * Inline tags a message body may carry: the mention chip a user message gets,
+ * and the citation chip an answer gets (see lib/mentions and lib/citations).
+ */
+const INLINE_ALLOWED_TAGS: Record<string, string[]> = {
+	'paper-mention': ['title'],
+	// Sanitize matches the hast property name here, not the `data-cid` attribute
+	// the component reads back.
+	'paper-citation': ['dataCid'],
+};
+const INLINE_LITERAL_TAGS: string[] = ['paper-mention', 'paper-citation'];
 
 /** Renders the mention marker as the same badge the reference chips use. */
 function PaperMentionTag({ title, children }: { title?: string; children?: ReactNode }) {
 	return <MentionBadge label={children} title={title ?? ''} />;
 }
 
-const MENTION_COMPONENTS = {
+/** Renders a registered citation marker as a clickable `[n]`. */
+function PaperCitationTag({ 'data-cid': citationId, children }: { 'data-cid'?: string; children?: ReactNode }) {
+	return <CitationBadge citationId={citationId ?? ''}>{children}</CitationBadge>;
+}
+
+const INLINE_COMPONENTS = {
 	'paper-mention': PaperMentionTag,
+	'paper-citation': PaperCitationTag,
 } as unknown as React.ComponentProps<typeof Markdown>['components'];
 
 // Task-management tools are all surfaced under one "updated todos" summary.
@@ -404,6 +420,8 @@ interface MessageBubbleProps {
 	onOpenReference?: (reference: QuoteReference) => void;
 	annotations?: MessageQuote[];
 	activeAnnotationKey?: string | null;
+	/** Citation ids this session registered; markers outside it stay literal. */
+	registeredCitations?: ReadonlySet<string>;
 	onUserConfirm: (
 		toolCallBlock: ToolCallBlock,
 		confirm: boolean,
@@ -429,7 +447,7 @@ interface MessageBubbleProps {
  * When `content` is empty and the message is still running, the bubble
  * body is omitted entirely so only the bottom status row renders.
  */
-export function MessageBubble({ message, onQuote, onOpenReference, annotations, activeAnnotationKey }: MessageBubbleProps) {
+export function MessageBubble({ message, onQuote, onOpenReference, annotations, activeAnnotationKey, registeredCitations }: MessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const references = isUser ? readQuoteReferences(message.metadata) : [];
 	const mentions = isUser ? readMessageMentions(message.metadata) : [];
@@ -491,11 +509,19 @@ export function MessageBubble({ message, onQuote, onOpenReference, annotations, 
 	] : message.content;
 	// The service leaves `@《标题》(paper:id)` in the body for the model; the
 	// reader gets the chip form built from the recorded mentions instead.
-	const renderedContent = mentions.length
-		? displayContent.map((block) => block.type === 'text'
-			? { ...block, text: renderMessageMentions(block.text, mentions, mentionTag) }
-			: block)
-		: displayContent;
+	// Answers carry `[cit_…]` the model wrote itself: only ids this session
+	// registered become chips, and the detail is fetched on click.
+	const citationOrder = new Map<string, number>();
+	const renderedContent = displayContent.map((block) => {
+		if (block.type !== 'text') return block;
+		const text = mentions.length
+			? renderMessageMentions(block.text, mentions, mentionTag)
+			: block.text;
+		const withCitations = !isUser && registeredCitations
+			? renderCitationTags(text, registeredCitations, citationOrder)
+			: text;
+		return withCitations === block.text ? block : { ...block, text: withCitations };
+	});
 	const blocks = groupToolCalls(renderedContent);
 	const captureSelection = (element: HTMLElement, block: ExtendedContentBlock) => {
 		if (isUser || isRunning || !onQuote || block.type !== 'text') { setSelection(null); setEditorHost(null); return; }
@@ -768,9 +794,9 @@ export function MessageBlock({ block, ...props }: MessageBlockProps) {
 				<Markdown
 					animated
 					isAnimating={!block.finished_at}
-					allowedTags={MENTION_ALLOWED_TAGS}
-					literalTagContent={MENTION_LITERAL_TAGS}
-					components={MENTION_COMPONENTS}
+					allowedTags={INLINE_ALLOWED_TAGS}
+					literalTagContent={INLINE_LITERAL_TAGS}
+					components={INLINE_COMPONENTS}
 					{...props}
 				>
 					{block.text}

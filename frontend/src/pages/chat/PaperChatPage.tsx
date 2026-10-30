@@ -12,6 +12,7 @@ import { MessageBubble } from "@/components/chat/MessageBubble"
 import { QuoteBadge } from "@/components/chat/QuoteBadge"
 import type { MessageQuote, PaperOpenReference, QuoteReference } from "@/types/chat"
 import type { MentionCandidate } from "@/lib/mentions"
+import { registeredCitations } from "@/lib/citations"
 import type { ImportApprovalPreview } from "@/types/business"
 import { messageQuoteKey, readQuoteReferences } from "@/components/chat/quoteReferences"
 import { restoreRenderedSelection } from "@/components/chat/renderedSelection"
@@ -39,7 +40,7 @@ import type { ReviewedSchedule } from "@/types/schedule"
 import { DAY_CODES } from "@/components/schedule/scheduleFrequency"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
 
-function QuotedMessage({ message, annotations, onQuote, onUserConfirm, activeAnnotationKey, onShowAnnotation, onHideAnnotation, sessionId }: { message: import('@agentscope-ai/agentscope/message').Msg; annotations: MessageQuote[]; onQuote: (reference: QuoteReference) => boolean; onUserConfirm: React.ComponentProps<typeof MessageBubble>['onUserConfirm']; activeAnnotationKey: string | null; onShowAnnotation: (key: string) => void; onHideAnnotation: () => void; sessionId: string }) {
+function QuotedMessage({ message, annotations, onQuote, onUserConfirm, activeAnnotationKey, onShowAnnotation, onHideAnnotation, sessionId, registeredCitations }: { message: import('@agentscope-ai/agentscope/message').Msg; annotations: MessageQuote[]; onQuote: (reference: QuoteReference) => boolean; onUserConfirm: React.ComponentProps<typeof MessageBubble>['onUserConfirm']; activeAnnotationKey: string | null; onShowAnnotation: (key: string) => void; onHideAnnotation: () => void; sessionId: string; registeredCitations: ReadonlySet<string> }) {
   const { scrollToMessage } = useMessageScroller()
   const navigate = useNavigate()
   const quoteBridge = useContext(ChatQuoteContext)
@@ -61,7 +62,7 @@ function QuotedMessage({ message, annotations, onQuote, onUserConfirm, activeAnn
       navigate(`/library/${reference.user_paper_id}?${query}`)
     }
   }
-  return <div data-quote-message-id={message.id} onClick={(event) => { if (event.target === event.currentTarget) onHideAnnotation() }}><MessageBubble message={message} annotations={annotations} activeAnnotationKey={activeAnnotationKey} onUserConfirm={onUserConfirm} onQuote={onQuote} onOpenReference={openReference} /></div>
+  return <div data-quote-message-id={message.id} onClick={(event) => { if (event.target === event.currentTarget) onHideAnnotation() }}><MessageBubble message={message} annotations={annotations} activeAnnotationKey={activeAnnotationKey} onUserConfirm={onUserConfirm} onQuote={onQuote} onOpenReference={openReference} registeredCitations={registeredCitations} /></div>
 }
 
 const NO_ANNOTATIONS: MessageQuote[] = []
@@ -143,6 +144,8 @@ export function PaperChatPage({ scheduledRun, scheduledScope, scheduledProjectId
   }, [sessionId])
   const { msgs, loading, phase, error, reconnecting, historyInterrupted, send, interrupt, onUserConfirm, onExternalAnswer } =
     useMessages(agentId || null, sessionId || null)
+  // 哪个 [cit_…] 算已登记，由本会话检索到的证据决定；详情点击时才查。
+  const knownCitations = useMemo(() => registeredCitations(msgs), [msgs])
   const messageAnnotations = useMemo(() => {
     const bySource = new Map<string, MessageQuote[]>()
     for (const reference of [...msgs.flatMap((item) => readQuoteReferences(item.metadata)), ...pendingQuotes]) {
@@ -392,7 +395,7 @@ export function PaperChatPage({ scheduledRun, scheduledScope, scheduledProjectId
             <MessageScroller><MessageScrollerViewport className="no-scrollbar scrollbar-none! scrollbar-gutter-auto!"><MessageScrollerContent className="mx-auto max-w-(--chat-content-max-width) p-5">
               {loading ? <p className="text-sm text-muted-foreground">加载中…</p> : msgs.length === 0 ? <p className="py-16 text-center text-xl">向文献提问</p> : msgs.map((message) => (
                 <MessageScrollerItem key={message.id} messageId={message.id}>
-                  <QuotedMessage message={message} annotations={messageAnnotations.get(message.id) ?? NO_ANNOTATIONS} activeAnnotationKey={activeAnnotationKey} onShowAnnotation={setActiveAnnotationKey} onHideAnnotation={() => setActiveAnnotationKey(null)} sessionId={sessionId} onUserConfirm={onUserConfirm} onQuote={addPendingQuote} />
+                  <QuotedMessage message={message} annotations={messageAnnotations.get(message.id) ?? NO_ANNOTATIONS} activeAnnotationKey={activeAnnotationKey} onShowAnnotation={setActiveAnnotationKey} onHideAnnotation={() => setActiveAnnotationKey(null)} sessionId={sessionId} registeredCitations={knownCitations} onUserConfirm={onUserConfirm} onQuote={addPendingQuote} />
                 </MessageScrollerItem>
               ))}
             </MessageScrollerContent></MessageScrollerViewport><MessageNavigationRail messages={loading ? [] : msgs} /><ScrollerBridge onReady={rememberScroller} /></MessageScroller>
