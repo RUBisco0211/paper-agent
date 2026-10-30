@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { BookOpen, ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
+import { ChevronDown, MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 
@@ -186,7 +186,6 @@ export function ChatSidebar() {
                   <DropdownMenu><DropdownMenuTrigger asChild><button type="button" aria-label={`${project.name}操作`}><MoreHorizontal className="size-4" /></button></DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start">
                       <DropdownMenuItem onSelect={() => setAddPapersTo(project.id)}><Plus />添加文献</DropdownMenuItem>
-                      <DropdownMenuItem onSelect={() => navigate(`/chat/project/${project.id}`)}><BookOpen />管理文献</DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => { setProjectToRename(project); setProjectName(project.name); setError("") }}><Pencil />重命名</DropdownMenuItem>
                       <DropdownMenuItem variant="destructive" onSelect={() => { setProjectToDelete(project); setError("") }}><Trash2 />删除项目</DropdownMenuItem>
                     </DropdownMenuContent>
