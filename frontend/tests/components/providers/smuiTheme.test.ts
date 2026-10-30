@@ -190,13 +190,10 @@ describe("SMUI theme", () => {
     },
   );
 
-  it("uses a locally loaded monospace face when typography is inherited", () => {
-    expect(css).toMatch(
-      /@import\s+["']@fontsource-variable\/libre-baskerville["']/,
-    );
+  it("uses a locally loaded face for latin text and code", () => {
     expect(css).toMatch(/@import\s+["']@fontsource\/maple-mono\/400\.css["']/);
-    expect(css).toMatch(/--font-sans:[\s\S]*"Libre Baskerville Variable"/);
-    expect(css).toMatch(/--font-mono:[\s\S]*"Maple Mono"/);
+    expect(css).toMatch(/--font-sans:\s*"Maple Mono", "PingFang SC"/);
+    expect(css).toMatch(/--font-mono:\s*"Maple Mono", "PingFang SC"/);
     expect(css).not.toContain("fonts.googleapis.com");
   });
 

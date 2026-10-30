@@ -1,9 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/jetbrains-mono";
-@import "@fontsource-variable/libre-baskerville";
 @import "@fontsource/maple-mono/400.css";
+@import "@fontsource/maple-mono/500.css";
+@import "@fontsource/maple-mono/600.css";
 @import "@fontsource/maple-mono/700.css";
 
 /* 配色主题：换这一行即可在 smui、vintage-paper 与 solar-dusk 之间切换。 */
@@ -222,12 +222,11 @@ svg.lucide {
 
 /* 字体角色集中定义；不要在业务调用处另外指定字体或像素字号。 */
 @theme {
-    /* 英文 Libre Baskerville，中文华文中宋；其余回落到系统衬线。 */
+    /* 英文与等宽都用 Maple Mono，中文回落到系统无衬线。 */
     --font-sans:
-        "Libre Baskerville Variable", "STZhongsong", "华文中宋", "SimSun",
-        serif;
+        "Maple Mono", "PingFang SC", "Microsoft YaHei", monospace;
     --font-mono:
-        "Maple Mono", "STZhongsong", "华文中宋", monospace;
+        "Maple Mono", "PingFang SC", "Microsoft YaHei", monospace;
     --text-label: 11px;
     --text-ui: 13px;
     --text-heading: 22px;
