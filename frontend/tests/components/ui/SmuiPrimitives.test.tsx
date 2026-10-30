@@ -108,4 +108,16 @@ describe("SMUI business primitives", () => {
       "rounded-full",
     );
   });
+
+  it("Checkbox tints on hover only while it is unchecked", () => {
+    render(<Checkbox aria-label="Select" />);
+    // 选中填充用 data-checked，而 :where() 的权重低于 :hover：
+    // 无条件 hover 底纹会把选中状态的方框刷回浅色，勾却是前景色。
+    expect(screen.getByRole("checkbox").className).toContain(
+      "data-unchecked:hover:bg-(--checkbox-hover-background)",
+    );
+    expect(screen.getByRole("checkbox").className.split(" ")).not.toContain(
+      "hover:bg-(--checkbox-hover-background)",
+    );
+  });
 });

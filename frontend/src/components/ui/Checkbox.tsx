@@ -14,7 +14,8 @@ function Checkbox({ className, ...props }: React.ComponentProps<typeof CheckboxP
 			data-slot="checkbox"
 			className={cn(
 				'peer relative flex size-(--checkbox-size) shrink-0 items-center justify-center rounded-(--checkbox-radius) border-(length:--checkbox-border-width) border-(--checkbox-border) bg-(--checkbox-background) text-current transition-colors outline-none',
-				'hover:bg-(--checkbox-hover-background)',
+				// 选中态的填充不能被 hover 覆盖：:where() 权重更低，这里只在未选中时上底色。
+				'data-unchecked:hover:bg-(--checkbox-hover-background)',
 				'after:absolute after:-inset-x-3 after:-inset-y-2',
 				'focus-visible:border-(--checkbox-checked-border) focus-visible:ring-3 focus-visible:ring-(--focus-ring-color)',
 				'disabled:cursor-not-allowed disabled:opacity-50 group-has-disabled/field:opacity-50',
