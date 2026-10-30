@@ -157,7 +157,7 @@ export function ConversationPapersPanel({
       )}
       <div
         ref={listRef}
-        className="min-h-0 flex-1 overflow-y-auto p-2"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2"
         onScroll={(event) => {
           const list = event.currentTarget;
           if (

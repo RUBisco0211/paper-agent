@@ -8,7 +8,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/Sidebar';
 
 export function AppLayout() {
 	return (
-		<ImportQueueProvider><div className="h-screen flex">
+		<ImportQueueProvider><div className="h-screen flex overflow-hidden">
 			<SidebarProvider>
 				<ChatSidebarProvider>
 					<AppSidebar />

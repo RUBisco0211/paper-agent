@@ -181,7 +181,7 @@ export function ChatPage() {
   return (
     <ChatQuoteContext.Provider value={bridge}>
       <SidebarProvider className="min-h-0 flex-1">
-        <div className="flex min-h-0 flex-1">
+        <div className="flex h-full min-h-0 flex-1">
           <div
             aria-hidden={!leftOpen}
             inert={!leftOpen}
