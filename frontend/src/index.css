@@ -110,12 +110,14 @@ svg.lucide {
     --switch-width-default: 32px;
     --switch-height-sm: 14px;
     --switch-width-sm: 24px;
-    --switch-thumb-size-default: 1rem;
-    --switch-thumb-size-sm: 0.75rem;
+    /* 滑块 = 轨道高度减去上下内缩，否则会顶出轨道。 */
+    --switch-thumb-size-default: calc(var(--switch-height-default) - 2 * var(--switch-thumb-inset));
+    --switch-thumb-size-sm: calc(var(--switch-height-sm) - 2 * var(--switch-thumb-inset));
     --switch-thumb-inset: 2px;
     --switch-track-checked: var(--primary);
     --switch-track-unchecked: var(--input);
-    --switch-thumb: var(--background);
+    /* 未选中时滑块要明显亮于轨道，否则看不出是个开关。 */
+    --switch-thumb: var(--card);
     --switch-thumb-checked: var(--primary-foreground);
 
     /* 三、状态反馈：前景复用上方状态色；表面和边框作为独立角色维护。 */

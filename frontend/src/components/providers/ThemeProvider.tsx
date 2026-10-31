@@ -1,18 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react"
 
-export const THEMES = [
-  { id: "vintage-paper", label: "暖纸" },
-  { id: "solar-dusk", label: "暮沙" },
-  { id: "smui", label: "蓝灰" },
-] as const
+/** 主题按配色原名列示，不另起中文名。 */
+export const THEMES = ["vintage-paper", "solar-dusk", "smui"] as const
 
-export type ThemeId = (typeof THEMES)[number]["id"]
+export type ThemeId = (typeof THEMES)[number]
 
 const STORAGE_KEY = "paper-agent.theme"
 const DEFAULT_THEME: ThemeId = "vintage-paper"
 
 function isTheme(value: string | null): value is ThemeId {
-  return THEMES.some((theme) => theme.id === value)
+  return THEMES.some((theme) => theme === value)
 }
 
 /** 浏览器里就是 localStorage；测试环境的 Node 全局同名实现不可用，按 window 取。 */

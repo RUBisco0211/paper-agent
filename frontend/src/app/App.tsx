@@ -11,7 +11,8 @@ import { PasswordResetPage } from "@/pages/PasswordResetPage"
 import { AppLayout } from "@/components/layout/AppLayout"
 import { SettingsLayout } from "@/components/settings/SettingsLayout"
 import { ModelsSection } from "@/components/settings/ModelsSection"
-import { PreferencesSection } from "@/components/settings/PreferencesSection"
+import { GeneralSection } from "@/components/settings/GeneralSection"
+import { ScheduleSettingsSection } from "@/components/settings/ScheduleSettingsSection"
 import { RetrievalSection } from "@/components/settings/RetrievalSection"
 import { WebSearchSection } from "@/components/settings/WebSearchSection"
 import { PaperChatPage } from "@/pages/chat/PaperChatPage"
@@ -40,7 +41,8 @@ const router = createBrowserRouter([
         { path: "models", element: <ModelsSection /> },
         { path: "retrieval", element: <RetrievalSection /> },
         { path: "web-search", element: <WebSearchSection /> },
-        { path: "preferences", element: <PreferencesSection /> },
+        { path: "general", element: <GeneralSection /> },
+        { path: "schedule", element: <ScheduleSettingsSection /> },
       ] },
       { path: "/chat", element: <ChatPage />, children: [
         { path: "new", element: <NewChatPage /> },

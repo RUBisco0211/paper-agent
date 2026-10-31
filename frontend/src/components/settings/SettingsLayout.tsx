@@ -1,4 +1,4 @@
-import { Cpu, Globe, SlidersHorizontal, Waypoints } from "lucide-react"
+import { CalendarClock, Cpu, Globe, SlidersHorizontal, Waypoints } from "lucide-react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 
 import {
@@ -6,7 +6,6 @@ import {
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
@@ -18,7 +17,8 @@ const SECTIONS = [
   { to: "/settings/models", label: "模型", title: "模型设置", icon: Cpu },
   { to: "/settings/retrieval", label: "向量检索", title: "向量检索", icon: Waypoints },
   { to: "/settings/web-search", label: "网络搜索", title: "网络搜索", icon: Globe },
-  { to: "/settings/preferences", label: "偏好", title: "偏好设置", icon: SlidersHorizontal },
+  { to: "/settings/general", label: "通用", title: "通用", icon: SlidersHorizontal },
+  { to: "/settings/schedule", label: "定时任务", title: "定时任务", icon: CalendarClock },
 ]
 
 export function SettingsLayout() {
@@ -33,7 +33,6 @@ export function SettingsLayout() {
           </SidebarHeader>
           <SidebarContent>
             <SidebarGroup>
-              <SidebarGroupLabel>服务</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {SECTIONS.map((section) => (

@@ -43,6 +43,7 @@ function Switch({
 				className={cn(
 					// 滑块贴左留出 inset；选中时推到轨道右端，位移由轨道宽度与滑块宽度决定。
 					'pointer-events-none block rounded-full ring-0 transition-transform',
+					'shadow-sm',
 					'bg-(--switch-thumb) dark:data-checked:bg-(--switch-thumb-checked)',
 					size === 'sm'
 						? 'size-(--switch-thumb-size-sm)'
