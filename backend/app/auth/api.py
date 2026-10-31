@@ -217,7 +217,11 @@ def read_tool_authorizations(
 
 
 @router.get("/preferences", response_model=PreferencesRead)
-def read_preferences(user: CurrentUser, service: AuthServiceDep) -> PreferencesRead:
+def read_preferences(
+    response: Response, user: CurrentUser, service: AuthServiceDep
+) -> PreferencesRead:
+    # 账号偏好随时会变，不能被浏览器缓存住。
+    response.headers["Cache-Control"] = "no-store"
     return PreferencesRead(**service.preferences(user.id))
 
 

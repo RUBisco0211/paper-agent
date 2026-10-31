@@ -34,7 +34,8 @@ export function KeepAliveOutlet() {
 	useLayoutEffect(() => {
 		const changedSection = previousSection.current !== section;
 		previousSection.current = section;
-		if (section === 'chat' && !changedSection) return;
+		// 这两个分区的页面切换由页面自己给内容区做动画，整块分区不动。
+		if ((section === 'chat' || section === 'settings') && !changedSection) return;
 		const node = sectionNodes.current.get(section);
 		if (!node) return;
 		node.classList.remove('route-page-enter');

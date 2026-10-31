@@ -51,3 +51,15 @@ def test_preferences_are_private_to_each_account(
     )
 
     assert other.json() == {"timezone": None, "notify_email_default": False}
+
+def test_preferences_are_never_cached_by_the_browser(
+    client: TestClient, api_prefix: str, register_user
+):
+    owner = register_user(email="prefs-cache@example.com")
+
+    response = client.get(
+        f"{api_prefix}/auth/preferences",
+        headers=auth_headers(owner["access_token"]),
+    )
+
+    assert response.headers["cache-control"] == "no-store"
