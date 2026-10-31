@@ -62,7 +62,7 @@ def list_paper_blocks(
     )
     version = service.artifact_cache_version(user_id=user.id, user_paper_id=paper_id)
     if version is not None:
-        etag = _cache_tag("blocks-v1", version, block_type, offset, limit)
+        etag = _cache_tag("blocks-v2", version, block_type, offset, limit)
         if _matches_cache(request, etag):
             return Response(status_code=304, headers=_cache_headers(etag))
         response.headers.update(_cache_headers(etag))
