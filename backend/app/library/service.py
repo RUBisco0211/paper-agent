@@ -117,6 +117,7 @@ class PaperLibraryService:
         if paper is None or not paper.artifact_manifest_key:
             return {
                 "types": [],
+                "counts": {},
                 "items": [],
                 "total": 0,
                 "offset": offset,
@@ -154,8 +155,13 @@ class PaperLibraryService:
             if block_type
             else items
         )
+        counts: dict[str, int] = dict.fromkeys(types, 0)
+        for item in items:
+            kind = item["type"]
+            counts[kind] = counts.get(kind, 0) + 1
         return {
             "types": types,
+            "counts": counts,
             "items": selected[offset : offset + limit],
             "total": len(selected),
             "offset": offset,

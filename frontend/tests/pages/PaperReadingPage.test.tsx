@@ -54,7 +54,7 @@ it("shows MinerU block type tabs and locates a block only when its locate button
     </QueryClientProvider>,
   )
   const user = userEvent.setup()
-  await user.click(await screen.findByRole("tab", { name: "表格" }))
+  await user.click(await screen.findByRole("tab", { name: /^表格/ }))
   await user.click(await screen.findByText("结果表"))
   expect(screen.getByText("PDF 第 1 页")).toBeTruthy()
   await user.click(screen.getByRole("button", { name: "定位分块" }))
@@ -107,12 +107,12 @@ it("previews images and equations and offers copy actions without a redundant he
   </QueryClientProvider>)
   const user = userEvent.setup()
   expect(screen.queryByText("原文片段")).toBeNull()
-  expect(await screen.findByRole("tab", { name: "footnote" })).toBeTruthy()
+  expect(await screen.findByRole("tab", { name: /^footnote/ })).toBeTruthy()
   await user.click(await screen.findByRole("button", { name: "复制正文" }))
   expect(await navigator.clipboard.readText()).toBe("可复制正文")
-  await user.click(screen.getByRole("tab", { name: "图片" }))
+  await user.click(screen.getByRole("tab", { name: /^图片/ }))
   expect(await screen.findByRole("img", { name: "图注" })).toBeTruthy()
-  await user.click(screen.getByRole("tab", { name: "公式" }))
+  await user.click(screen.getByRole("tab", { name: /^公式/ }))
   await user.click(await screen.findByRole("button", { name: "复制公式" }))
   expect(await navigator.clipboard.readText()).toBe("E = mc^2")
   expect(document.querySelector(".katex")).toBeTruthy()
@@ -136,7 +136,7 @@ it("renders a MinerU display equation without showing its image fallback or raw 
       </MemoryRouter>
     </ApiProvider>
   </QueryClientProvider>)
-  await screen.findByRole("tab", { name: "公式" })
+  await screen.findByRole("tab", { name: /^公式/ })
   await waitFor(() => expect(document.querySelector(".katex")).toBeTruthy())
   expect(screen.queryByText("图片预览不可用")).toBeNull()
   expect(screen.queryByText(/\$\$ E = mc\^2 \$\$/)).toBeNull()
@@ -155,7 +155,7 @@ it("keeps the paper toolbars aligned and lets the block sidebar be resized", asy
       </MemoryRouter>
     </ApiProvider>
   </QueryClientProvider>)
-  expect(await screen.findByRole("tab", { name: "正文" })).toBeTruthy()
+  expect(await screen.findByRole("tab", { name: /^正文/ })).toBeTruthy()
   expect(screen.getByRole("button", { name: "文献信息" }).querySelector("svg")).toBeTruthy()
   expect(screen.getByRole("separator", { name: "调整分块宽度" })).toBeTruthy()
   expect(screen.getByRole("complementary", { name: "文献分块" }).querySelector("[data-slot=tabs]")?.className).toContain("h-full")
@@ -272,4 +272,29 @@ it("disables the markdown view when the paper has no parsed full text", async ()
   </QueryClientProvider>)
   const toggle = await screen.findByRole("button", { name: "切换到 Markdown 全文" })
   expect((toggle as HTMLButtonElement).disabled).toBe(true)
+})
+
+it("captions every block type tab with its number of blocks", async () => {
+  const fetchImpl = vi.fn(async (input: string | URL) => {
+    const url = String(input)
+    if (url.includes("/blocks")) {
+      return new Response(JSON.stringify({
+        types: ["text", "table"],
+        counts: { text: 12, table: 3 },
+        items: [{ id: 0, type: "text", page: 1, text: "正文" }],
+        total: 1, offset: 0, limit: 50,
+      }), { headers: { "Content-Type": "application/json" } })
+    }
+    return new Response(JSON.stringify({ id: "p1", title: "测试文献", authors: [], pdf: { available: true }, capabilities: { has_parsed: true } }), { headers: { "Content-Type": "application/json" } })
+  })
+  render(<QueryClientProvider client={createQueryClient()}>
+    <ApiProvider options={{ baseUrl: "http://api.test", fetchImpl: fetchImpl as typeof fetch }}>
+      <MemoryRouter initialEntries={["/library/p1"]}>
+        <Routes><Route path="/library/:paperId" element={<PaperReadingPage />} /></Routes>
+      </MemoryRouter>
+    </ApiProvider>
+  </QueryClientProvider>)
+  const textTab = await screen.findByRole("tab", { name: /^正文/ })
+  expect(textTab.textContent).toContain("12")
+  expect(screen.getByRole("tab", { name: /^表格/ }).textContent).toContain("3")
 })

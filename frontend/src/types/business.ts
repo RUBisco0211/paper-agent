@@ -148,6 +148,8 @@ export interface PaperBlock {
 
 export interface PaperBlocksResponse {
   types: string[]
+  /** 每个类别下的分块数量，用于在类别标签上标注。 */
+  counts?: Record<string, number>
   items: PaperBlock[]
   total: number
   offset: number

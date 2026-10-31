@@ -261,7 +261,10 @@ export function PaperReadingPage({ paperId: suppliedPaperId, embedded = false, o
         {overview.data?.types.length ? <Tabs value={activeType ?? undefined} onValueChange={(value) => { setSelectedType(value); setSelectedBlock(null); setImageViewer(null) }} className="h-full min-h-0 flex-1 gap-0">
           <div data-slot="app-toolbar" className="flex h-(--app-toolbar-height) shrink-0 items-center overflow-x-auto border-b px-2">
             <TabsList variant="line" className="w-max">
-              {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>{blockLabel(type)}</TabsTrigger>)}
+              {overview.data.types.map((type) => <TabsTrigger key={type} value={type}>
+                {blockLabel(type)}
+                <span className="text-xs font-normal text-muted-foreground tabular-nums">{overview.data.counts?.[type] ?? 0}</span>
+              </TabsTrigger>)}
             </TabsList>
           </div>
           <TooltipProvider><div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">

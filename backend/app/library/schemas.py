@@ -62,6 +62,8 @@ class PaperBlockRead(BaseModel):
 
 class PaperBlocksResponse(BaseModel):
     types: list[str]
+    #: How many blocks each type holds, so the reader can caption its tabs.
+    counts: dict[str, int] = {}
     items: list[PaperBlockRead]
     total: int
     offset: int
