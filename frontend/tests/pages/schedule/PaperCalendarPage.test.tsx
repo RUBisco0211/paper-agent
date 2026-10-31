@@ -6,6 +6,10 @@ import { expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/query"
 import { PaperCalendarPage } from "@/pages/schedule/PaperCalendarPage"
 
+vi.mock("@/components/providers/AuthProvider", () => ({
+  useAuth: () => ({ preferences: { timezone: "Asia/Shanghai", notify_email_default: false } }),
+}))
+
 vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: { projects: { list: async () => ({ items: [
   { id: "project-a", name: "甲项目" },
   { id: "project-b", name: "乙项目" },

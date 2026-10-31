@@ -152,3 +152,61 @@ def test_agent_schedule_creation_removes_binding_when_activation_fails(
         app.dependency_overrides.pop(get_agent_schedule_gateway, None)
     assert deleted == ["schedule-to-rollback"]
     assert ScheduleBindingRepository(db_session).get("schedule-to-rollback") is None
+
+def test_agent_schedule_creation_follows_the_saved_notification_default(
+    client: TestClient, api_prefix: str, register_user, monkeypatch
+):
+    from app.schedules.depends import get_agent_schedule_gateway
+
+    owner = register_user()
+    headers = auth_headers(owner["access_token"])
+    assert (
+        client.patch(
+            f"{api_prefix}/auth/preferences",
+            headers=headers,
+            json={"notify_email_default": True},
+        ).status_code
+        == 200
+    )
+    session_id = str(uuid4())
+    assert (
+        client.post(
+            f"{api_prefix}/session-bindings",
+            headers=headers,
+            json={"session_id": session_id, "project_id": None},
+        ).status_code
+        == 201
+    )
+    app = cast(FastAPI, client.app)
+
+    class Gateway:
+        def create_disabled(self, **_kwargs):
+            return "schedule-follows-default"
+
+        def enable(self, **_kwargs):
+            return None
+
+        def delete(self, **_kwargs):
+            return None
+
+    app.dependency_overrides[get_agent_schedule_gateway] = lambda: Gateway()
+    monkeypatch.setattr(settings, "agent_internal_key", "test-internal-key")
+    try:
+        response = client.post(
+            f"{api_prefix}/internal/agent-schedules",
+            headers={"X-Agent-Internal-Key": "test-internal-key"},
+            json={
+                "user_id": owner["user"]["id"],
+                "agent_id": "agent-test",
+                "session_id": session_id,
+                "name": "每日提醒",
+                "prompt": "看看今天的文献",
+                "time": "08:00",
+                "weekdays": ["mon"],
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_agent_schedule_gateway, None)
+
+    assert response.status_code == 201
+    assert response.json()["notify_email"] is True

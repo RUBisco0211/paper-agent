@@ -9,6 +9,10 @@ import { createQueryClient } from "@/app/query"
 import type { SessionRecord } from "@/types/agent"
 import { PaperChatPage } from "@/pages/chat/PaperChatPage"
 
+vi.mock("@/components/providers/AuthProvider", () => ({
+  useAuth: () => ({ preferences: { timezone: "Asia/Shanghai", notify_email_default: false } }),
+}))
+
 const send = vi.fn()
 const onExternalAnswer = vi.fn(async () => {})
 const importState = vi.hoisted(() => ({ messages: [] as Array<{ id: string; role: string; content: unknown[] }>, open: vi.fn(), confirm: vi.fn(async () => {}) }))

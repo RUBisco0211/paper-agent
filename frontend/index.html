@@ -6,9 +6,17 @@
     <meta name="color-scheme" content="light dark" />
     <title>Paper Agent</title>
     <script>
-      // 首帧前应用系统配色，避免亮/暗闪烁
+      // 首帧前应用主题与系统配色，避免闪烁
       if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
         document.documentElement.classList.add("dark")
+      }
+      try {
+        var theme = localStorage.getItem("paper-agent.theme")
+        if (theme && theme !== "vintage-paper") {
+          document.documentElement.dataset.theme = theme
+        }
+      } catch (error) {
+        // 读不到就用默认主题
       }
     </script>
   </head>

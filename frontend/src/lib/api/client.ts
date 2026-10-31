@@ -1,5 +1,5 @@
 import { ApiError } from "./errors"
-import type { AccessToken, AuthSession, ApiErrorBody, EmailCodePurpose, EmailCodeChallenge, EmailVerification, PasswordVerificationInput, RegisterInput } from "@/types/business"
+import type { AccessToken, AuthPreferences, AuthSession, ApiErrorBody, EmailCodePurpose, EmailCodeChallenge, EmailVerification, PasswordVerificationInput, RegisterInput } from "@/types/business"
 
 export type AccessTokenSink = (session: AccessToken | null) => void
 
@@ -226,6 +226,14 @@ export function authEndpoints(client: ApiClient) {
       client.request<{ timezone: string }>("/v1/auth/timezone", {
         method: "PATCH",
         json: { timezone },
+      }),
+
+    preferences: () => client.request<AuthPreferences>("/v1/auth/preferences"),
+
+    updatePreferences: (input: { notify_email_default: boolean }) =>
+      client.request<AuthPreferences>("/v1/auth/preferences", {
+        method: "PATCH",
+        json: input,
       }),
   }
 }

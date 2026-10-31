@@ -30,7 +30,7 @@ class ScheduleBindingService:
         schedule_id: str,
         user_id: UUID,
         project_id: UUID | None,
-        notify_email: bool = False,
+        notify_email: bool | None = None,
     ) -> ScheduleBindingRecord:
         if project_id is not None:
             project = self._projects.get_project(project_id)
@@ -38,6 +38,8 @@ class ScheduleBindingService:
                 raise NotFoundError("项目不存在", code=ErrorCode.PROJECT_NOT_FOUND)
         if self._schedules.get(schedule_id) is not None:
             raise ConflictError("定时任务已绑定", code=ErrorCode.CONFLICT)
+        if notify_email is None:
+            notify_email = self._users.get_notify_email_default(user_id)
         record = self._schedules.add(schedule_id, user_id, project_id, notify_email)
         self._schedules.commit()
         return record

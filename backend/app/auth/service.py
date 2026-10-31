@@ -74,6 +74,17 @@ class AuthService:
         self._repository.commit()
         return timezone
 
+    def preferences(self, user_id: UUID) -> dict:
+        return {
+            "timezone": self._repository.get_timezone(user_id),
+            "notify_email_default": self._repository.get_notify_email_default(user_id),
+        }
+
+    def set_notify_email_default(self, *, user_id: UUID, enabled: bool) -> bool:
+        self._repository.set_notify_email_default(user_id, enabled)
+        self._repository.commit()
+        return enabled
+
     def tool_authorizations(self, user_id: UUID) -> dict[str, bool]:
         stored = self._repository.get_tool_authorizations(user_id)
         return {

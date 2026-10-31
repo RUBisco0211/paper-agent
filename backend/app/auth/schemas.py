@@ -67,6 +67,18 @@ class TimezoneRead(BaseModel):
     timezone: str
 
 
+class PreferencesRead(BaseModel):
+    #: 还没选过时区时为空，前端用浏览器时区补一次。
+    timezone: str | None = None
+    notify_email_default: bool = False
+
+
+class PreferencesUpdate(BaseModel):
+    notify_email_default: bool = Field(
+        description="新建定时任务时是否默认发送邮件通知"
+    )
+
+
 class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

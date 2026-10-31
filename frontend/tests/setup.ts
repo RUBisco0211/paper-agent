@@ -40,3 +40,20 @@ if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
 if (typeof document !== "undefined" && !document.elementFromPoint) {
   document.elementFromPoint = () => null
 }
+
+// Node 自带一个不可用的 localStorage 全局，jsdom 的 window 上反而没有实现；
+// 需要持久化的用例（主题等）用这份内存实现。
+if (typeof window !== "undefined" && !window.localStorage) {
+  const store = new Map<string, string>()
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => { store.set(key, String(value)) },
+      removeItem: (key: string) => { store.delete(key) },
+      clear: () => { store.clear() },
+      key: (index: number) => [...store.keys()][index] ?? null,
+      get length() { return store.size },
+    },
+  })
+}

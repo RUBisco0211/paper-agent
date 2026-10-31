@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 class ScheduleBindingCreate(BaseModel):
     schedule_id: str = Field(min_length=1, max_length=64)
     project_id: UUID | None = None
-    notify_email: bool = False
+    #: 省略时取用户的邮件通知默认值。
+    notify_email: bool | None = None
 
 
 class ScheduleBindingRead(BaseModel):
@@ -41,7 +42,8 @@ class AgentScheduleCreate(BaseModel):
     prompt: str = Field(min_length=1, max_length=10000)
     time: str = Field(min_length=5, max_length=5)
     weekdays: list[str] = Field(min_length=1, max_length=7)
-    notify_email: bool = False
+    #: 省略时取用户的邮件通知默认值。
+    notify_email: bool | None = None
 
 
 class AgentScheduleRead(BaseModel):

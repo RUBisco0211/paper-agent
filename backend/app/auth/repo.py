@@ -200,6 +200,27 @@ class AuthRepository:
         )
         self._session.expire_all()
 
+    def get_notify_email_default(self, user_id: UUID) -> bool:
+        record = self._session.get(UserSettingsRecord, user_id)
+        if record is None:
+            return False
+        value = record.config.get("notify_email_default")
+        return value if isinstance(value, bool) else False
+
+    def set_notify_email_default(self, user_id: UUID, enabled: bool) -> None:
+        self._session.execute(
+            text(
+                "INSERT INTO user_settings (user_id, config) "
+                "VALUES (:user_id, jsonb_build_object('version', 1, "
+                "'notify_email_default', CAST(:enabled AS boolean))) "
+                "ON CONFLICT (user_id) DO UPDATE SET config = jsonb_set("
+                "user_settings.config, '{notify_email_default}', "
+                "to_jsonb(CAST(:enabled AS boolean)), true)"
+            ),
+            {"user_id": user_id, "enabled": enabled},
+        )
+        self._session.expire_all()
+
     def set_tool_authorization(
         self, user_id: UUID, tool_name: str, always_allow: bool
     ) -> None:

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { render } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { ThemeProvider } from "@/components/providers/ThemeProvider"
+import { ThemeProvider, useTheme } from "@/components/providers/ThemeProvider"
 
 /** matchMedia stub whose result and listeners the test controls. */
 function stubMatchMedia(matches: boolean) {
@@ -36,7 +37,14 @@ function stubMatchMedia(matches: boolean) {
 
 afterEach(() => {
   document.documentElement.classList.remove("dark")
+  delete document.documentElement.dataset.theme
+  window.localStorage.clear()
 })
+
+function ThemeSwitch() {
+  const { theme, setTheme } = useTheme()
+  return <button type="button" onClick={() => setTheme("solar-dusk")}>{theme}</button>
+}
 
 describe("ThemeProvider", () => {
   it("applies the dark class when the system prefers dark", () => {
@@ -69,5 +77,21 @@ describe("ThemeProvider", () => {
     expect(media.listenerCount()).toBe(1)
     unmount()
     expect(media.listenerCount()).toBe(0)
+  })
+
+  it("applies the chosen theme and keeps it in localStorage", async () => {
+    stubMatchMedia(false)
+    render(
+      <ThemeProvider>
+        <ThemeSwitch />
+      </ThemeProvider>,
+    )
+    expect(document.documentElement.dataset.theme).toBeUndefined()
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "vintage-paper" }))
+
+    expect(document.documentElement.dataset.theme).toBe("solar-dusk")
+    expect(window.localStorage.getItem("paper-agent.theme")).toBe("solar-dusk")
+    expect(screen.getByRole("button", { name: "solar-dusk" })).toBeTruthy()
   })
 })

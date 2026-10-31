@@ -3,7 +3,7 @@
  * 只提供颜色相关的 token，不包含尺寸、间距或动效。
  * 切换主题只需改 index.css 顶部这一行 @import。
  */
-:root {
+:root[data-theme="smui"] {
     color-scheme: light;
     --background: hsl(218 27% 94%);
     --foreground: hsl(220 16% 22%);
@@ -61,7 +61,7 @@
     --paper-quote-fill: hsl(40 71% 73% / 0.5);
 }
 
-.dark {
+:root[data-theme="smui"].dark {
     color-scheme: dark;
     --background: hsl(213 16% 12%);
     --foreground: hsl(213 27% 88%);

@@ -17,6 +17,8 @@ from .schemas import (
     PasswordResetRequest,
     RegisterRequest,
     SessionStatusResponse,
+    PreferencesRead,
+    PreferencesUpdate,
     TimezoneRead,
     TimezoneUpdate,
     ToolAuthorizationRead,
@@ -212,6 +214,21 @@ def read_tool_authorizations(
     user: CurrentUser, service: AuthServiceDep
 ) -> dict[str, bool]:
     return service.tool_authorizations(user.id)
+
+
+@router.get("/preferences", response_model=PreferencesRead)
+def read_preferences(user: CurrentUser, service: AuthServiceDep) -> PreferencesRead:
+    return PreferencesRead(**service.preferences(user.id))
+
+
+@router.patch("/preferences", response_model=PreferencesRead)
+def update_preferences(
+    payload: PreferencesUpdate, user: CurrentUser, service: AuthServiceDep
+) -> PreferencesRead:
+    service.set_notify_email_default(
+        user_id=user.id, enabled=payload.notify_email_default
+    )
+    return PreferencesRead(**service.preferences(user.id))
 
 
 @router.patch("/timezone", response_model=TimezoneRead)

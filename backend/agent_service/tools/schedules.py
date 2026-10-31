@@ -44,7 +44,7 @@ def build_schedule_tool(
         prompt: str,
         time: str,
         weekdays: list[str] | None = None,
-        notify_email: bool = False,
+        notify_email: bool | None = None,
     ) -> dict:
         """Create a recurring task only when the user explicitly asks for one.
 
@@ -54,9 +54,11 @@ def build_schedule_tool(
         for a timezone: the system uses the user's saved local timezone.
         `weekdays` uses mon,tue,wed,thu,fri,sat,sun; omit it or use [] for every day.
         Translate explicit weekdays, workdays, or weekends yourself. The
-        current session fixes the user and project scope. Set notify_email=True
-        only when the user requests email notification of the result. The system
-        sends only to the owner's verified email; never ask for a recipient.
+        current session fixes the user and project scope. Leave notify_email
+        unset unless the user says whether they want the result by email: the
+        system then follows the notification default saved in settings. The
+        system sends only to the owner's verified email; never ask for a
+        recipient.
         """
         try:
             return await business_request(
@@ -70,7 +72,7 @@ def build_schedule_tool(
                     "prompt": prompt,
                     "time": normalize_schedule_time(time),
                     "weekdays": weekdays or list(WEEKDAYS),
-                    "notify_email": notify_email,
+                    **({} if notify_email is None else {"notify_email": notify_email}),
                 },
             )
         except httpx.HTTPError as exc:

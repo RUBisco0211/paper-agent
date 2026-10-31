@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react"
 
 import type { ChatModelConfig } from "@/types/agent"
 import type { ReviewedSchedule, ScheduleDraft, ScheduleFrequency } from "@/types/schedule"
+import { useAuth } from "@/components/providers/AuthProvider"
+import { TimezoneSelect } from "@/components/settings/TimezoneSelect"
 import { Button } from "@/components/ui/Button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/Input"
@@ -40,6 +42,7 @@ export function ProjectScheduleDialog({
   review?: ReviewedSchedule
   onReview?: (draft: ReviewedSchedule) => Promise<void>
 }) {
+  const { preferences } = useAuth()
   const [name, setName] = useState("")
   const [prompt, setPrompt] = useState("")
   const [frequency, setFrequency] = useState<ScheduleFrequency>("daily")
@@ -56,7 +59,7 @@ export function ProjectScheduleDialog({
   useEffect(() => {
     if (!open) return
     setError("")
-    setNotifyEmail(review?.notify_email ?? false)
+    setNotifyEmail(review?.notify_email ?? preferences?.notify_email_default ?? false)
     if (!review) return
     const days = review.weekdays.map((day) => DAY_CODES.indexOf(day)).filter((day) => day >= 0)
     setName(review.name)
@@ -116,7 +119,7 @@ export function ProjectScheduleDialog({
         </div>
         {frequency === "weekly" && <label className="grid gap-1 text-sm">星期<Select value={String(weekday)} onValueChange={(value) => setWeekday(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["日", "一", "二", "三", "四", "五", "六"].map((day, index) => <SelectItem key={index} value={String(index)}>周{day}</SelectItem>)}</SelectContent></Select></label>}
         {frequency === "custom" && <div className="grid gap-2 text-sm"><span>星期</span><div className="flex flex-wrap gap-2">{["日", "一", "二", "三", "四", "五", "六"].map((day, index) => <Button key={index} type="button" size="sm" variant={customDays.includes(index) ? "default" : "outline"} aria-pressed={customDays.includes(index)} onClick={() => setCustomDays((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index])}>周{day}</Button>)}</div></div>}
-        {!review && <label className="grid gap-1 text-sm">时区<Input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>}
+        {!review && <label className="grid gap-1 text-sm">时区<TimezoneSelect value={timezone} onChange={setTimezone} /></label>}
         {!review && <label className="grid gap-1 text-sm">模型<Select value={String(modelIndex)} onValueChange={(value) => setModelIndex(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{models.map((model, index) => <SelectItem key={`${model.credential_id}:${model.model}`} value={String(index)}>{model.model}</SelectItem>)}</SelectContent></Select></label>}
         {!review && models.length === 0 && <p className="text-sm text-muted-foreground">请先在模型设置中保存凭据</p>}
         <Field orientation="horizontal" data-disabled={busy}>

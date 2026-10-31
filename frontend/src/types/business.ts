@@ -134,6 +134,13 @@ export interface UserPaperDetail extends UserPaperSummary {
   artifact_version?: string | null
 }
 
+/** 账号级偏好：时区与定时任务的邮件通知默认值。 */
+export interface AuthPreferences {
+  /** 还没选过时区时为空。 */
+  timezone: string | null
+  notify_email_default: boolean
+}
+
 export interface PaperBlock {
   id: number
   type: string

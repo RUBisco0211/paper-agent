@@ -8,6 +8,10 @@ import { expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/query"
 import { PaperCalendarPage } from "@/pages/schedule/PaperCalendarPage"
 
+vi.mock("@/components/providers/AuthProvider", () => ({
+  useAuth: () => ({ preferences: { timezone: "Asia/Shanghai", notify_email_default: false } }),
+}))
+
 vi.mock("@/components/providers/ApiProvider", () => ({ useApi: () => ({ api: { projects: { list: async () => ({ items: [], total: 0 }) } } }) }))
 vi.mock("@/lib/projectSchedules", () => ({
   listProjectSchedules: async () => [{ projectId: null, notify_email: false, schedule: { id: "task-1", agent_id: "agent-1", data: { name: "问候", enabled: true, cron_expression: "0 10 * * *", started_at: "2026-10-07T00:00:00Z", timezone: "Asia/Shanghai" } } }],

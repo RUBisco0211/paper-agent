@@ -5,6 +5,10 @@ import { expect, it, vi } from "vitest"
 
 import { ProjectScheduleDialog } from "@/components/schedule/ScheduleDialog"
 
+vi.mock("@/components/providers/AuthProvider", () => ({
+  useAuth: () => ({ preferences: { timezone: "Asia/Shanghai", notify_email_default: false } }),
+}))
+
 it("shows the agent draft and returns edited values only after review confirmation", async () => {
   const onReview = vi.fn(async () => {})
   render(<ProjectScheduleDialog

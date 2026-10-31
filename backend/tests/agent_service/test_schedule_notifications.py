@@ -75,7 +75,7 @@ def test_schedule_result_ignores_unfinished_reply_when_waiting_for_confirmation(
     assert result_payload(msg) is None
 
 
-def test_schedule_tool_defaults_email_off_when_user_does_not_request_notification(
+def test_schedule_tool_leaves_the_email_choice_to_the_saved_default(
     monkeypatch,
 ):
     from agentscope.permission import PermissionBehavior
@@ -91,5 +91,6 @@ def test_schedule_tool_defaults_email_off_when_user_does_not_request_notificatio
     monkeypatch.setattr(schedules, "business_request", request)
     tool = schedules.build_schedule_tool("user", "agent", "session")
     asyncio.run(tool(name="Review", prompt="Read", time="09:00"))
-    assert sent[0]["notify_email"] is False
+    # 用户没表态时不发这个字段，由后端的账号默认值决定。
+    assert "notify_email" not in sent[0]
     assert asyncio.run(tool.check_permissions()).behavior == PermissionBehavior.ASK
