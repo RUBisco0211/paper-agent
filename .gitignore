@@ -37,3 +37,7 @@ models/*
 
 # Local agent task output
 .pi/
+
+# Editor and OpenChamber tooling state
+.vscode/
+.openchamber/
